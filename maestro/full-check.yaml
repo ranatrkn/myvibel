@@ -1,0 +1,59 @@
+appId: com.vibelife.app
+---
+- runFlow: flows/launch.yaml
+
+# Ana sayfa
+- assertVisible: "Takip Edilen"
+- tapOn: "Akış"
+- assertVisible: "Akış"
+- tapOn: "Takip Edilen"
+
+# Keşfet
+- tapOn: "Alt menü Keşfet"
+- extendedWaitUntil:
+    visible: "Liderlik"
+    timeout: 20000
+- assertVisible: "Liderlik"
+
+# Yeni gönderi
+- tapOn: "Alt menü Yeni gönderi"
+- extendedWaitUntil:
+    visible: "Paylaş"
+    timeout: 20000
+- assertVisible: "Paylaş"
+
+# Bildirimler
+- tapOn: "Alt menü Bildirimler"
+- extendedWaitUntil:
+    visible: "Bildirimler"
+    timeout: 20000
+- assertVisible: "Bildirimler"
+
+# Profil
+- tapOn: "Alt menü Profil"
+- extendedWaitUntil:
+    visible: "Beğendiklerim"
+    timeout: 20000
+- assertVisible: "Beğendiklerim"
+- assertVisible: "Henüz gönderin yok."
+
+# Maskot odası
+- tapOn: "Maskot odasini ac"
+- extendedWaitUntil:
+    visible: "Maskot odası"
+    timeout: 20000
+- assertVisible: "Maskot odası"
+- back
+
+# Ayarlar
+- tapOn: "Alt menü Profil"
+- tapOn: "Ayarlar"
+- extendedWaitUntil:
+    visible: "Gizli Hesap.*"
+    timeout: 15000
+- assertVisible: "Gizli Hesap.*"
+- back
+
+# Ana sayfaya dön
+- tapOn: "Alt menü Ana"
+- assertVisible: "Takip Edilen"

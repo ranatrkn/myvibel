@@ -142,10 +142,11 @@ class BildirimServis {
         .doc(uid)
         .collection("notifications")
         .where("okundu", isEqualTo: false)
+        .limit(100)
         .snapshots()
         .map(
           (snap) => snap.docs
-              .where((doc) => (doc.data()["tip"] ?? "") != "message") // Mesajları hariç tut
+              .where((doc) => (doc.data()["tip"] ?? "") != "message")
               .length,
         );
   }

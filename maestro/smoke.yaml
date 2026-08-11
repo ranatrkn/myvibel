@@ -1,0 +1,19 @@
+﻿appId: com.vibelife.app
+---
+- runFlow: flows/launch.yaml
+- assertVisible: "Takip Edilen"
+- tapOn: "Alt menü Keşfet"
+- extendedWaitUntil:
+    visible: "Önerilen Kullanıcılar"
+    timeout: 30000
+- extendedWaitUntil:
+    visible: "Liderlik"
+    timeout: 20000
+- assertVisible: "Liderlik"
+- tapOn: "Alt menü Profil"
+- extendedWaitUntil:
+    visible: "Beğendiklerim"
+    timeout: 20000
+- assertVisible: "Beğendiklerim"
+- tapOn: "Alt menü Ana"
+- assertVisible: "Takip Edilen"

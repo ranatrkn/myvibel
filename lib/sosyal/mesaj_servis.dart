@@ -144,12 +144,34 @@ class MesajServis {
     return chatId;
   }
 
-  // Kullanıcının sohbet listesi akışı
+  // Kullanıcının sohbet listesi akışı (mesajlar sayfası)
   static Stream<QuerySnapshot<Map<String, dynamic>>> sohbetlerim(String uid) {
     return SosyalCore.db
         .collection("chats")
         .where("participants", arrayContains: uid)
+        .orderBy("lastMessageAt", descending: true)
+        .limit(30)
         .snapshots();
+  }
+
+  // Feed üst barı için tek seferlik son sohbetler
+  static Future<QuerySnapshot<Map<String, dynamic>>> sonSohbetleriGetir(
+      String uid) async {
+    try {
+      return await SosyalCore.db
+          .collection("chats")
+          .where("participants", arrayContains: uid)
+          .orderBy("lastMessageAt", descending: true)
+          .limit(25)
+          .get();
+    } catch (e) {
+      debugPrint("son sohbetler indexed query failed: $e");
+      return SosyalCore.db
+          .collection("chats")
+          .where("participants", arrayContains: uid)
+          .limit(25)
+          .get();
+    }
   }
 
   // Belirli sohbetin mesajları akışı

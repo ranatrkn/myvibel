@@ -472,6 +472,10 @@ class SosyalServis {
   static Stream<QuerySnapshot<Map<String, dynamic>>> sohbetlerim(String uid) =>
       MesajServis.sohbetlerim(uid);
 
+  static Future<QuerySnapshot<Map<String, dynamic>>> sonSohbetleriGetir(
+          String uid) =>
+      MesajServis.sonSohbetleriGetir(uid);
+
   // Sohbet mesajları akışı
   static Stream<QuerySnapshot<Map<String, dynamic>>> sohbetMesajlari(
       String chatId) =>

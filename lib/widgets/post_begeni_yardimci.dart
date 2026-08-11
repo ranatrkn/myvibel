@@ -1,6 +1,4 @@
 // Gönderi kartları için ortak beğeni durumu ve işlem mantığı.
-import 'dart:async';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:vibe_life/error_messages.dart';
@@ -14,17 +12,18 @@ class PostBegeniDurumuYonetici {
     required this.userId,
     required this.postOwnerId,
     required int baslangicBegeniSayisi,
-  }) : begeniSayisi = baslangicBegeniSayisi;
+    bool? baslangicBegenildi,
+  })  : begeniSayisi = baslangicBegeniSayisi,
+        begenildi = baslangicBegenildi ?? false;
 
   final String postId;
   final String userId;
   final String postOwnerId;
 
-  bool begenildi = false;
+  bool begenildi;
   bool islemSuruyor = false;
   int begeniSayisi;
 
-  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _begeniAbonelik;
   VoidCallback? _yenile;
 
   static int sayacDeger(dynamic value, int varsayilan) {
@@ -33,33 +32,36 @@ class PostBegeniDurumuYonetici {
     return varsayilan;
   }
 
-  void baslat({required VoidCallback yenile}) {
+  void baslat({
+    required VoidCallback yenile,
+    bool? baslangicBegenildi,
+  }) {
     _yenile = yenile;
-    _begeniDurumunuDinle();
+    if (baslangicBegenildi != null) {
+      begenildi = baslangicBegenildi;
+      return;
+    }
+    _begeniDurumunuYukle();
   }
 
-  void _begeniDurumunuDinle() {
-    _begeniAbonelik?.cancel();
+  Future<void> _begeniDurumunuYukle() async {
     if (userId.isEmpty) return;
 
-    _begeniAbonelik = FirebaseFirestore.instance
-        .collection('posts')
-        .doc(postId)
-        .collection('likes')
-        .doc(userId)
-        .snapshots()
-        .listen(
-      (likeDoc) {
-        if (islemSuruyor) return;
-        final yeniDurum = likeDoc.exists;
-        if (begenildi == yeniDurum) return;
-        begenildi = yeniDurum;
-        _yenile?.call();
-      },
-      onError: (Object e) {
-        debugPrint('begeni dinleyici hatasi ($postId): $e');
-      },
-    );
+    try {
+      final likeDoc = await FirebaseFirestore.instance
+          .collection('posts')
+          .doc(postId)
+          .collection('likes')
+          .doc(userId)
+          .get();
+      if (islemSuruyor) return;
+      final yeniDurum = likeDoc.exists;
+      if (begenildi == yeniDurum) return;
+      begenildi = yeniDurum;
+      _yenile?.call();
+    } catch (e) {
+      debugPrint('begeni durumu yukleme hatasi ($postId): $e');
+    }
   }
 
   void guncelle({int? yeniBaslangicBegeni}) {
@@ -69,10 +71,7 @@ class PostBegeniDurumuYonetici {
     }
   }
 
-  void durdur() {
-    _begeniAbonelik?.cancel();
-    _begeniAbonelik = null;
-  }
+  void durdur() {}
 
   void sayacSenkronizeEt(int yeniBegeniSayisi) {
     if (islemSuruyor || yeniBegeniSayisi == begeniSayisi) return;

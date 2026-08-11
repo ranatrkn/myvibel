@@ -1,7 +1,4 @@
 // Tek gönderi kartı: beğeni, yorum, iletme, şikayet ve engelleme
-import 'dart:async';
-
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:vibe_life/app_theme.dart';
 import 'package:vibe_life/error_messages.dart';
@@ -28,6 +25,7 @@ class PostCard extends StatefulWidget {
   final String avatarKey; // Avatar anahtarı
   final int baslangicBegeniSayisi; // İlk beğeni sayısı
   final int baslangicYorumSayisi; // İlk yorum sayısı
+  final bool? baslangicBegenildi; // Önbellekten beğeni durumu
   final String userId; // Oturum açmış kullanıcı uid
   final dynamic createdAt; // Oluşturulma zamanı
   final VoidCallback? onKendiProfilineGit; // Kendi profiline geçiş callback
@@ -43,6 +41,7 @@ class PostCard extends StatefulWidget {
     required this.avatarKey,
     required this.baslangicBegeniSayisi,
     required this.baslangicYorumSayisi,
+    this.baslangicBegenildi,
     required this.userId,
     required this.createdAt,
     this.onKendiProfilineGit,
@@ -56,35 +55,28 @@ class _PostCardState extends State<PostCard> {
   bool gizleKart = false; // Engelleme sonrası kartı gizle
   late int yorumSayisi; // Güncel yorum sayısı
   late PostBegeniDurumuYonetici _begeni;
-  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _postAbonelik;
 
   void _begeniYoneticiOlustur() {
-    _begeni.durdur();
     _begeni = PostBegeniDurumuYonetici(
       postId: widget.postId,
       userId: widget.userId,
       postOwnerId: widget.postOwnerId,
       baslangicBegeniSayisi: widget.baslangicBegeniSayisi,
+      baslangicBegenildi: widget.baslangicBegenildi,
     );
-    _begeni.baslat(yenile: () {
-      if (mounted) setState(() {});
-    });
+    _begeni.baslat(
+      yenile: () {
+        if (mounted) setState(() {});
+      },
+      baslangicBegenildi: widget.baslangicBegenildi,
+    );
   }
 
   @override
   void initState() {
     super.initState();
     yorumSayisi = widget.baslangicYorumSayisi;
-    _begeni = PostBegeniDurumuYonetici(
-      postId: widget.postId,
-      userId: widget.userId,
-      postOwnerId: widget.postOwnerId,
-      baslangicBegeniSayisi: widget.baslangicBegeniSayisi,
-    );
-    _begeni.baslat(yenile: () {
-      if (mounted) setState(() {});
-    });
-    _postSayaclariniDinle();
+    _begeniYoneticiOlustur();
   }
 
   @override
@@ -94,7 +86,6 @@ class _PostCardState extends State<PostCard> {
         oldWidget.userId != widget.userId ||
         oldWidget.postOwnerId != widget.postOwnerId) {
       _begeniYoneticiOlustur();
-      _postSayaclariniDinle();
     }
     if (oldWidget.baslangicBegeniSayisi != widget.baslangicBegeniSayisi) {
       _begeni.guncelle(yeniBaslangicBegeni: widget.baslangicBegeniSayisi);
@@ -106,47 +97,9 @@ class _PostCardState extends State<PostCard> {
     }
   }
 
-  void _postSayaclariniDinle() {
-    _postAbonelik?.cancel();
-    _postAbonelik = FirebaseFirestore.instance
-        .collection("posts")
-        .doc(widget.postId)
-        .snapshots()
-        .listen(
-      (postDoc) {
-        if (!mounted) return;
-        final data = postDoc.data();
-        if (data == null) return;
-
-        final yeniBegeni = PostBegeniDurumuYonetici.sayacDeger(
-          data["begeniSayisi"],
-          _begeni.begeniSayisi,
-        );
-        final yeniYorum = PostBegeniDurumuYonetici.sayacDeger(
-          data["yorumSayisi"],
-          yorumSayisi,
-        );
-        if (yeniBegeni == _begeni.begeniSayisi && yeniYorum == yorumSayisi) {
-          return;
-        }
-
-        _begeni.sayacSenkronizeEt(yeniBegeni);
-        if (mounted && yeniYorum != yorumSayisi) {
-          setState(() {
-            yorumSayisi = yeniYorum;
-          });
-        }
-      },
-      onError: (Object e) {
-        debugPrint("post sayac dinleyici hatasi (${widget.postId}): $e");
-      },
-    );
-  }
-
   @override
   void dispose() {
     _begeni.durdur();
-    _postAbonelik?.cancel();
     super.dispose();
   }
 

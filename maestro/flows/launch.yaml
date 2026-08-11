@@ -1,0 +1,7 @@
+appId: com.vibelife.app
+---
+- stopApp
+- openLink: vibelife://app
+- extendedWaitUntil:
+    visible: "Takip Edilen"
+    timeout: 60000

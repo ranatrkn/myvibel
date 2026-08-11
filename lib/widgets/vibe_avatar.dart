@@ -1,4 +1,5 @@
 // Profil avatar seçenekleri ve görüntüleme.
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 // Tek avatar seçeneği (emoji + arka plan)
@@ -100,10 +101,15 @@ Widget vibeAvatar({
 }) {
   final normalizedPhotoUrl = (photoUrl ?? "").trim();
   if (normalizedPhotoUrl.isNotEmpty) {
+    final cacheSize = (radius * 2 * 2).round().clamp(48, 256);
     return CircleAvatar(
       radius: radius,
       backgroundColor: fallbackBackgroundColor,
-      backgroundImage: NetworkImage(normalizedPhotoUrl),
+      backgroundImage: CachedNetworkImageProvider(
+        normalizedPhotoUrl,
+        maxWidth: cacheSize,
+        maxHeight: cacheSize,
+      ),
     );
   }
 

@@ -1,6 +1,4 @@
 // Ana feed içeriği: takip/keşfet sekmeleri, sayfalama ve maskot üst bar
-import 'dart:async';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -36,9 +34,6 @@ class FeedPageContentState extends State<FeedPageContent>
   Set<String> _takipEdilenIdler = {}; // Takip edilen kullanıcı uid'leri
   Set<String> _engelledigimIdler = {}; // Engellediğim kullanıcılar
   Set<String> _beniEngelleyenIdler = {}; // Beni engelleyen kullanıcılar
-  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _takipAbonelik;
-  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _engelAbonelik;
-  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _engelleyenAbonelik;
   SharedPreferences? _prefs; // DM okunma durumu için yerel depolama
   final ScrollController _scrollController = ScrollController();
   final List<QueryDocumentSnapshot<Map<String, dynamic>>> _gorunenPostlar =
@@ -58,8 +53,10 @@ class FeedPageContentState extends State<FeedPageContent>
   bool _takipFeedPartisiYuklendi = false; // Takip partisi çekildi mi
   int? _takipFeedCursorMs; // Takip feed zaman imleci (ms)
   String? _yuklemeHatasi; // Hata mesajı
-  Set<String> _oncekiTakipEdilenIdler = {}; // Takip değişikliği tespiti
   bool _feedYenilemeSuruyor = false; // Yenileme kilidi
+  Set<String> _begenilenPostIdler = {}; // Beğeni durumu önbelleği
+  bool _begenilenPostlarYuklendi = false;
+  static const int _whereInChunk = 10;
   int _kesfetBosPartiSayaci =
       0; // Keşfet: filtre sonrası boş gelen ardışık partiler
   static const int _maxKesfetBosParti = 12;
@@ -73,21 +70,20 @@ class FeedPageContentState extends State<FeedPageContent>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _scrollController.addListener(_kaydirmaDinleyici);
-    _takipListesiniDinle();
-    _engelListesiniDinle();
+    _sosyalListeleriYukle();
     SharedPreferences.getInstance().then((prefs) {
       if (mounted) setState(() => _prefs = prefs);
     });
   }
 
-  // Uygulama ön plana gelince feed'i yenile
+  // Uygulama ön plana gelince feed'i yenile (seyrek)
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       final simdi = DateTime.now();
       if (_sonArkaPlanYenilemesi != null &&
           simdi.difference(_sonArkaPlanYenilemesi!) <
-              const Duration(minutes: 2)) {
+              const Duration(minutes: 15)) {
         return;
       }
       _sonArkaPlanYenilemesi = simdi;
@@ -109,145 +105,81 @@ class FeedPageContentState extends State<FeedPageContent>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _takipAbonelik?.cancel();
-    _engelAbonelik?.cancel();
-    _engelleyenAbonelik?.cancel();
     _scrollController.dispose();
     super.dispose();
   }
 
-  // Takip listesini canlı dinle
-  void _takipListesiniDinle() {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    _takipAbonelik?.cancel();
-    _takipAbonelik = FirebaseFirestore.instance
-        .collection("users")
-        .doc(user.uid)
-        .collection("following")
-        .snapshots()
-        .listen((snapshot) {
-      if (!mounted) return;
-      final oncekiTakip = _oncekiTakipEdilenIdler;
-      final yeniTakip = snapshot.docs.map((d) => d.id).toSet();
-      // Takip listesi değişti mi kontrol et
-      final takipDegisti = yeniTakip.length != oncekiTakip.length ||
-          !yeniTakip.containsAll(oncekiTakip) ||
-          !oncekiTakip.containsAll(yeniTakip);
-      final takipBoskenDoldu = oncekiTakip.isEmpty && yeniTakip.isNotEmpty;
-
-      setState(() {
-        _oncekiTakipEdilenIdler = yeniTakip;
-        _takipEdilenIdler = yeniTakip;
-        _takipHazir = true;
-      });
-
-      if (!_engellerHazir) return;
-
-      // Takip değişince feed'i yenile veya yükle
-      final feedYenileGerek = takipDegisti &&
-          (!_ilkYukleme ||
-              takipBoskenDoldu ||
-              (_aktifSekme == FeedSekmesi.takip && _gorunenPostlar.isEmpty));
-
-      if (feedYenileGerek) {
-        if (_ilkYukleme && !_yukleniyorDahaFazla) {
-          _feedYuklemeyeHazirMi();
-        } else {
-          _feediYenile();
-        }
-        return;
-      }
-      _feedYuklemeyeHazirMi();
-    });
-  }
-
-  // Engel listelerini canlı dinle (engellediğim + beni engelleyen)
-  void _engelListesiniDinle() {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      if (mounted) setState(() => _engellerHazir = true);
-      if (_takipHazir && _ilkYukleme && !_yukleniyorDahaFazla) {
-        _feedYuklemeyeHazirMi();
-      }
-      return;
-    }
-
-    _engelAbonelik?.cancel();
-    _engelleyenAbonelik?.cancel();
-
-    _engelAbonelik = FirebaseFirestore.instance
-        .collection("users")
-        .doc(user.uid)
-        .collection("blocked")
-        .snapshots()
-        .listen((snapshot) {
-      if (!mounted) return;
-      final onceki = _engelledigimIdler;
-      final yeni = snapshot.docs.map((d) => d.id).toSet();
-      final degisti = yeni.length != onceki.length ||
-          !yeni.containsAll(onceki) ||
-          !onceki.containsAll(yeni);
-
-      setState(() {
-        _engelledigimIdler = yeni;
-        _engellerHazir = true;
-      });
-
-      if (degisti && _takipHazir && !_ilkYukleme && !_feedYenilemeSuruyor) {
-        _feediYenile();
-      } else if (_takipHazir && _ilkYukleme && !_yukleniyorDahaFazla) {
-        _feedYuklemeyeHazirMi();
-      }
-    });
-
-    _engelleyenAbonelik = FirebaseFirestore.instance
-        .collection("users")
-        .doc(user.uid)
-        .collection("blockedBy")
-        .snapshots()
-        .listen((snapshot) {
-      if (!mounted) return;
-      final onceki = _beniEngelleyenIdler;
-      final yeni = snapshot.docs.map((d) => d.id).toSet();
-      final degisti = yeni.length != onceki.length ||
-          !yeni.containsAll(onceki) ||
-          !onceki.containsAll(yeni);
-
-      setState(() {
-        _beniEngelleyenIdler = yeni;
-        _engellerHazir = true;
-      });
-
-      if (degisti && _takipHazir && !_ilkYukleme && !_feedYenilemeSuruyor) {
-        _feediYenile();
-      } else if (_takipHazir && _ilkYukleme && !_yukleniyorDahaFazla) {
-        _feedYuklemeyeHazirMi();
-      }
-    });
-  }
-
-  // Engel listelerini tek seferlik yükle
-  Future<void> _engelleriYukle() async {
+  // Takip ve engel listelerini tek seferde yükle (canlı dinleyici yok)
+  Future<void> _sosyalListeleriYukle({bool feedBaslat = true}) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       if (mounted) {
-        setState(() => _engellerHazir = true);
+        setState(() {
+          _takipHazir = true;
+          _engellerHazir = true;
+        });
       }
+      if (feedBaslat) _feedYuklemeyeHazirMi();
       return;
     }
-    final engelledigim =
-        await SosyalServis.engellenenKullanicilariGetir(user.uid);
-    final beniEngelleyen =
-        await SosyalServis.beniEngelleyenKullanicilariGetir(user.uid);
-    if (!mounted) return;
-    setState(() {
-      _engelledigimIdler = engelledigim;
-      _beniEngelleyenIdler = beniEngelleyen;
-      _engellerHazir = true;
-    });
-    _feedYuklemeyeHazirMi();
+
+    try {
+      final firestore = FirebaseFirestore.instance;
+      final sonuclar = await Future.wait([
+        firestore
+            .collection("users")
+            .doc(user.uid)
+            .collection("following")
+            .limit(500)
+            .get(),
+        firestore
+            .collection("users")
+            .doc(user.uid)
+            .collection("blocked")
+            .limit(200)
+            .get(),
+        firestore
+            .collection("users")
+            .doc(user.uid)
+            .collection("blockedBy")
+            .limit(200)
+            .get(),
+      ]);
+
+      if (!mounted) return;
+      setState(() {
+        _takipEdilenIdler = sonuclar[0].docs.map((d) => d.id).toSet();
+        _engelledigimIdler = sonuclar[1].docs.map((d) => d.id).toSet();
+        _beniEngelleyenIdler = sonuclar[2].docs.map((d) => d.id).toSet();
+        _takipHazir = true;
+        _engellerHazir = true;
+      });
+      if (feedBaslat) _feedYuklemeyeHazirMi();
+    } catch (e) {
+      debugPrint("sosyal listeler yuklenemedi: $e");
+      if (!mounted) return;
+      setState(() {
+        _takipHazir = true;
+        _engellerHazir = true;
+      });
+      if (feedBaslat) _feedYuklemeyeHazirMi();
+    }
+  }
+
+  Future<void> _begenilenPostlariOnbellegeAl(String uid) async {
+    if (_begenilenPostlarYuklendi) return;
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection("users")
+          .doc(uid)
+          .collection("likedPosts")
+          .limit(500)
+          .get();
+      _begenilenPostIdler = snap.docs.map((d) => d.id).toSet();
+      _begenilenPostlarYuklendi = true;
+    } catch (e) {
+      debugPrint("begeni onbellek hatasi: $e");
+    }
   }
 
   // Alta yaklaşınca daha fazla post yükle
@@ -268,9 +200,7 @@ class FeedPageContentState extends State<FeedPageContent>
     if (_feedYenilemeSuruyor) return;
     _feedYenilemeSuruyor = true;
     try {
-      if (!_engellerHazir) {
-        await _engelleriYukle();
-      }
+      await _sosyalListeleriYukle(feedBaslat: false);
       if (!mounted) return;
       setState(() {
         _gorunenPostlar.clear();
@@ -284,6 +214,8 @@ class FeedPageContentState extends State<FeedPageContent>
         _takipFeedCursorMs = null;
         _yuklemeHatasi = null;
         _kesfetBosPartiSayaci = 0;
+        _begenilenPostIdler = {};
+        _begenilenPostlarYuklendi = false;
       });
     } finally {
       _feedYenilemeSuruyor = false;
@@ -462,6 +394,64 @@ class FeedPageContentState extends State<FeedPageContent>
     return docs;
   }
 
+  // Takip edilen grubundan post partisi getir (whereIn ile tek sorgu)
+  Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>>
+      _takipChunkPostlariniGetir(
+    List<String> userIds,
+    int? cursorMs,
+  ) async {
+    if (userIds.isEmpty) return [];
+
+    QuerySnapshot<Map<String, dynamic>> snap;
+    try {
+      snap = await FirebaseFirestore.instance
+          .collection("posts")
+          .where("userId", whereIn: userIds)
+          .where("raporNedeniyleGizli", isEqualTo: false)
+          .orderBy("createdAt", descending: true)
+          .limit(_partiBoyutu)
+          .get();
+    } catch (e) {
+      debugPrint("takip feed whereIn query failed: $e");
+      final sonuclar = await Future.wait(
+        userIds.map(
+          (hedefUid) => _takipEdilenPostlariniGetir(
+            hedefUid: hedefUid,
+            izleyiciUid: '',
+            cursorMs: cursorMs,
+          ),
+        ),
+      );
+      final merged = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+      for (final docs in sonuclar) {
+        merged.addAll(docs);
+      }
+      merged.sort(
+        (a, b) => _createdAtMs(b.data()).compareTo(_createdAtMs(a.data())),
+      );
+      if (merged.length > _partiBoyutu) {
+        return merged.sublist(0, _partiBoyutu);
+      }
+      return merged;
+    }
+
+    var docs =
+        List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(snap.docs);
+    if (cursorMs != null) {
+      docs = docs.where((doc) {
+        final ms = _createdAtMs(doc.data());
+        return ms == 0 || ms < cursorMs;
+      }).toList();
+    }
+    docs.sort(
+      (a, b) => _createdAtMs(b.data()).compareTo(_createdAtMs(a.data())),
+    );
+    if (docs.length > _partiBoyutu) {
+      docs = docs.sublist(0, _partiBoyutu);
+    }
+    return docs;
+  }
+
   // Tüm takip edilenlerden post partisi yükle
   Future<int> _takipPostPartisiYukle(
     String uid,
@@ -480,16 +470,12 @@ class FeedPageContentState extends State<FeedPageContent>
     }
 
     var eklenen = 0;
-    final sonuclar = await Future.wait(
-      takipEdilen.map(
-        (hedefUid) => _takipEdilenPostlariniGetir(
-          hedefUid: hedefUid,
-          izleyiciUid: uid,
-          cursorMs: cursorMs,
-        ),
-      ),
-    );
-    for (final docs in sonuclar) {
+    for (var i = 0; i < takipEdilen.length; i += _whereInChunk) {
+      final chunkEnd = i + _whereInChunk > takipEdilen.length
+          ? takipEdilen.length
+          : i + _whereInChunk;
+      final chunk = takipEdilen.sublist(i, chunkEnd);
+      final docs = await _takipChunkPostlariniGetir(chunk, cursorMs);
       for (final doc in docs) {
         if (_postuBekleyeneEkle(doc, uid, gosterilenIdler)) {
           eklenen++;
@@ -603,6 +589,7 @@ class FeedPageContentState extends State<FeedPageContent>
     });
 
     try {
+      await _begenilenPostlariOnbellegeAl(user.uid);
       final gosterilenIdler = _gorunenPostlar.map((d) => d.id).toSet();
 
       // Takip sekmesinde önce kendi postlarını ekle
@@ -758,150 +745,18 @@ class FeedPageContentState extends State<FeedPageContent>
     return SafeArea(
       child: Column(
         children: [
-          // Maskot ve kullanıcı üst barı
-          StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-            stream: FirebaseFirestore.instance
-                .collection("users")
-                .doc(user.uid)
-                .snapshots(),
-            builder: (context, snapshot) {
-              final data = snapshot.data?.data();
-              final kullaniciAdi = data?["kullaniciAdi"] ?? "Vibe Kullanıcısı";
-              final puan = _intDeger(data?["puan"], 0);
-              final mascotData = data?["robot"];
-              final mascot = MascotServis.parse(mascotData);
-              final mascotIsim = mascot.isim;
-              final seviye = mascot.seviye;
-              final odaAcik = MascotServis.odaAcik(seviye);
-              final ruhHali = odaAcik
-                  ? MascotServis.ruhHaliMesaji(mascot)
-                  : '${MascotServis.odaAcilisSeviyesi}. seviyede maskot sistemi açılır.';
-
-              return Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    GestureDetector(
-                      onTap: MascotServis.odaAcik(mascot.seviye)
-                          ? () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => const MascotPage(),
-                                ),
-                              );
-                            }
-                          : null,
-                      child: MascotLottieView(
-                        seviye: seviye,
-                        gorselDurum: mascot.gorselDurum,
-                        width: 75,
-                        height: 75,
-                        repeat: false,
-                        tamEkranAc: true,
-                        borderRadius: BorderRadius.circular(20),
-                        decoration: BoxDecoration(
-                          color: vibe.inputFill,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: vibe.cardBorder),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 15),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            mascotIsim,
-                            style: TextStyle(
-                              color: theme.colorScheme.onSurface,
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          Text(
-                            "@$kullaniciAdi • $puan puan • Seviye $seviye",
-                            style: TextStyle(
-                              color: vibe.subtleText,
-                              fontSize: 13,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            ruhHali,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: VibeAppTheme.accent,
-                              fontSize: 12,
-                              fontStyle: FontStyle.italic,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(10),
-                            child: LinearProgressIndicator(
-                              value: mascot.gelisimOrani,
-                              backgroundColor: vibe.inputFill,
-                              valueColor: const AlwaysStoppedAnimation<Color>(
-                                Colors.blueAccent,
-                              ),
-                              minHeight: 8,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    // DM butonu ve okunmamış rozeti
-                    StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                      stream: SosyalServis.sohbetlerim(user.uid),
-                      builder: (context, snap) {
-                        final docs = snap.data?.docs ?? [];
-                        final okunmamisVar =
-                            _dmOkunmamisVar(user.uid, docs, _prefs);
-                        return Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            IconButton(
-                              onPressed: () async {
-                                await Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                      builder: (_) => const MessagesPage()),
-                                );
-                                if (mounted) setState(() {});
-                              },
-                              icon: Icon(
-                                Icons.chat_bubble_outline,
-                                color: vibe.mutedText,
-                                size: 22,
-                              ),
-                              tooltip: "Mesajlar",
-                            ),
-                            if (okunmamisVar)
-                              Positioned(
-                                right: 8,
-                                top: 8,
-                                child: Container(
-                                  width: 8,
-                                  height: 8,
-                                  decoration: const BoxDecoration(
-                                    color: Colors.redAccent,
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
-                              ),
-                          ],
-                        );
-                      },
-                    ),
-                  ],
-                ),
+          // Maskot ve kullanıcı üst barı (tek seferlik yükleme)
+          _FeedUstBar(
+            uid: user.uid,
+            prefs: _prefs,
+            onMascotTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const MascotPage()),
               );
+            },
+            onMessagesReturn: () {
+              if (mounted) setState(() {});
             },
           ),
           // Takip / Keşfet sekme seçici
@@ -999,6 +854,8 @@ class FeedPageContentState extends State<FeedPageContent>
                                       post["begeniSayisi"] ?? 0,
                                   baslangicYorumSayisi:
                                       post["yorumSayisi"] ?? 0,
+                                  baslangicBegenildi:
+                                      _begenilenPostIdler.contains(postId),
                                   userId: user.uid,
                                   onKendiProfilineGit:
                                       widget.onKendiProfilineGit,
@@ -1010,36 +867,6 @@ class FeedPageContentState extends State<FeedPageContent>
         ],
       ),
     );
-  }
-
-  // Okunmamış DM var mı kontrol et
-  bool _dmOkunmamisVar(
-    String uid,
-    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
-    SharedPreferences? prefs,
-  ) {
-    if (prefs == null) return false;
-    for (final doc in docs) {
-      final data = doc.data();
-      final hiddenKey = "dm_hidden_chat_${uid}_${doc.id}";
-      final hiddenAtMs = prefs.getInt(hiddenKey) ?? 0;
-      if (SosyalServis.sohbetGizliMi(
-        uid: uid,
-        chat: data,
-        localHiddenAtMs: hiddenAtMs,
-      )) {
-        continue;
-      }
-      final localReadMs = prefs.getInt("dm_last_read_${uid}_${doc.id}");
-      if (SosyalServis.sohbetOkunmamisMi(
-        uid: uid,
-        chat: data,
-        localReadAtMs: localReadMs,
-      )) {
-        return true;
-      }
-    }
-    return false;
   }
 
   // Sekme butonu widget'ı
@@ -1067,6 +894,227 @@ class FeedPageContentState extends State<FeedPageContent>
             fontWeight: secili ? FontWeight.bold : FontWeight.w500,
           ),
         ),
+      ),
+    );
+  }
+}
+
+// Feed üst barı: tek seferlik kullanıcı verisi + sınırlı DM kontrolü
+class _FeedUstBar extends StatefulWidget {
+  const _FeedUstBar({
+    required this.uid,
+    required this.prefs,
+    required this.onMascotTap,
+    required this.onMessagesReturn,
+  });
+
+  final String uid;
+  final SharedPreferences? prefs;
+  final VoidCallback onMascotTap;
+  final VoidCallback onMessagesReturn;
+
+  @override
+  State<_FeedUstBar> createState() => _FeedUstBarState();
+}
+
+class _FeedUstBarState extends State<_FeedUstBar> {
+  Map<String, dynamic>? _userData;
+  bool _yukleniyor = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _kullaniciyiYukle();
+  }
+
+  Future<void> _kullaniciyiYukle() async {
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection("users")
+          .doc(widget.uid)
+          .get();
+      if (!mounted) return;
+      setState(() {
+        _userData = snap.data();
+        _yukleniyor = false;
+      });
+    } catch (e) {
+      debugPrint("feed ust bar yukleme: $e");
+      if (mounted) setState(() => _yukleniyor = false);
+    }
+  }
+
+  int _intDeger(dynamic value, int varsayilan) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return varsayilan;
+  }
+
+  bool _dmOkunmamisVar(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
+    final prefs = widget.prefs;
+    if (prefs == null) return false;
+    for (final doc in docs) {
+      final data = doc.data();
+      final hiddenKey = "dm_hidden_chat_${widget.uid}_${doc.id}";
+      final hiddenAtMs = prefs.getInt(hiddenKey) ?? 0;
+      if (SosyalServis.sohbetGizliMi(
+        uid: widget.uid,
+        chat: data,
+        localHiddenAtMs: hiddenAtMs,
+      )) {
+        continue;
+      }
+      final localReadMs = prefs.getInt("dm_last_read_${widget.uid}_${doc.id}");
+      if (SosyalServis.sohbetOkunmamisMi(
+        uid: widget.uid,
+        chat: data,
+        localReadAtMs: localReadMs,
+      )) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final vibe = context.vibe;
+
+    if (_yukleniyor) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        child: SizedBox(
+          height: 75,
+          child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+        ),
+      );
+    }
+
+    final data = _userData ?? {};
+    final kullaniciAdi = data["kullaniciAdi"] ?? "Vibe Kullanıcısı";
+    final puan = _intDeger(data["puan"], 0);
+    final mascot = MascotServis.parse(data["robot"]);
+    final seviye = mascot.seviye;
+    final odaAcik = MascotServis.odaAcik(seviye);
+    final ruhHali = odaAcik
+        ? MascotServis.ruhHaliMesaji(mascot)
+        : "${MascotServis.odaAcilisSeviyesi}. seviyede maskot sistemi açılır.";
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          GestureDetector(
+            onTap: odaAcik ? widget.onMascotTap : null,
+            child: MascotLottieView(
+              seviye: seviye,
+              gorselDurum: mascot.gorselDurum,
+              width: 75,
+              height: 75,
+              repeat: false,
+              tamEkranAc: true,
+              borderRadius: BorderRadius.circular(20),
+              decoration: BoxDecoration(
+                color: vibe.inputFill,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: vibe.cardBorder),
+              ),
+            ),
+          ),
+          const SizedBox(width: 15),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  mascot.isim,
+                  style: TextStyle(
+                    color: theme.colorScheme.onSurface,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  "@$kullaniciAdi • $puan puan • Seviye $seviye",
+                  style: TextStyle(
+                    color: vibe.subtleText,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  ruhHali,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: VibeAppTheme.accent,
+                    fontSize: 12,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: LinearProgressIndicator(
+                    value: mascot.gelisimOrani,
+                    backgroundColor: vibe.inputFill,
+                    valueColor: const AlwaysStoppedAnimation<Color>(
+                      Colors.blueAccent,
+                    ),
+                    minHeight: 8,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 4),
+          FutureBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            future: SosyalServis.sonSohbetleriGetir(widget.uid),
+            builder: (context, snap) {
+              final docs = snap.data?.docs ?? [];
+              final okunmamisVar = _dmOkunmamisVar(docs);
+              return Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  IconButton(
+                    onPressed: () async {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const MessagesPage(),
+                        ),
+                      );
+                      widget.onMessagesReturn();
+                    },
+                    icon: Icon(
+                      Icons.chat_bubble_outline,
+                      color: vibe.mutedText,
+                      size: 22,
+                    ),
+                    tooltip: "Mesajlar",
+                  ),
+                  if (okunmamisVar)
+                    const Positioned(
+                      right: 8,
+                      top: 8,
+                      child: SizedBox(
+                        width: 8,
+                        height: 8,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: Colors.redAccent,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+        ],
       ),
     );
   }

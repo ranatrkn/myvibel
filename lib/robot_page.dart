@@ -1,10 +1,9 @@
-// Maskot bakım odası — gelişim, yemek, uyku.
+// Maskot bakım odası — yemek, uyku, gelişim.
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:vibe_life/app_theme.dart';
 import 'package:vibe_life/error_messages.dart';
-import 'package:vibe_life/puan_animasyon.dart';
 import 'package:vibe_life/robot_servis.dart';
 import 'package:vibe_life/vibe_snackbar.dart';
 import 'package:vibe_life/widgets/robot_durum_bari.dart';
@@ -59,12 +58,12 @@ class _MascotPageState extends State<MascotPage> {
 
           final data = snapshot.data!.data() ?? {};
           final mascot = MascotServis.parse(data['robot']);
-          final puan = (data['puan'] is num) ? (data['puan'] as num).toInt() : 0;
           final odaAcik = MascotServis.odaAcik(mascot.seviye);
           final uyuyor = mascot.uyuyor;
           final mesaj = MascotServis.ruhHaliMesaji(mascot);
           final vibe = context.vibe;
           final onSurface = Theme.of(context).colorScheme.onSurface;
+          final sonrakiFaz = MascotServis.sonrakiFazSeviyesi(mascot.seviye);
 
           if (!odaAcik) {
             return Center(
@@ -81,7 +80,8 @@ class _MascotPageState extends State<MascotPage> {
                     ),
                     const SizedBox(height: 16),
                     Text(
-                      '${MascotServis.odaAcilisSeviyesi}. seviyede maskot odası açılır.',
+                      '${MascotServis.odaAcilisSeviyesi}. seviyede maskot odası açılır.\n'
+                      'Şimdilik etkileşimlerle otomatik büyürsün.',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: vibe.mutedText),
                     ),
@@ -104,9 +104,16 @@ class _MascotPageState extends State<MascotPage> {
                   ),
                 ),
                 Text(
-                  'Seviye ${mascot.seviye} · $puan puan',
+                  'Seviye ${mascot.seviye} · ${MascotServis.fazBasligi(mascot.seviye)}',
                   style: TextStyle(color: vibe.mutedText),
                 ),
+                if (mascot.seviye < MascotServis.mutlulukAcilisSeviyesi) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Sonraki duygu kilidi: Seviye $sonrakiFaz',
+                    style: TextStyle(color: vibe.faintText, fontSize: 12),
+                  ),
+                ],
                 const SizedBox(height: 8),
                 Text(
                   mesaj,
@@ -124,16 +131,24 @@ class _MascotPageState extends State<MascotPage> {
                   height: 220,
                 ),
                 const SizedBox(height: 20),
-                MascotDurumBari(
-                  etiket: 'Enerji',
-                  deger: mascot.enerji,
-                  renk: Colors.amber,
-                ),
-                MascotDurumBari(
-                  etiket: 'Mutluluk',
-                  deger: mascot.mutluluk,
-                  renk: Colors.pinkAccent,
-                ),
+                if (MascotServis.toklukAktif(mascot.seviye))
+                  MascotDurumBari(
+                    etiket: 'Tokluk',
+                    deger: mascot.tokluk,
+                    renk: Colors.orangeAccent,
+                  ),
+                if (MascotServis.enerjiAktif(mascot.seviye))
+                  MascotDurumBari(
+                    etiket: 'Enerji',
+                    deger: mascot.enerji,
+                    renk: Colors.amber,
+                  ),
+                if (MascotServis.mutlulukAktif(mascot.seviye))
+                  MascotDurumBari(
+                    etiket: 'Mutluluk',
+                    deger: mascot.mutluluk,
+                    renk: Colors.pinkAccent,
+                  ),
                 const SizedBox(height: 8),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(10),
@@ -147,15 +162,48 @@ class _MascotPageState extends State<MascotPage> {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Gelişim: ${mascot.gelisimPuani} / ${mascot.gerekliGelisim}',
+                  'Gelişim: ${mascot.gelisimPuani} / ${mascot.gerekliGelisim} '
+                  '(etkileşimle otomatik artar)',
+                  textAlign: TextAlign.center,
                   style: TextStyle(color: vibe.mutedText, fontSize: 13),
                 ),
                 const SizedBox(height: 24),
                 if (uyuyor) ...[
+                  if (MascotServis.uykuKalanSure(mascot) case final kalan?)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Text(
+                        'Kalan dinlenme: ${_sureYaz(kalan)}',
+                        style: TextStyle(color: vibe.mutedText, fontSize: 13),
+                      ),
+                    ),
+                  if (!MascotServis.uyuSistemiAcik(mascot.seviye))
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Text(
+                        'Dinlenme ${MascotServis.enerjiAcilisSeviyesi}. seviyede tam açılır. '
+                        'Şimdilik uyandırabilirsin.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: vibe.faintText, fontSize: 12),
+                      ),
+                    ),
+                  if (MascotServis.uyandirEngelMesaji(mascot) case final engel?)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Text(
+                        engel,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.orangeAccent,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
                   _aksiyonButon(
                     label: 'Uyandır',
                     icon: Icons.wb_sunny_outlined,
-                    onPressed: _islemSuruyor
+                    onPressed: _islemSuruyor ||
+                            !MascotServis.erkenUyandirabilir(mascot)
                         ? null
                         : () => _guvenliIslem(() async {
                               final sonuc = await MascotServis.uyandir(uid);
@@ -169,31 +217,6 @@ class _MascotPageState extends State<MascotPage> {
                             }),
                   ),
                 ] else ...[
-                  _aksiyonButon(
-                    label:
-                        'Geliştir (${MascotServis.gelistirmeMaliyeti} puan)',
-                    icon: Icons.trending_up,
-                    onPressed: _islemSuruyor || puan < MascotServis.gelistirmeMaliyeti
-                        ? null
-                        : () => _guvenliIslem(() async {
-                              final sonuc = await MascotServis.gelistir(uid);
-                              if (!mounted) return;
-                              if (sonuc.seviyeAtladi) {
-                                puanAnimasyonuGoster(context, 0);
-                                vibeSnackbarGoster(
-                                  context,
-                                  'Seviye ${sonuc.yeniSeviye}!',
-                                  tip: VibeMesajTipi.basari,
-                                );
-                              } else {
-                                vibeSnackbarGoster(
-                                  context,
-                                  'Gelişim puanı eklendi.',
-                                  tip: VibeMesajTipi.basari,
-                                );
-                              }
-                            }),
-                  ),
                   if (MascotServis.yemekSistemiAcik(mascot.seviye))
                     _aksiyonButon(
                       label: 'Yemek ver',
@@ -211,7 +234,8 @@ class _MascotPageState extends State<MascotPage> {
                                 }
                               }),
                     ),
-                  if (mascot.enerji <= MascotServis.uyuMaxEnerji)
+                  if (MascotServis.uyuSistemiAcik(mascot.seviye) &&
+                      mascot.enerji <= MascotServis.uyuMaxEnerji)
                     _aksiyonButon(
                       label: 'Uyu',
                       icon: Icons.bedtime_outlined,
@@ -235,6 +259,14 @@ class _MascotPageState extends State<MascotPage> {
         },
       ),
     );
+  }
+
+  String _sureYaz(Duration sure) {
+    final saat = sure.inHours;
+    final dakika = sure.inMinutes.remainder(60);
+    if (saat > 0) return '$saat sa $dakika dk';
+    if (dakika > 0) return '$dakika dk';
+    return '${sure.inSeconds.remainder(60)} sn';
   }
 
   Widget _aksiyonButon({

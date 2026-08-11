@@ -13,6 +13,7 @@ import 'package:vibe_life/notifications_page.dart';
 import 'package:vibe_life/profile_page.dart';
 import 'package:vibe_life/robot_servis.dart';
 import 'package:vibe_life/sosyal_servis.dart';
+import 'package:vibe_life/maestro_semantics.dart';
 import 'package:vibe_life/vibe_snackbar.dart';
 import 'package:vibe_life/widgets/vibe_gradient_scaffold.dart';
 
@@ -33,6 +34,7 @@ class FeedPage extends StatefulWidget {
 class _FeedPageState extends State<FeedPage> with WidgetsBindingObserver {
   int _secilenIndeks = 0;
   Timer? _mascotDakikaTimer;
+  DateTime? _sonMascotSenkron;
   final _feedKey = GlobalKey<FeedPageContentState>();
   final Map<int, Widget> _sayfaOnbellek = {};
   final Set<int> _acilanSekmeler = {0};
@@ -112,10 +114,9 @@ class _FeedPageState extends State<FeedPage> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       _mascotSenkronBaslat();
       _mascotDakikaTimerBaslat();
-      _gunlukGorevAcilisKaydet();
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive) {
-      _mascotDakikaTimer?.cancel(); // Arka planda zamanlayıcıyı durdur
+      _mascotDakikaTimer?.cancel();
     }
   }
 
@@ -134,6 +135,13 @@ class _FeedPageState extends State<FeedPage> with WidgetsBindingObserver {
   void _mascotSenkronBaslat() {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
+    final simdi = DateTime.now();
+    if (_sonMascotSenkron != null &&
+        simdi.difference(_sonMascotSenkron!) <
+            const Duration(minutes: 15)) {
+      return;
+    }
+    _sonMascotSenkron = simdi;
     MascotServis.senkronizeEt(uid).then((sonuc) {
       if (!mounted || sonuc == null || sonuc.mesajlar.isEmpty) return;
       final messenger = ScaffoldMessenger.maybeOf(context);
@@ -200,76 +208,128 @@ class _FeedPageState extends State<FeedPage> with WidgetsBindingObserver {
         index: _secilenIndeks,
         children: _sekmeGovdeleri,
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed,
-        backgroundColor: theme.bottomNavigationBarTheme.backgroundColor,
-        selectedItemColor: theme.bottomNavigationBarTheme.selectedItemColor,
-        unselectedItemColor: theme.bottomNavigationBarTheme.unselectedItemColor,
-        showSelectedLabels: false,
-        showUnselectedLabels: false,
-        currentIndex: _secilenIndeks,
-        onTap: (indeks) {
-          FocusManager.instance.primaryFocus?.unfocus();
-          _sekmeyeGit(indeks);
-        },
-        items: [
-          const BottomNavigationBarItem(icon: Icon(Icons.home), label: "Ana"),
-          const BottomNavigationBarItem(
-              icon: Icon(Icons.search), label: "Keşfet"),
-          const BottomNavigationBarItem(
-            icon: Icon(Icons.add_circle_outline),
-            label: "Yeni",
+      bottomNavigationBar: _altMenuCubugu(theme),
+    );
+  }
+
+  Widget _altMenuCubugu(ThemeData theme) {
+    final seciliRenk = theme.bottomNavigationBarTheme.selectedItemColor ??
+        theme.colorScheme.primary;
+    final normalRenk = theme.bottomNavigationBarTheme.unselectedItemColor ??
+        theme.colorScheme.onSurface.withOpacity(0.55);
+    final arkaPlan =
+        theme.bottomNavigationBarTheme.backgroundColor ?? theme.cardColor;
+
+    Widget oge({
+      required String erisimEtiketi,
+      required IconData ikon,
+      required int indeks,
+      Widget? ikonWidget,
+    }) {
+      final secili = _secilenIndeks == indeks;
+      return Expanded(
+        child: maestroButton(
+          label: erisimEtiketi,
+          selected: secili,
+          onTap: () {
+            FocusManager.instance.primaryFocus?.unfocus();
+            _sekmeyeGit(indeks);
+          },
+          child: InkWell(
+            onTap: () {
+              FocusManager.instance.primaryFocus?.unfocus();
+              _sekmeyeGit(indeks);
+            },
+            child: SizedBox(
+              height: 56,
+              child: IconTheme(
+                data: IconThemeData(
+                  color: secili ? seciliRenk : normalRenk,
+                  size: 26,
+                ),
+                child: Center(child: ikonWidget ?? Icon(ikon)),
+              ),
+            ),
           ),
-          // Okunmamış bildirim rozeti
-          BottomNavigationBarItem(
-            icon: StreamBuilder<int>(
-              stream: FirebaseAuth.instance.currentUser == null
-                  ? Stream.value(0)
-                  : SosyalServis.okunmamisBildirimSayisi(
-                      FirebaseAuth.instance.currentUser!.uid,
-                    ),
-              builder: (context, snapshot) {
-                final sayi = snapshot.data ?? 0;
-                return Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    const Icon(Icons.notifications_none),
-                    if (sayi > 0)
-                      Positioned(
-                        right: -6,
-                        top: -4,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 5,
-                            vertical: 1,
-                          ),
-                          constraints: const BoxConstraints(minWidth: 18),
-                          decoration: BoxDecoration(
-                            color: Colors.redAccent,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Text(
-                            sayi > 99 ? "99+" : "$sayi",
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
+        ),
+      );
+    }
+
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+
+    return Material(
+      color: arkaPlan,
+      child: SafeArea(
+        top: false,
+        child: Row(
+          children: [
+            oge(
+              erisimEtiketi: MaestroSemantics.altMenuAna,
+              ikon: Icons.home,
+              indeks: 0,
+            ),
+            oge(
+              erisimEtiketi: MaestroSemantics.altMenuKesfet,
+              ikon: Icons.search,
+              indeks: 1,
+            ),
+            oge(
+              erisimEtiketi: MaestroSemantics.altMenuYeni,
+              ikon: Icons.add_circle_outline,
+              indeks: 2,
+            ),
+            oge(
+              erisimEtiketi: MaestroSemantics.altMenuBildirim,
+              ikon: Icons.notifications_none,
+              indeks: 3,
+              ikonWidget: StreamBuilder<int>(
+                stream: uid == null
+                    ? Stream.value(0)
+                    : SosyalServis.okunmamisBildirimSayisi(uid),
+                builder: (context, snapshot) {
+                  final sayi = snapshot.data ?? 0;
+                  return Stack(
+                    clipBehavior: Clip.none,
+                    alignment: Alignment.center,
+                    children: [
+                      const Icon(Icons.notifications_none),
+                      if (sayi > 0)
+                        Positioned(
+                          right: -10,
+                          top: -8,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 5,
+                              vertical: 1,
+                            ),
+                            constraints: const BoxConstraints(minWidth: 18),
+                            decoration: BoxDecoration(
+                              color: Colors.redAccent,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              sayi > 99 ? "99+" : "$sayi",
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                  ],
-                );
-              },
+                    ],
+                  );
+                },
+              ),
             ),
-            label: "Bildirim",
-          ),
-          const BottomNavigationBarItem(
-            icon: Icon(Icons.person_outline),
-            label: "Profil",
-          ),
-        ],
+            oge(
+              erisimEtiketi: MaestroSemantics.altMenuProfil,
+              ikon: Icons.person_outline,
+              indeks: 4,
+            ),
+          ],
+        ),
       ),
     );
   }

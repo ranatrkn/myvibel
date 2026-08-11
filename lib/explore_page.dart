@@ -431,17 +431,21 @@ class _ExplorePageState extends State<ExplorePage> with WidgetsBindingObserver {
                   ),
                 ),
                 if (!_aramaYapiliyor)
-                  TextButton.icon(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const LeaderboardPage(),
-                        ),
-                      );
-                    },
-                    icon: const Icon(Icons.emoji_events_outlined, size: 18),
-                    label: const Text("Liderlik"),
+                  Semantics(
+                    label: 'Liderlik',
+                    button: true,
+                    child: TextButton.icon(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const LeaderboardPage(),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.emoji_events_outlined, size: 18),
+                      label: const Text("Liderlik"),
+                    ),
                   ),
               ],
             ),

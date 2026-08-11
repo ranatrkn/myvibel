@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibe_life/app_check_config.dart';
 import 'package:vibe_life/app_check_debug.dart';
 import 'package:vibe_life/app_theme.dart';
@@ -13,6 +14,7 @@ import 'package:vibe_life/auth_eposta.dart' as auth_eposta;
 import 'package:vibe_life/sifre_degistir_servis.dart';
 import 'package:vibe_life/follow_list_page.dart';
 import 'package:vibe_life/leaderboard_page.dart';
+import 'package:vibe_life/maestro_semantics.dart';
 import 'package:vibe_life/puan_animasyon.dart';
 import 'package:vibe_life/sosyal_servis.dart';
 import 'package:vibe_life/destek_talepleri_panel_page.dart';
@@ -73,9 +75,17 @@ class _ProfilePageState extends State<ProfilePage> {
     });
   }
 
-  void _gecersizBegeniKayitlariniTemizle() {
+  void _gecersizBegeniKayitlariniTemizle() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    const key = 'begeni_temizlik_ts';
+    final last = prefs.getInt(key) ?? 0;
+    if (DateTime.now().millisecondsSinceEpoch - last <
+        const Duration(days: 1).inMilliseconds) {
+      return;
+    }
+    await prefs.setInt(key, DateTime.now().millisecondsSinceEpoch);
     unawaited(SosyalServis.gecersizBegeniKayitlariniTemizle(uid));
   }
 
@@ -186,35 +196,6 @@ class _ProfilePageState extends State<ProfilePage> {
       'yorumSayisi': 0,
       'createdAt': likedData['createdAt'],
     };
-  }
-
-  Future<List<({String id, Map<String, dynamic> data})>>
-      _begenilenPostlariGetir(
-    List<QueryDocumentSnapshot<Map<String, dynamic>>> likedDocs,
-  ) async {
-    final posts = <({String id, Map<String, dynamic> data})>[];
-    for (final liked in likedDocs) {
-      try {
-        final snap = await FirebaseFirestore.instance
-            .collection("posts")
-            .doc(liked.id)
-            .get();
-        if (snap.exists) {
-          posts.add((id: snap.id, data: snap.data() ?? {}));
-          continue;
-        }
-        await liked.reference.delete();
-      } catch (e) {
-        debugPrint("begenilen post okunamadi ${liked.id}: $e");
-        final likedData = liked.data();
-        final metin = (likedData['metin'] ?? '').toString();
-        final ownerId = (likedData['postOwnerId'] ?? '').toString();
-        if (metin.isNotEmpty || ownerId.isNotEmpty) {
-          posts.add((id: liked.id, data: _begenilenPostVerisi(liked)));
-        }
-      }
-    }
-    return posts;
   }
 
   // Snackbar ile mesaj göster
@@ -1032,14 +1013,27 @@ class _ProfilePageState extends State<ProfilePage> {
                           color: context.vibe.mutedText),
                       tooltip: "Liderlik tablosu",
                     ),
-                    IconButton(
-                      onPressed: () => ayarlarPaneliniAc(
+                    Semantics(
+                      label: MaestroSemantics.ayarlar,
+                      button: true,
+                      onTap: () => ayarlarPaneliniAc(
                         mascotIsim,
                         hesapGizli,
                         seviye,
                         isModerator,
                       ),
-                      icon: Icon(Icons.settings, color: context.vibe.mutedText),
+                      child: ExcludeSemantics(
+                        child: IconButton(
+                          onPressed: () => ayarlarPaneliniAc(
+                            mascotIsim,
+                            hesapGizli,
+                            seviye,
+                            isModerator,
+                          ),
+                          icon: Icon(Icons.settings,
+                              color: context.vibe.mutedText),
+                        ),
+                      ),
                     ),
                     IconButton(
                       onPressed: cikisYap,
@@ -1136,17 +1130,19 @@ class _ProfilePageState extends State<ProfilePage> {
           const SizedBox(height: 14),
           Row(
             children: [
-              StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                stream: FirebaseFirestore.instance
-                    .collection("users")
-                    .doc(userId)
-                    .collection("followers")
-                    .snapshots(),
-                builder: (context, snap) {
-                  return Expanded(
-                    child: _miniSayacKutusu(
+              Expanded(
+                child: FutureBuilder<AggregateQuerySnapshot>(
+                  future: FirebaseFirestore.instance
+                      .collection("users")
+                      .doc(userId)
+                      .collection("followers")
+                      .count()
+                      .get(),
+                  builder: (context, countSnap) {
+                    final sayi = countSnap.data?.count ?? 0;
+                    return _miniSayacKutusu(
                       "Takipçi",
-                      snap.data?.docs.length ?? 0,
+                      sayi,
                       onTap: () {
                         Navigator.push(
                           context,
@@ -1159,22 +1155,24 @@ class _ProfilePageState extends State<ProfilePage> {
                           ),
                         );
                       },
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               ),
               const SizedBox(width: 10),
-              StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                stream: FirebaseFirestore.instance
-                    .collection("users")
-                    .doc(userId)
-                    .collection("following")
-                    .snapshots(),
-                builder: (context, snap) {
-                  return Expanded(
-                    child: _miniSayacKutusu(
+              Expanded(
+                child: FutureBuilder<AggregateQuerySnapshot>(
+                  future: FirebaseFirestore.instance
+                      .collection("users")
+                      .doc(userId)
+                      .collection("following")
+                      .count()
+                      .get(),
+                  builder: (context, countSnap) {
+                    final sayi = countSnap.data?.count ?? 0;
+                    return _miniSayacKutusu(
                       "Takip Edilen",
-                      snap.data?.docs.length ?? 0,
+                      sayi,
                       onTap: () {
                         Navigator.push(
                           context,
@@ -1187,9 +1185,9 @@ class _ProfilePageState extends State<ProfilePage> {
                           ),
                         );
                       },
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               ),
             ],
           ),
@@ -1297,11 +1295,15 @@ class _ProfilePageState extends State<ProfilePage> {
                       const SizedBox(height: 6),
                       if (odaAcik)
                         Text(
-                          mesaj,
+                          mascot.uyuyor
+                              ? '${mascot.isim} dinleniyor — uyandırmak için odaya gir'
+                              : mesaj,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: VibeAppTheme.accent,
+                          style: TextStyle(
+                            color: mascot.uyuyor
+                                ? Colors.amberAccent
+                                : VibeAppTheme.accent,
                             fontSize: 12,
                             fontStyle: FontStyle.italic,
                           ),
@@ -1315,21 +1317,33 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
             const SizedBox(height: 14),
             if (odaAcik) ...[
-              MascotDurumBari(
-                etiket: 'Enerji',
-                deger: mascot.enerji,
-                renk: Colors.amber,
-                compact: true,
-              ),
-              MascotDurumBari(
-                etiket: 'Mutluluk',
-                deger: mascot.mutluluk,
-                renk: Colors.pinkAccent,
-                compact: true,
-              ),
+              if (MascotServis.toklukAktif(mascot.seviye))
+                MascotDurumBari(
+                  etiket: 'Tokluk',
+                  deger: mascot.tokluk,
+                  renk: Colors.orangeAccent,
+                  compact: true,
+                ),
+              if (MascotServis.enerjiAktif(mascot.seviye))
+                MascotDurumBari(
+                  etiket: 'Enerji',
+                  deger: mascot.enerji,
+                  renk: Colors.amber,
+                  compact: true,
+                ),
+              if (MascotServis.mutlulukAktif(mascot.seviye))
+                MascotDurumBari(
+                  etiket: 'Mutluluk',
+                  deger: mascot.mutluluk,
+                  renk: Colors.pinkAccent,
+                  compact: true,
+                ),
             ] else
               Text(
-                '1-5 seviyelerde etkileşim puanlarıyla otomatik gelişim sağlanır. ${MascotServis.odaAcilisSeviyesi}. seviyede ${mascot.isim} odası açılır.',
+                '1–5: Etkileşimlerle otomatik büyür. '
+                '${MascotServis.toklukAcilisSeviyesi}. seviyede tokluk, '
+                '${MascotServis.enerjiAcilisSeviyesi}. seviyede enerji, '
+                '${MascotServis.mutlulukAcilisSeviyesi}. seviyede mutluluk açılır.',
                 style: TextStyle(
                   color: context.vibe.mutedText,
                   fontSize: 12,
@@ -1368,19 +1382,34 @@ class _ProfilePageState extends State<ProfilePage> {
             SizedBox(
               width: double.infinity,
               child: odaAcik
-                  ? ElevatedButton.icon(
-                      onPressed: () {
+                  ? Semantics(
+                      label: MaestroSemantics.maskotOdasi,
+                      button: true,
+                      onTap: () {
                         Navigator.push(
                           context,
-                          MaterialPageRoute(builder: (_) => const MascotPage()),
+                          MaterialPageRoute(
+                              builder: (_) => const MascotPage()),
                         );
                       },
-                      icon: const Icon(Icons.auto_awesome),
-                      label: Text('${mascot.isim} odası'),
-                      style: _butonStili(),
+                      child: ExcludeSemantics(
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) => const MascotPage()),
+                            );
+                          },
+                          icon: const Icon(Icons.auto_awesome),
+                          label: Text('${mascot.isim} odası'),
+                          style: _butonStili(),
+                        ),
+                      ),
                     )
                   : Text(
-                      '1-5 seviyelerde etkileşim puanlarıyla otomatik olarak gelişir. 6. seviyede bakım odası açılır.',
+                      '1–5: Etkileşimlerle otomatik büyür. '
+                      '6. seviyede maskot odası açılır.',
                       style: TextStyle(
                         color: context.vibe.mutedText,
                         fontSize: 13,
@@ -1504,6 +1533,8 @@ class _ProfilePageState extends State<ProfilePage> {
             .collection("users")
             .doc(userId)
             .collection("likedPosts")
+            .orderBy("createdAt", descending: true)
+            .limit(50)
             .snapshots(),
         builder: (context, likedSnap) {
           if (likedSnap.hasError) {
@@ -1546,68 +1577,30 @@ class _ProfilePageState extends State<ProfilePage> {
             );
           }
 
-          return FutureBuilder<List<({String id, Map<String, dynamic> data})>>(
-            key: ValueKey(likedDocs.map((d) => d.id).join(',')),
-            future: _begenilenPostlariGetir(likedDocs),
-            builder: (context, postSnap) {
-              if (postSnap.connectionState == ConnectionState.waiting) {
-                return const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 18),
-                  child: CircularProgressIndicator(color: Colors.redAccent),
-                );
+          return Column(
+            children: likedDocs.map((liked) {
+              final post = _begenilenPostVerisi(liked);
+              if (post["raporNedeniyleGizli"] == true) {
+                return const SizedBox.shrink();
               }
 
-              if (postSnap.hasError) {
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 18),
-                  child: Text(
-                    internetAwareErrorMessage(
-                      error: postSnap.error!,
-                      fallback: "Beğenilen gönderiler yüklenemedi.",
-                    ),
-                    style: TextStyle(color: context.vibe.mutedText),
-                  ),
-                );
-              }
-
-              final posts = postSnap.data ?? [];
-
-              if (posts.isEmpty) {
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 18),
-                  child: Text(
-                    "Beğenilen gönderiler bulunamadı.",
-                    style: TextStyle(color: context.vibe.mutedText),
-                  ),
-                );
-              }
-
-              return Column(
-                children: posts.map((kayit) {
-                  final post = kayit.data;
-                  if (post["raporNedeniyleGizli"] == true) {
-                    return const SizedBox.shrink();
-                  }
-
-                  return _ProfilPostCard(
-                    postId: kayit.id,
-                    postOwnerId: post["userId"] ?? "",
-                    userId: userId,
-                    kullaniciAdi: post["kullaniciAdi"] ?? "Vibe Kullanıcısı",
-                    metin: post["metin"] ?? "",
-                    mentionUidleri: SosyalServis.bahsetmeUidHaritasiParse(
-                      post["mentionUidleri"],
-                    ),
-                    photoUrl: post["photoUrl"] ?? "",
-                    avatarKey: post["avatarKey"] ?? "",
-                    baslangicBegeniSayisi: _intDeger(post["begeniSayisi"], 0),
-                    baslangicYorumSayisi: _intDeger(post["yorumSayisi"], 0),
-                    silmeButonuGoster: false,
-                    createdAt: post["createdAt"],
-                  );
-                }).toList(),
+              return _ProfilPostCard(
+                key: ValueKey(liked.id),
+                postId: liked.id,
+                postOwnerId: post["userId"] ?? "",
+                userId: userId,
+                kullaniciAdi: post["kullaniciAdi"] ?? "Vibe Kullanıcısı",
+                metin: post["metin"] ?? "",
+                mentionUidleri: const {},
+                photoUrl: post["photoUrl"] ?? "",
+                avatarKey: post["avatarKey"] ?? "",
+                baslangicBegeniSayisi: 0,
+                baslangicYorumSayisi: 0,
+                baslangicBegenildi: true,
+                silmeButonuGoster: false,
+                createdAt: post["createdAt"],
               );
-            },
+            }).toList(),
           );
         },
       ),
@@ -1672,6 +1665,7 @@ class _ProfilPostCard extends StatefulWidget {
   final String avatarKey; // avatar anahtarı
   final int baslangicBegeniSayisi; // başlangıç beğeni sayısı
   final int baslangicYorumSayisi; // başlangıç yorum sayısı
+  final bool? baslangicBegenildi;
   final bool silmeButonuGoster; // silme butonu gösterilsin mi
   final VoidCallback? onSil; // silme geri çağrısı
   final dynamic createdAt; // oluşturulma zamanı
@@ -1688,6 +1682,7 @@ class _ProfilPostCard extends StatefulWidget {
     required this.avatarKey,
     required this.baslangicBegeniSayisi,
     required this.baslangicYorumSayisi,
+    this.baslangicBegenildi,
     required this.silmeButonuGoster,
     this.onSil,
     required this.createdAt,
@@ -1701,20 +1696,21 @@ class _ProfilPostCard extends StatefulWidget {
 class _ProfilPostCardState extends State<_ProfilPostCard> {
   late int yorumSayisi; // yorum sayısı
   late PostBegeniDurumuYonetici _begeni;
-  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
-      _postAbonelik; // gönderi sayaç aboneliği
 
   void _begeniYoneticiOlustur() {
-    _begeni.durdur();
     _begeni = PostBegeniDurumuYonetici(
       postId: widget.postId,
       userId: widget.userId,
       postOwnerId: widget.postOwnerId,
       baslangicBegeniSayisi: widget.baslangicBegeniSayisi,
+      baslangicBegenildi: widget.baslangicBegenildi,
     );
-    _begeni.baslat(yenile: () {
-      if (mounted) setState(() {});
-    });
+    _begeni.baslat(
+      yenile: () {
+        if (mounted) setState(() {});
+      },
+      baslangicBegenildi: widget.baslangicBegenildi,
+    );
   }
 
   // Widget ilk yüklendiğinde çalışır
@@ -1722,16 +1718,7 @@ class _ProfilPostCardState extends State<_ProfilPostCard> {
   void initState() {
     super.initState();
     yorumSayisi = widget.baslangicYorumSayisi;
-    _begeni = PostBegeniDurumuYonetici(
-      postId: widget.postId,
-      userId: widget.userId,
-      postOwnerId: widget.postOwnerId,
-      baslangicBegeniSayisi: widget.baslangicBegeniSayisi,
-    );
-    _begeni.baslat(yenile: () {
-      if (mounted) setState(() {});
-    });
-    _postSayaclariniDinle();
+    _begeniYoneticiOlustur();
   }
 
   // Widget güncellendiğinde dinleyicileri yenile
@@ -1743,7 +1730,6 @@ class _ProfilPostCardState extends State<_ProfilPostCard> {
         oldWidget.userId != widget.userId ||
         oldWidget.postOwnerId != widget.postOwnerId) {
       _begeniYoneticiOlustur();
-      _postSayaclariniDinle();
     }
 
     if (oldWidget.baslangicBegeniSayisi != widget.baslangicBegeniSayisi) {
@@ -1757,49 +1743,10 @@ class _ProfilPostCardState extends State<_ProfilPostCard> {
     }
   }
 
-  // Post sayaçlarını dinle
-  void _postSayaclariniDinle() {
-    _postAbonelik?.cancel();
-    _postAbonelik = FirebaseFirestore.instance
-        .collection("posts")
-        .doc(widget.postId)
-        .snapshots()
-        .listen(
-      (postDoc) {
-        if (!mounted) return;
-        final data = postDoc.data();
-        if (data == null) return;
-
-        final yeniBegeni = PostBegeniDurumuYonetici.sayacDeger(
-          data["begeniSayisi"],
-          _begeni.begeniSayisi,
-        );
-        final yeniYorum = PostBegeniDurumuYonetici.sayacDeger(
-          data["yorumSayisi"],
-          yorumSayisi,
-        );
-        if (yeniBegeni == _begeni.begeniSayisi && yeniYorum == yorumSayisi) {
-          return;
-        }
-
-        _begeni.sayacSenkronizeEt(yeniBegeni);
-        if (mounted && yeniYorum != yorumSayisi) {
-          setState(() {
-            yorumSayisi = yeniYorum;
-          });
-        }
-      },
-      onError: (Object e) {
-        debugPrint("post sayac dinleyici hatasi (${widget.postId}): $e");
-      },
-    );
-  }
-
   // Abonelik ve kontrolcüleri temizle
   @override
   void dispose() {
     _begeni.durdur();
-    _postAbonelik?.cancel();
     super.dispose();
   }
 
