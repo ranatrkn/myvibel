@@ -1,7 +1,7 @@
 // Haftalık günlük görev sistemi ve Firestore kaydı.
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
-import 'package:vibe_life/robot_servis.dart';
+import 'package:vibe_life/maskot_servis.dart';
 
 // Görev ilerlemesinde sayılan aksiyon türleri
 enum GorevAksiyon { acilis, begeni, takip, yorum, gonderi }

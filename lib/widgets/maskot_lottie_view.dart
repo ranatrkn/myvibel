@@ -1,7 +1,7 @@
 // Seviyeye ve ruh haline göre Lottie animasyon görüntüleyici.
 import 'package:flutter/material.dart';
 import 'package:lottie/lottie.dart';
-import 'package:vibe_life/robot_servis.dart';
+import 'package:vibe_life/maskot_servis.dart';
 
 class MascotLottieView extends StatelessWidget {
   const MascotLottieView({

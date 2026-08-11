@@ -1,6 +1,8 @@
 // Kullanıcı engelleme, şikayet ve kullanıcı adı işlemleri
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
+import 'package:vibe_life/sosyal/begeni_yorum_servis.dart';
 import 'package:vibe_life/sosyal/etiket_servis.dart';
 import 'package:vibe_life/sosyal/sosyal_core.dart';
 
@@ -68,6 +70,15 @@ class EngelServis {
     // Karşı tarafın bildirimlerini silmek rules'a takılabilir; engellemeyi bozmasın.
     await SosyalCore.guvenliTakipIstegiBildirimleriniSil(hedefUid, current.uid);
     await SosyalCore.guvenliTakipIstegiBildirimleriniSil(current.uid, hedefUid);
+
+    try {
+      await BegeniYorumServis.engellenenKullanicininBegenileriniKaldir(
+        uid: current.uid,
+        hedefUid: hedefUid,
+      );
+    } catch (e) {
+      debugPrint('engelle begeni temizligi ($hedefUid): $e');
+    }
   }
 
   // Kullanıcı adını benzersiz şekilde günceller

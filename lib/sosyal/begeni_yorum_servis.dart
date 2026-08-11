@@ -5,7 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:vibe_life/haftalik_gorev_servis.dart';
-import 'package:vibe_life/robot_servis.dart';
+import 'package:vibe_life/maskot_servis.dart';
 import 'package:vibe_life/sosyal/bildirim_servis.dart';
 import 'package:vibe_life/sosyal/etiket_servis.dart';
 import 'package:vibe_life/sosyal/sosyal_core.dart';
@@ -68,6 +68,130 @@ class BegeniYorumServis {
     }
 
     if (sayac > 0) await batch.commit();
+  }
+
+  /// Engellenen kullanıcının gönderilerine verilen beğenileri kaldırır.
+  static Future<int> engellenenKullanicininBegenileriniKaldir({
+    required String uid,
+    required String hedefUid,
+  }) async {
+    if (uid.isEmpty || hedefUid.isEmpty || uid == hedefUid) return 0;
+
+    final userRef = SosyalCore.db.collection('users').doc(uid);
+    final kayitlar = await _engellenenKullanicininBegeniKayitlari(
+      userRef,
+      hedefUid,
+    );
+    if (kayitlar.isEmpty) return 0;
+
+    var kaldirilan = 0;
+    for (final liked in kayitlar) {
+      final silindi = await _begeniSessizceKaldir(
+        uid: uid,
+        postId: liked.id,
+        likedData: liked.data(),
+      );
+      if (silindi) kaldirilan++;
+    }
+    return kaldirilan;
+  }
+
+  static Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>>
+      _engellenenKullanicininBegeniKayitlari(
+    DocumentReference<Map<String, dynamic>> userRef,
+    String hedefUid,
+  ) async {
+    final bulunan = <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
+
+    final sorgu = await userRef
+        .collection('likedPosts')
+        .where('postOwnerId', isEqualTo: hedefUid)
+        .get();
+    for (final doc in sorgu.docs) {
+      bulunan[doc.id] = doc;
+    }
+
+    final tumu = await userRef.collection('likedPosts').get();
+    for (final doc in tumu.docs) {
+      if (bulunan.containsKey(doc.id)) continue;
+      final owner = doc.data()['postOwnerId']?.toString() ?? '';
+      if (owner == hedefUid) {
+        bulunan[doc.id] = doc;
+        continue;
+      }
+      if (owner.isNotEmpty) continue;
+
+      final postSnap =
+          await SosyalCore.db.collection('posts').doc(doc.id).get();
+      if (postSnap.data()?['userId']?.toString() == hedefUid) {
+        bulunan[doc.id] = doc;
+      }
+    }
+
+    return bulunan.values.toList();
+  }
+
+  static Future<bool> _begeniSessizceKaldir({
+    required String uid,
+    required String postId,
+    required Map<String, dynamic> likedData,
+  }) async {
+    if (postId.isEmpty || uid.isEmpty) return false;
+
+    final postRef = SosyalCore.db.collection('posts').doc(postId);
+    final likeRef = postRef.collection('likes').doc(uid);
+    final likedPostRef =
+        SosyalCore.db.collection('users').doc(uid).collection('likedPosts').doc(postId);
+    final puanAlindi = likedData['puanAlindi'] == true;
+    final postOwnerId = likedData['postOwnerId']?.toString() ?? '';
+    final kendiGonderisi = SosyalCore.kendiGonderisiMi(
+      postOwnerId: postOwnerId,
+      currentUserId: uid,
+    );
+
+    var likeVardi = false;
+    var likedPostVardi = false;
+    try {
+      await SosyalCore.db.runTransaction((tx) async {
+        final likeSnap = await tx.get(likeRef);
+        final likedPostSnap = await tx.get(likedPostRef);
+        final postSnap = await tx.get(postRef);
+
+        if (!likeSnap.exists && !likedPostSnap.exists) return;
+
+        likeVardi = likeSnap.exists;
+        likedPostVardi = likedPostSnap.exists;
+        if (likeSnap.exists) tx.delete(likeRef);
+        if (likedPostSnap.exists) tx.delete(likedPostRef);
+
+        if (postSnap.exists && likeSnap.exists) {
+          final postGuncelleme = <String, dynamic>{
+            'begeniSayisi': FieldValue.increment(-1),
+          };
+          if (!kendiGonderisi) {
+            postGuncelleme['skor'] = FieldValue.increment(-3);
+          }
+          tx.update(postRef, postGuncelleme);
+        }
+      });
+    } catch (e) {
+      debugPrint('engel begeni kaldir ($postId): $e');
+      return false;
+    }
+
+    if (likeVardi && !kendiGonderisi) {
+      try {
+        await _begeniKullaniciGeriAlimi(
+          uid: uid,
+          postId: postId,
+          puanAlindi: puanAlindi,
+        );
+      } catch (e) {
+        debugPrint('engel begeni puan geri alimi ($postId): $e');
+      }
+    }
+
+    return likeVardi || likedPostVardi;
   }
 
   /// Beğeni kaldırıldıktan sonra kullanıcı puan/sayaç geri alımı (ayrı yazım).

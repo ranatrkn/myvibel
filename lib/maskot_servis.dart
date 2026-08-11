@@ -11,6 +11,7 @@ class MascotDurum {
     required this.isim,
     required this.seviye,
     required this.gelisimPuani,
+    required this.etkilesimPuani,
     required this.tokluk,
     required this.enerji,
     required this.mutluluk,
@@ -24,7 +25,8 @@ class MascotDurum {
   final String isim;
   final int seviye;
   final int gelisimPuani;
-  /// 0–100, yuksek = tok.
+  /// Sosyal etkilesimlerden biriken; yemek/uyku harcanir.
+  final int etkilesimPuani;
   final int tokluk;
   final int enerji;
   final int mutluluk;
@@ -92,6 +94,8 @@ class MascotServis {
   static const uykuMaxEnerjiArtisi = 50;
   static const yemekGelisimPuani = 40;
   static const uykuGelisimPuani = 25;
+  static const yemekEtkilesimMaliyeti = 15;
+  static const uykuEtkilesimMaliyeti = 25;
   static const etkilesimEnerjiGonderi = 5;
   static const etkilesimEnerjiYorum = 3;
   static const etkilesimEnerjiBegeni = 1;
@@ -113,11 +117,15 @@ class MascotServis {
   // Maskot sistemi etkin. 1-5 seviyelerde etkileşim puanları otomatik gelişim sağlar.
   static const bool enabled = true;
 
-  // Tum seviyelerde sosyal etkilesimden otomatik gelisim.
+  // Sosyal etkilesimden etkilesim puani (+ 1-5 arasi otomatik gelisim).
   static Future<void> etkilesimPuaniniGelismeyeEkle(
     String uid,
     int puan,
   ) async {
+    await etkilesimPuaniEkle(uid, puan);
+  }
+
+  static Future<void> etkilesimPuaniEkle(String uid, int puan) async {
     if (!enabled || uid.isEmpty || puan <= 0) return;
     final ref = _db.collection('users').doc(uid);
     try {
@@ -127,37 +135,67 @@ class MascotServis {
         final data = snap.data() ?? <String, dynamic>{};
         final robot = _robotHaritasi(data['robot']);
         var seviye = _int(robot['seviye'], 1);
-        var gelisimPuani = _int(robot['gelisimPuani'], 0);
 
-        var ek = puan;
-        if (mutlulukAktif(seviye) &&
-            _int(robot['mutluluk'], 50) >= 70) {
-          ek = (puan * mutlulukGelisimBonusCarpani).round();
-        }
+        robot['etkilesimPuani'] =
+            _int(robot['etkilesimPuani'], 0) + puan;
 
-        gelisimPuani += ek;
-        var gerekli = gerekliGelisimPuani(seviye);
-        var seviyeAtladi = false;
-
-        while (gelisimPuani >= gerekli) {
-          gelisimPuani -= gerekli;
-          seviye += 1;
-          seviyeAtladi = true;
-          gerekli = gerekliGelisimPuani(seviye);
-        }
-
-        robot['gelisimPuani'] = gelisimPuani;
-        robot['seviye'] = seviye;
-        if (seviyeAtladi) {
-          _seviyeOdulleriniIsle(robot, seviye);
-          _fazStatlariniHizala(robot, seviye);
+        // 1-5: oda acilmadan otomatik gelisim devam eder.
+        if (seviye < toklukAcilisSeviyesi) {
+          var gelisimPuani = _int(robot['gelisimPuani'], 0) + puan;
+          var gerekli = gerekliGelisimPuani(seviye);
+          var seviyeAtladi = false;
+          while (gelisimPuani >= gerekli) {
+            gelisimPuani -= gerekli;
+            seviye += 1;
+            seviyeAtladi = true;
+            gerekli = gerekliGelisimPuani(seviye);
+          }
+          robot['gelisimPuani'] = gelisimPuani;
+          robot['seviye'] = seviye;
+          if (seviyeAtladi) {
+            _seviyeOdulleriniIsle(robot, seviye);
+            _fazStatlariniHizala(robot, seviye);
+          }
         }
 
         tx.update(ref, {'robot': robot});
       });
     } catch (e) {
-      debugPrint('Maskot etkileşim gelişim puanı güncelleme hatası: $e');
+      debugPrint('Maskot etkilesim puani guncelleme hatasi: $e');
     }
+  }
+
+  static void _etkilesimPuaniHarca(
+    Map<String, dynamic> robot,
+    int maliyet,
+  ) {
+    final mevcut = _int(robot['etkilesimPuani'], 0);
+    if (mevcut < maliyet) {
+      throw 'Yeterli etkileşim puanı yok ($maliyet gerekli, $mevcut var).';
+    }
+    robot['etkilesimPuani'] = mevcut - maliyet;
+  }
+
+  static List<int> _gelisimVeSeviyeUygula(
+    Map<String, dynamic> robot,
+    int ekGelisim,
+  ) {
+    var gelisimPuani = _int(robot['gelisimPuani'], 0) + ekGelisim;
+    var seviye = _int(robot['seviye'], 1);
+    var gerekli = gerekliGelisimPuani(seviye);
+    final eskiSeviye = seviye;
+    while (gelisimPuani >= gerekli) {
+      gelisimPuani -= gerekli;
+      seviye += 1;
+      gerekli = gerekliGelisimPuani(seviye);
+    }
+    robot['gelisimPuani'] = gelisimPuani;
+    robot['seviye'] = seviye;
+    if (seviye > eskiSeviye) {
+      _fazStatlariniHizala(robot, seviye);
+      return _seviyeOdulleriniIsle(robot, seviye);
+    }
+    return [];
   }
 
   /// Yeni faza geciste eksik statlari mantikli varsayilanlara ceker.
@@ -269,6 +307,7 @@ class MascotServis {
       isim: (map['isim'] ?? 'Mini Vibe').toString(),
       seviye: _int(map['seviye'], 1),
       gelisimPuani: _int(map['gelisimPuani'], 0),
+      etkilesimPuani: _int(map['etkilesimPuani'], 0),
       tokluk: _clampStat(_int(map['tokluk'], 80)),
       enerji: _clampStat(_int(map['enerji'], 70)),
       mutluluk: _clampStat(_int(map['mutluluk'], 65)),
@@ -404,6 +443,9 @@ class MascotServis {
       return 'Çok yoruldum, biraz uyumam lazım...';
     }
     if (toklukAktif(robot.seviye) && robot.tokluk <= 25) {
+      if (robot.etkilesimPuani < yemekEtkilesimMaliyeti) {
+        return 'Etkileşim puanın lazım, yemek verelim mi?';
+      }
       return 'Acıktım, birlikte yemek zamanı mı?';
     }
     if (mutlulukAktif(robot.seviye) && robot.mutluluk <= 30) {
@@ -416,10 +458,14 @@ class MascotServis {
       return 'Harika hissediyorum! Vibe\'ım zirvede!';
     }
     if (robot.seviye < enerjiAcilisSeviyesi) {
-      return 'Tokluk ve yemekle büyüyorum, etkileşim de hızlandırır.';
+      return 'Etkileşim puanınla yemek ver, birlikte büyüyelim.';
     }
     if (robot.seviye < mutlulukAcilisSeviyesi) {
-      return 'Enerjimi dengede tut, birlikte gelişmeye devam.';
+      if (robot.etkilesimPuani < uykuEtkilesimMaliyeti &&
+          robot.enerji <= uyuMaxEnerji) {
+        return 'Etkileşim puanınla uyutup enerji toplayabilirsin.';
+      }
+      return 'Enerjimi dengede tut, etkileşim puanınla uyku ver.';
     }
     return 'Seninle güçlü bir bağ kurduk!';
   }
@@ -462,6 +508,7 @@ class MascotServis {
       'isim': 'Mini Vibe',
       'seviye': 1,
       'gelisimPuani': 0,
+      'etkilesimPuani': 0,
       'tokluk': 80,
       'enerji': 70,
       'mutluluk': 65,
@@ -725,18 +772,7 @@ class MascotServis {
         robot['enerji'] = enerji;
         _robotUyandir(robot);
         mutluluk = _int(robot['mutluluk'], mutluluk);
-        var gelisimPuani = _int(robot['gelisimPuani'], 0) + uykuGelisimPuani;
-        var seviyeGuncel = _int(robot['seviye'], 1);
-        var gerekli = gerekliGelisimPuani(seviyeGuncel);
-        while (gelisimPuani >= gerekli) {
-          gelisimPuani -= gerekli;
-          seviyeGuncel += 1;
-          gerekli = gerekliGelisimPuani(seviyeGuncel);
-          _seviyeOdulleriniIsle(robot, seviyeGuncel);
-          _fazStatlariniHizala(robot, seviyeGuncel);
-        }
-        robot['gelisimPuani'] = gelisimPuani;
-        robot['seviye'] = seviyeGuncel;
+        _gelisimVeSeviyeUygula(robot, uykuGelisimPuani);
         mesajlar.add('${robot['isim'] ?? 'Maskot'} uyandı!');
       } else {
         final baslangicEnerji = _int(robot['uykuBaslangicEnerji'], enerji);
@@ -962,6 +998,8 @@ class MascotServis {
         throw 'Maskot zaten uyuyor.';
       }
 
+      _etkilesimPuaniHarca(robot, uykuEtkilesimMaliyeti);
+
       if (toklukAktif(_int(robot['seviye'], 1))) {
         robot['tokluk'] =
             _clampStat(_int(robot['tokluk'], 80) - 18);
@@ -972,11 +1010,12 @@ class MascotServis {
       robot['uykuBitisMs'] = simdi + uyuSureMs;
 
       tx.update(ref, {'robot': robot});
-      return 'Maskot uyumaya başladı. 4 saatte enerji %$uykuMaxEnerjiArtisi dolacak.';
+      return 'Maskot uyumaya başladı ($uykuEtkilesimMaliyeti etkileşim puanı). '
+          '4 saatte enerji %$uykuMaxEnerjiArtisi dolacak.';
     });
   }
 
-  // Sosyal aksiyon sonrası enerji/mutluluk günceller
+  // Sosyal aksiyon sonrasi (11+ enerji dusumu, 21+ mutluluk).
   static Future<void> sosyalAksiyon(String uid, String tip) async {
     if (!enabled) return;
     if (uid.isEmpty) return;
@@ -996,57 +1035,28 @@ class MascotServis {
 
         if (enerjiAktif(seviye)) {
           if (_int(robot['enerji'], 70) < maliyet) return;
+          robot['enerji'] =
+              _clampStat(_int(robot['enerji'], 70) - maliyet);
         }
 
-        switch (tip) {
-          case 'gonderi':
-            if (toklukAktif(seviye)) {
-              robot['tokluk'] = _clampStat(
-                _int(robot['tokluk'], 80) + toklukEtkilesimGonderi,
-              );
-            }
-            if (mutlulukAktif(seviye)) {
+        if (mutlulukAktif(seviye)) {
+          switch (tip) {
+            case 'gonderi':
               robot['mutluluk'] = _clampStat(
                 _int(robot['mutluluk'], 65) + mutlulukEtkilesimGonderi,
               );
-            }
-            if (enerjiAktif(seviye)) {
-              robot['enerji'] =
-                  _clampStat(_int(robot['enerji'], 70) - maliyet);
-            }
-            break;
-          case 'yorum':
-            if (toklukAktif(seviye)) {
-              robot['tokluk'] = _clampStat(
-                _int(robot['tokluk'], 80) + toklukEtkilesimYorum,
-              );
-            }
-            if (mutlulukAktif(seviye)) {
+              break;
+            case 'yorum':
               robot['mutluluk'] = _clampStat(
                 _int(robot['mutluluk'], 65) + mutlulukEtkilesimYorum,
               );
-            }
-            if (enerjiAktif(seviye)) {
-              robot['enerji'] =
-                  _clampStat(_int(robot['enerji'], 70) - maliyet);
-            }
-            break;
-          case 'begeni':
-            if (toklukAktif(seviye)) {
-              robot['tokluk'] = _clampStat(
-                _int(robot['tokluk'], 80) + toklukEtkilesimBegeni,
-              );
-            }
-            if (mutlulukAktif(seviye)) {
+              break;
+            case 'begeni':
               robot['mutluluk'] = _clampStat(
                 _int(robot['mutluluk'], 65) + mutlulukEtkilesimBegeni,
               );
-            }
-            if (enerjiAktif(seviye)) {
-              robot['enerji'] =
-                  _clampStat(_int(robot['enerji'], 70) - maliyet);
-            }
-            break;
+              break;
+          }
         }
 
         tx.update(ref, {'robot': robot});
@@ -1080,27 +1090,14 @@ class MascotServis {
       final simdi = _simdiMs();
       _zamanGuncelle(robot, simdi, etkilesimKaydedildi: true);
       _uykuEngeli(robot);
-
-      var gelisimPuani = _int(robot['gelisimPuani'], 0);
-      gelisimPuani += yemekGelisimPuani;
-
-      var seviyeGuncel = seviye;
-      var gerekli = gerekliGelisimPuani(seviyeGuncel);
-      var seviyeAtladi = false;
-      while (gelisimPuani >= gerekli) {
-        gelisimPuani -= gerekli;
-        seviyeGuncel += 1;
-        seviyeAtladi = true;
-        gerekli = gerekliGelisimPuani(seviyeGuncel);
-      }
-
-      robot['seviye'] = seviyeGuncel;
-      robot['gelisimPuani'] = gelisimPuani;
-      robot['tokluk'] = 100;
-      robot['mutluluk'] = _clampStat(_int(robot['mutluluk'], 65) + 10);
+      _etkilesimPuaniHarca(robot, yemekEtkilesimMaliyeti);
 
       final yeniOduller =
-          seviyeAtladi ? _seviyeOdulleriniIsle(robot, seviyeGuncel) : <int>[];
+          _gelisimVeSeviyeUygula(robot, yemekGelisimPuani);
+      final seviyeAtladi = _int(robot['seviye'], 1) > seviye;
+
+      robot['tokluk'] = 100;
+      robot['mutluluk'] = _clampStat(_int(robot['mutluluk'], 65) + 10);
 
       tx.update(ref, {'robot': robot});
 
@@ -1108,9 +1105,11 @@ class MascotServis {
         final odulMetni = yeniOduller.isNotEmpty
             ? ' Yeni ödüller: ${yeniOduller.join(', ')}.'
             : '';
-        return 'Lezzetli! Tokluk doldu, $yemekGelisimPuani gelişim kazandın. Seviye atlandı!$odulMetni';
+        return 'Lezzetli! ($yemekEtkilesimMaliyeti puan harcandı) '
+            'Tokluk doldu, $yemekGelisimPuani gelişim kazandın. Seviye atlandı!$odulMetni';
       }
-      return 'Lezzetli! Tokluk doldu, $yemekGelisimPuani gelişim kazandın.';
+      return 'Lezzetli! ($yemekEtkilesimMaliyeti puan harcandı) '
+          'Tokluk doldu, $yemekGelisimPuani gelişim kazandın.';
     });
   }
 }

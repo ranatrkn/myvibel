@@ -139,6 +139,7 @@ class KayitServis {
           'isim': 'Mini Vibe',
           'seviye': 1,
           'gelisimPuani': 0,
+          'etkilesimPuani': 0,
           'enerji': 50,
           'mutluluk': 50,
           'sonUygulamaMs': DateTime.now().millisecondsSinceEpoch,

@@ -6,7 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:vibe_life/error_messages.dart';
 import 'package:vibe_life/haftalik_gorev_servis.dart';
-import 'package:vibe_life/robot_servis.dart';
+import 'package:vibe_life/maskot_servis.dart';
 import 'package:vibe_life/sosyal/bildirim_servis.dart';
 import 'package:vibe_life/sosyal/sosyal_core.dart';
 

@@ -11,7 +11,7 @@ import 'package:vibe_life/legal_pages.dart';
 import 'package:vibe_life/newpost_page.dart';
 import 'package:vibe_life/notifications_page.dart';
 import 'package:vibe_life/profile_page.dart';
-import 'package:vibe_life/robot_servis.dart';
+import 'package:vibe_life/maskot_servis.dart';
 import 'package:vibe_life/sosyal_servis.dart';
 import 'package:vibe_life/maestro_semantics.dart';
 import 'package:vibe_life/vibe_snackbar.dart';

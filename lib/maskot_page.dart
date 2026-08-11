@@ -4,10 +4,11 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:vibe_life/app_theme.dart';
 import 'package:vibe_life/error_messages.dart';
-import 'package:vibe_life/robot_servis.dart';
+import 'package:vibe_life/maskot_servis.dart';
 import 'package:vibe_life/vibe_snackbar.dart';
-import 'package:vibe_life/widgets/robot_durum_bari.dart';
-import 'package:vibe_life/widgets/robot_lottie_view.dart';
+import 'package:vibe_life/widgets/maskot_durum_bari.dart';
+import 'package:vibe_life/widgets/maskot_gelisim_cercevesi.dart';
+import 'package:vibe_life/widgets/maskot_lottie_view.dart';
 import 'package:vibe_life/widgets/vibe_gradient_scaffold.dart';
 
 class MascotPage extends StatefulWidget {
@@ -72,11 +73,16 @@ class _MascotPageState extends State<MascotPage> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    MascotLottieView(
-                      seviye: mascot.seviye,
-                      gorselDurum: mascot.gorselDurum,
-                      width: 120,
-                      height: 120,
+                    MascotGelisimCercevesi(
+                      progress: mascot.gelisimOrani,
+                      size: 140,
+                      strokeWidth: 4,
+                      child: MascotLottieView(
+                        seviye: mascot.seviye,
+                        gorselDurum: mascot.gorselDurum,
+                        width: 120,
+                        height: 120,
+                      ),
                     ),
                     const SizedBox(height: 16),
                     Text(
@@ -124,13 +130,42 @@ class _MascotPageState extends State<MascotPage> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                MascotLottieView(
-                  seviye: mascot.seviye,
-                  gorselDurum: mascot.gorselDurum,
-                  width: 220,
-                  height: 220,
+                MascotGelisimCercevesi(
+                  progress: mascot.gelisimOrani,
+                  size: 244,
+                  strokeWidth: 5,
+                  innerPadding: 6,
+                  child: MascotLottieView(
+                    seviye: mascot.seviye,
+                    gorselDurum: mascot.gorselDurum,
+                    width: 220,
+                    height: 220,
+                  ),
                 ),
                 const SizedBox(height: 20),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Row(
+                    children: [
+                      Text(
+                        'Etkileşim puanı',
+                        style: TextStyle(
+                          color: vibe.mutedText,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        '${mascot.etkilesimPuani}',
+                        style: const TextStyle(
+                          color: Colors.lightBlueAccent,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
                 if (MascotServis.toklukAktif(mascot.seviye))
                   MascotDurumBari(
                     etiket: 'Tokluk',
@@ -150,20 +185,9 @@ class _MascotPageState extends State<MascotPage> {
                     renk: Colors.pinkAccent,
                   ),
                 const SizedBox(height: 8),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: LinearProgressIndicator(
-                    value: mascot.gelisimOrani,
-                    backgroundColor: Colors.white10,
-                    valueColor:
-                        const AlwaysStoppedAnimation<Color>(Colors.blueAccent),
-                    minHeight: 10,
-                  ),
-                ),
-                const SizedBox(height: 6),
                 Text(
-                  'Gelişim: ${mascot.gelisimPuani} / ${mascot.gerekliGelisim} '
-                  '(etkileşimle otomatik artar)',
+                  'Gelişim: ${mascot.gelisimPuani} / ${mascot.gerekliGelisim} · '
+                  'Etkileşim puanı: ${mascot.etkilesimPuani}',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: vibe.mutedText, fontSize: 13),
                 ),
@@ -219,9 +243,12 @@ class _MascotPageState extends State<MascotPage> {
                 ] else ...[
                   if (MascotServis.yemekSistemiAcik(mascot.seviye))
                     _aksiyonButon(
-                      label: 'Yemek ver',
+                      label:
+                          'Yemek ver (${MascotServis.yemekEtkilesimMaliyeti} puan)',
                       icon: Icons.restaurant,
-                      onPressed: _islemSuruyor
+                      onPressed: _islemSuruyor ||
+                              mascot.etkilesimPuani <
+                                  MascotServis.yemekEtkilesimMaliyeti
                           ? null
                           : () => _guvenliIslem(() async {
                                 final sonuc = await MascotServis.yemekVer(uid);
@@ -237,9 +264,12 @@ class _MascotPageState extends State<MascotPage> {
                   if (MascotServis.uyuSistemiAcik(mascot.seviye) &&
                       mascot.enerji <= MascotServis.uyuMaxEnerji)
                     _aksiyonButon(
-                      label: 'Uyu',
+                      label:
+                          'Uyu (${MascotServis.uykuEtkilesimMaliyeti} puan)',
                       icon: Icons.bedtime_outlined,
-                      onPressed: _islemSuruyor
+                      onPressed: _islemSuruyor ||
+                              mascot.etkilesimPuani <
+                                  MascotServis.uykuEtkilesimMaliyeti
                           ? null
                           : () => _guvenliIslem(() async {
                                 final sonuc = await MascotServis.uyuYap(uid);

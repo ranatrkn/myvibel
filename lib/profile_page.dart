@@ -20,11 +20,12 @@ import 'package:vibe_life/sosyal_servis.dart';
 import 'package:vibe_life/destek_talepleri_panel_page.dart';
 import 'package:vibe_life/etiket_navigasyon.dart';
 import 'package:vibe_life/widgets/hashtag_metin.dart';
-import 'package:vibe_life/robot_page.dart';
-import 'package:vibe_life/robot_servis.dart';
+import 'package:vibe_life/maskot_page.dart';
+import 'package:vibe_life/maskot_servis.dart';
 import 'package:vibe_life/legal_pages.dart';
-import 'package:vibe_life/widgets/robot_durum_bari.dart';
-import 'package:vibe_life/widgets/robot_lottie_view.dart';
+import 'package:vibe_life/widgets/maskot_durum_bari.dart';
+import 'package:vibe_life/widgets/maskot_gelisim_cercevesi.dart';
+import 'package:vibe_life/widgets/maskot_lottie_view.dart';
 import 'package:vibe_life/widgets/post_begeni_yardimci.dart';
 import 'package:vibe_life/widgets/theme_mode_segment.dart';
 import 'package:vibe_life/widgets/vibe_avatar.dart';
@@ -1255,16 +1256,15 @@ class _ProfilePageState extends State<ProfilePage> {
           children: [
             Row(
               children: [
-                Container(
-                  width: 86,
-                  height: 86,
-                  decoration: BoxDecoration(
-                    color: Colors.white10,
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: Colors.white24),
-                  ),
+                MascotGelisimCercevesi(
+                  progress: mascot.gelisimOrani,
+                  size: 100,
+                  strokeWidth: 3.5,
+                  innerPadding: 3.5,
+                  borderRadius: 22,
+                  backgroundFill: Colors.white10,
                   child: ClipRRect(
-                    borderRadius: BorderRadius.circular(24),
+                    borderRadius: BorderRadius.circular(18),
                     child: MascotLottieView(
                       seviye: mascot.seviye,
                       gorselDurum: mascot.gorselDurum,
@@ -1272,6 +1272,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       height: 86,
                       fit: BoxFit.contain,
                       repeat: false,
+                      tamEkranAc: false,
                     ),
                   ),
                 ),
@@ -1317,6 +1318,21 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
             const SizedBox(height: 14),
             if (odaAcik) ...[
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  children: [
+                    Text(
+                      'Etkileşim puanı: ${mascot.etkilesimPuani}',
+                      style: const TextStyle(
+                        color: Colors.lightBlueAccent,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               if (MascotServis.toklukAktif(mascot.seviye))
                 MascotDurumBari(
                   etiket: 'Tokluk',
@@ -1341,9 +1357,8 @@ class _ProfilePageState extends State<ProfilePage> {
             ] else
               Text(
                 '1–5: Etkileşimlerle otomatik büyür. '
-                '${MascotServis.toklukAcilisSeviyesi}. seviyede tokluk, '
-                '${MascotServis.enerjiAcilisSeviyesi}. seviyede enerji, '
-                '${MascotServis.mutlulukAcilisSeviyesi}. seviyede mutluluk açılır.',
+                '6+: etkileşim puanı biriktir, yemek/uyku harca. '
+                '${MascotServis.enerjiAcilisSeviyesi}. seviyede uyku açılır.',
                 style: TextStyle(
                   color: context.vibe.mutedText,
                   fontSize: 12,
@@ -1366,17 +1381,6 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                 ),
               ],
-            ),
-            const SizedBox(height: 8),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: LinearProgressIndicator(
-                value: mascot.gelisimOrani,
-                backgroundColor: Colors.white10,
-                valueColor:
-                    const AlwaysStoppedAnimation<Color>(Colors.blueAccent),
-                minHeight: 8,
-              ),
             ),
             const SizedBox(height: 14),
             SizedBox(

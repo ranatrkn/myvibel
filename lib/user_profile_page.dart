@@ -13,9 +13,10 @@ import 'package:vibe_life/sosyal_servis.dart';
 import 'package:vibe_life/etiket_navigasyon.dart';
 import 'package:vibe_life/widgets/hashtag_metin.dart';
 import 'package:vibe_life/widgets/post_begeni_yardimci.dart';
-import 'package:vibe_life/robot_servis.dart';
-import 'package:vibe_life/widgets/robot_durum_bari.dart';
-import 'package:vibe_life/widgets/robot_lottie_view.dart';
+import 'package:vibe_life/maskot_servis.dart';
+import 'package:vibe_life/widgets/maskot_durum_bari.dart';
+import 'package:vibe_life/widgets/maskot_gelisim_cercevesi.dart';
+import 'package:vibe_life/widgets/maskot_lottie_view.dart';
 import 'package:vibe_life/widgets/vibe_avatar.dart';
 import 'package:vibe_life/vibe_snackbar.dart';
 
@@ -619,9 +620,13 @@ class _UserProfilePageState extends State<UserProfilePage> {
         children: [
           Row(
             children: [
-              SizedBox(
-                width: 86,
-                height: 86,
+              MascotGelisimCercevesi(
+                progress: mascot.gelisimOrani,
+                size: 100,
+                strokeWidth: 3.5,
+                innerPadding: 3.5,
+                borderRadius: 20,
+                backgroundFill: vibe.inputFill,
                 child: MascotLottieView(
                   seviye: mascot.seviye,
                   gorselDurum: mascot.gorselDurum,
@@ -684,17 +689,6 @@ class _UserProfilePageState extends State<UserProfilePage> {
               compact: true,
             ),
           ],
-          const SizedBox(height: 8),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: LinearProgressIndicator(
-              value: mascot.gelisimOrani,
-              backgroundColor: vibe.inputFill,
-              valueColor:
-                  const AlwaysStoppedAnimation<Color>(VibeAppTheme.accent),
-              minHeight: 8,
-            ),
-          ),
           const SizedBox(height: 6),
           Text(
             'Gelişim: ${mascot.gelisimPuani} / ${mascot.gerekliGelisim}',

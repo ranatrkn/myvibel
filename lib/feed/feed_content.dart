@@ -6,11 +6,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibe_life/app_theme.dart';
 import 'package:vibe_life/error_messages.dart';
 import 'package:vibe_life/messages_page.dart';
-import 'package:vibe_life/robot_page.dart';
-import 'package:vibe_life/robot_servis.dart';
+import 'package:vibe_life/maskot_page.dart';
+import 'package:vibe_life/maskot_servis.dart';
 import 'package:vibe_life/sosyal_servis.dart';
 import 'package:vibe_life/widgets/post_card.dart';
-import 'package:vibe_life/widgets/robot_lottie_view.dart';
+import 'package:vibe_life/widgets/maskot_gelisim_cercevesi.dart';
+import 'package:vibe_life/widgets/maskot_lottie_view.dart';
 
 // Feed sekmesi türleri
 enum FeedSekmesi { takip, kesfet }
@@ -1008,18 +1009,21 @@ class _FeedUstBarState extends State<_FeedUstBar> {
         children: [
           GestureDetector(
             onTap: odaAcik ? widget.onMascotTap : null,
-            child: MascotLottieView(
-              seviye: seviye,
-              gorselDurum: mascot.gorselDurum,
-              width: 75,
-              height: 75,
-              repeat: false,
-              tamEkranAc: true,
-              borderRadius: BorderRadius.circular(20),
-              decoration: BoxDecoration(
-                color: vibe.inputFill,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: vibe.cardBorder),
+            child: MascotGelisimCercevesi(
+              progress: mascot.gelisimOrani,
+              size: 90,
+              strokeWidth: 3,
+              innerPadding: 3,
+              borderRadius: 18,
+              backgroundFill: vibe.inputFill,
+              backgroundColor: vibe.cardBorder,
+              child: MascotLottieView(
+                seviye: seviye,
+                gorselDurum: mascot.gorselDurum,
+                width: 75,
+                height: 75,
+                repeat: false,
+                tamEkranAc: true,
               ),
             ),
           ),
@@ -1052,18 +1056,6 @@ class _FeedUstBarState extends State<_FeedUstBar> {
                     color: VibeAppTheme.accent,
                     fontSize: 12,
                     fontStyle: FontStyle.italic,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: LinearProgressIndicator(
-                    value: mascot.gelisimOrani,
-                    backgroundColor: vibe.inputFill,
-                    valueColor: const AlwaysStoppedAnimation<Color>(
-                      Colors.blueAccent,
-                    ),
-                    minHeight: 8,
                   ),
                 ),
               ],

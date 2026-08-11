@@ -8,12 +8,12 @@ import 'package:vibe_life/app_theme.dart';
 import 'package:vibe_life/error_messages.dart';
 import 'package:vibe_life/haftalik_gorev_servis.dart';
 import 'package:vibe_life/puan_animasyon.dart';
-import 'package:vibe_life/robot_servis.dart';
+import 'package:vibe_life/maskot_servis.dart';
 import 'package:vibe_life/sosyal/sosyal_core.dart';
 import 'package:vibe_life/sosyal_servis.dart';
 import 'package:vibe_life/widgets/bahsetme_metin_alani.dart';
 import 'package:vibe_life/vibe_snackbar.dart';
-import 'package:vibe_life/widgets/robot_lottie_view.dart';
+import 'package:vibe_life/widgets/maskot_lottie_view.dart';
 
 // Gönderi paylaşım formu
 class NewPostPage extends StatefulWidget {
