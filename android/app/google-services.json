@@ -1,0 +1,82 @@
+{
+  "project_info": {
+    "project_number": "910548158122",
+    "project_id": "vibe-life-app",
+    "storage_bucket": "vibe-life-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:910548158122:android:491d6bb00251cc069db2d3",
+        "android_client_info": {
+          "package_name": "com.example.vibe_life"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "910548158122-jum8fo4uoujq7ah567vbt3laovu1l73p.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBrCvZUTG81x2RIssPGSTUsJbODGaclZb8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "910548158122-jum8fo4uoujq7ah567vbt3laovu1l73p.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "910548158122-3n0ajf2aopoovtroi333ltr0mbchv60e.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.vibeLife"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:910548158122:android:fb34c96c0e2ab77b9db2d3",
+        "android_client_info": {
+          "package_name": "com.vibelife.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "910548158122-jum8fo4uoujq7ah567vbt3laovu1l73p.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBrCvZUTG81x2RIssPGSTUsJbODGaclZb8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "910548158122-jum8fo4uoujq7ah567vbt3laovu1l73p.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "910548158122-3n0ajf2aopoovtroi333ltr0mbchv60e.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.vibeLife"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

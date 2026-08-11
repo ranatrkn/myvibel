@@ -1,0 +1,48 @@
+{
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "hosting": {
+    "public": "hosting/public",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "headers": [
+      {
+        "source": "**/*.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=3600"
+          }
+        ]
+      }
+    ]
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "vibe-life-app",
+          "appId": "1:910548158122:android:fb34c96c0e2ab77b9db2d3",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "vibe-life-app",
+          "configurations": {
+            "android": "1:910548158122:android:fb34c96c0e2ab77b9db2d3",
+            "ios": "1:910548158122:ios:d7e0d06ef4ebdc639db2d3",
+            "macos": "1:910548158122:ios:d7e0d06ef4ebdc639db2d3",
+            "web": "1:910548158122:web:d967d1a9a05b7dda9db2d3",
+            "windows": "1:910548158122:web:eb896d959e6d9a629db2d3"
+          }
+        }
+      }
+    }
+  }
+}
