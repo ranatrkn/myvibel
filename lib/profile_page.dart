@@ -193,8 +193,8 @@ class _ProfilePageState extends State<ProfilePage> {
       'avatarKey': likedData['avatarKey'] ?? '',
       'ownerHesapGizli': likedData['ownerHesapGizli'] == true,
       'raporNedeniyleGizli': likedData['raporNedeniyleGizli'] == true,
-      'begeniSayisi': 0,
-      'yorumSayisi': 0,
+      'begeniSayisi': _intDeger(likedData['begeniSayisi'], 0),
+      'yorumSayisi': _intDeger(likedData['yorumSayisi'], 0),
       'createdAt': likedData['createdAt'],
     };
   }
@@ -1318,21 +1318,22 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
             const SizedBox(height: 14),
             if (odaAcik) ...[
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Row(
-                  children: [
-                    Text(
-                      'Etkileşim puanı: ${mascot.etkilesimPuani}',
-                      style: const TextStyle(
-                        color: Colors.lightBlueAccent,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
+              if (MascotServis.vilCuzdaniAcik(mascot.seviye))
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    children: [
+                      Text(
+                        'Vil: ${mascot.vil}',
+                        style: const TextStyle(
+                          color: Colors.lightBlueAccent,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
               if (MascotServis.toklukAktif(mascot.seviye))
                 MascotDurumBari(
                   etiket: 'Tokluk',
@@ -1356,9 +1357,10 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
             ] else
               Text(
-                '1–5: Etkileşimlerle otomatik büyür. '
-                '6+: etkileşim puanı biriktir, yemek/uyku harca. '
-                '${MascotServis.enerjiAcilisSeviyesi}. seviyede uyku açılır.',
+                '1–5 Yumurta: etkileşimle XP. '
+                '6+ Bebek: vil kazan, yemek al (+15 XP). '
+                '11+ Çocuk: enerji/uyku. '
+                '21+ Yetişkin: mutluluk.',
                 style: TextStyle(
                   color: context.vibe.mutedText,
                   fontSize: 12,
@@ -1412,8 +1414,8 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                     )
                   : Text(
-                      '1–5: Etkileşimlerle otomatik büyür. '
-                      '6. seviyede maskot odası açılır.',
+                      '1–5 Yumurta: etkileşimle XP kazan. '
+                      '6. seviyede vil cüzdanı ve maskot odası açılır.',
                       style: TextStyle(
                         color: context.vibe.mutedText,
                         fontSize: 13,
@@ -1598,8 +1600,8 @@ class _ProfilePageState extends State<ProfilePage> {
                 mentionUidleri: const {},
                 photoUrl: post["photoUrl"] ?? "",
                 avatarKey: post["avatarKey"] ?? "",
-                baslangicBegeniSayisi: 0,
-                baslangicYorumSayisi: 0,
+                baslangicBegeniSayisi: _intDeger(post["begeniSayisi"], 0),
+                baslangicYorumSayisi: _intDeger(post["yorumSayisi"], 0),
                 baslangicBegenildi: true,
                 silmeButonuGoster: false,
                 createdAt: post["createdAt"],
@@ -1723,6 +1725,39 @@ class _ProfilPostCardState extends State<_ProfilPostCard> {
     super.initState();
     yorumSayisi = widget.baslangicYorumSayisi;
     _begeniYoneticiOlustur();
+    _eksikSayaclariDoldur();
+  }
+
+  Future<void> _eksikSayaclariDoldur() async {
+    if (widget.baslangicBegeniSayisi > 0 && widget.baslangicYorumSayisi > 0) {
+      return;
+    }
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('posts')
+          .doc(widget.postId)
+          .get();
+      if (!snap.exists || !mounted) return;
+      final data = snap.data() ?? {};
+      setState(() {
+        if (widget.baslangicBegeniSayisi == 0) {
+          _begeni.guncelle(
+            yeniBaslangicBegeni: _intDeger(data['begeniSayisi'], 0),
+          );
+        }
+        if (widget.baslangicYorumSayisi == 0) {
+          yorumSayisi = _intDeger(data['yorumSayisi'], 0);
+        }
+      });
+    } catch (e) {
+      debugPrint('begendiklerim sayac senkron ($widget.postId): $e');
+    }
+  }
+
+  int _intDeger(dynamic value, int fallback) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return fallback;
   }
 
   // Widget güncellendiğinde dinleyicileri yenile

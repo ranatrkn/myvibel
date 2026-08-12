@@ -96,7 +96,7 @@ class HaftalikGorevServis {
   static const maksHaftalikPuan = 1320; // Haftalık puan üst sınırı
 
   static String get gorevlerAcilmaHatasi =>
-      'Görevler ${MascotServis.odaAcilisSeviyesi}. seviyede açılır.';
+      'Görevler ${MascotServis.mutlulukAcilisSeviyesi}. seviyede açılır.';
 
   static const _gunAdlari = [
     'Pazartesi',
@@ -304,9 +304,11 @@ class HaftalikGorevServis {
     return guncel;
   }
 
-  static bool _mascotOdasiAcik(Map<String, dynamic>? userData) {
+  static bool _gorevlerAcik(Map<String, dynamic>? userData) {
     if (userData == null) return false;
-    return MascotServis.odaAcik(MascotServis.parse(userData['robot']).seviye);
+    return MascotServis.gunlukGorevlerAcik(
+      MascotServis.parse(userData['robot']).seviye,
+    );
   }
 
   static bool _mapAyni(dynamic ham, Map<String, dynamic> hedef) {
@@ -324,7 +326,7 @@ class HaftalikGorevServis {
     required Map<String, dynamic>? userData,
     required GorevAksiyon aksiyon,
   }) {
-    if (!_mascotOdasiAcik(userData)) return null;
+    if (!_gorevlerAcik(userData)) return null;
 
     final simdi = turkiyeSimdi();
     final buHafta = haftaKimligi(simdi);
@@ -425,7 +427,7 @@ class HaftalikGorevServis {
         if (!snap.exists) {
           return const HaftalikGorevSonuc(hata: 'Kullanıcı kaydı bulunamadı.');
         }
-        if (!_mascotOdasiAcik(snap.data())) {
+        if (!_gorevlerAcik(snap.data())) {
           return HaftalikGorevSonuc(hata: gorevlerAcilmaHatasi);
         }
 

@@ -4,8 +4,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:vibe_life/app_theme.dart';
 import 'package:vibe_life/error_messages.dart';
+import 'package:vibe_life/haftalik_gorev_servis.dart';
 import 'package:vibe_life/maskot_servis.dart';
 import 'package:vibe_life/vibe_snackbar.dart';
+import 'package:vibe_life/widgets/haftalik_gorev_karti.dart';
 import 'package:vibe_life/widgets/maskot_durum_bari.dart';
 import 'package:vibe_life/widgets/maskot_gelisim_cercevesi.dart';
 import 'package:vibe_life/widgets/maskot_lottie_view.dart';
@@ -20,6 +22,15 @@ class MascotPage extends StatefulWidget {
 
 class _MascotPageState extends State<MascotPage> {
   bool _islemSuruyor = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) {
+      HaftalikGorevServis.oturumSenkronizeEt(uid);
+    }
+  }
 
   Future<void> _guvenliIslem(Future<void> Function() islem) async {
     if (_islemSuruyor) return;
@@ -59,6 +70,9 @@ class _MascotPageState extends State<MascotPage> {
 
           final data = snapshot.data!.data() ?? {};
           final mascot = MascotServis.parse(data['robot']);
+          final gorevDurumu = MascotServis.gunlukGorevlerAcik(mascot.seviye)
+              ? HaftalikGorevServis.kullaniciVerisindenDurum(data)
+              : null;
           final odaAcik = MascotServis.odaAcik(mascot.seviye);
           final uyuyor = mascot.uyuyor;
           final mesaj = MascotServis.ruhHaliMesaji(mascot);
@@ -143,29 +157,31 @@ class _MascotPageState extends State<MascotPage> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: Row(
-                    children: [
-                      Text(
-                        'Etkileşim puanı',
-                        style: TextStyle(
-                          color: vibe.mutedText,
-                          fontWeight: FontWeight.w600,
+                if (MascotServis.vilCuzdaniAcik(mascot.seviye)) ...[
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Row(
+                      children: [
+                        Text(
+                          'Vil',
+                          style: TextStyle(
+                            color: vibe.mutedText,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                      ),
-                      const Spacer(),
-                      Text(
-                        '${mascot.etkilesimPuani}',
-                        style: const TextStyle(
-                          color: Colors.lightBlueAccent,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
+                        const Spacer(),
+                        Text(
+                          '${mascot.vil}',
+                          style: const TextStyle(
+                            color: Colors.lightBlueAccent,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
+                ],
                 if (MascotServis.toklukAktif(mascot.seviye))
                   MascotDurumBari(
                     etiket: 'Tokluk',
@@ -186,12 +202,19 @@ class _MascotPageState extends State<MascotPage> {
                   ),
                 const SizedBox(height: 8),
                 Text(
-                  'Gelişim: ${mascot.gelisimPuani} / ${mascot.gerekliGelisim} · '
-                  'Etkileşim puanı: ${mascot.etkilesimPuani}',
+                  'Gelişim: ${mascot.gelisimPuani} / ${mascot.gerekliGelisim}'
+                  '${MascotServis.vilCuzdaniAcik(mascot.seviye) ? ' · Vil: ${mascot.vil}' : ''}',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: vibe.mutedText, fontSize: 13),
                 ),
                 const SizedBox(height: 24),
+                if (gorevDurumu != null) ...[
+                  HaftalikGorevKarti(
+                    durum: gorevDurumu,
+                    mascotUyuyor: uyuyor,
+                  ),
+                  const SizedBox(height: 24),
+                ],
                 if (uyuyor) ...[
                   if (MascotServis.uykuKalanSure(mascot) case final kalan?)
                     Padding(
@@ -244,11 +267,12 @@ class _MascotPageState extends State<MascotPage> {
                   if (MascotServis.yemekSistemiAcik(mascot.seviye))
                     _aksiyonButon(
                       label:
-                          'Yemek ver (${MascotServis.yemekEtkilesimMaliyeti} puan)',
+                          'Yemek ver (+${MascotServis.yemekToklukArtisi} tokluk, '
+                          '${MascotServis.yemekVilMaliyeti} vil)',
                       icon: Icons.restaurant,
                       onPressed: _islemSuruyor ||
-                              mascot.etkilesimPuani <
-                                  MascotServis.yemekEtkilesimMaliyeti
+                              mascot.tokluk >= 100 ||
+                              mascot.vil < MascotServis.yemekVilMaliyeti
                           ? null
                           : () => _guvenliIslem(() async {
                                 final sonuc = await MascotServis.yemekVer(uid);
@@ -265,11 +289,9 @@ class _MascotPageState extends State<MascotPage> {
                       mascot.enerji <= MascotServis.uyuMaxEnerji)
                     _aksiyonButon(
                       label:
-                          'Uyu (${MascotServis.uykuEtkilesimMaliyeti} puan)',
+                          'Uyu (${MascotServis.uykuTahminiSureMetni(mascot.enerji)})',
                       icon: Icons.bedtime_outlined,
-                      onPressed: _islemSuruyor ||
-                              mascot.etkilesimPuani <
-                                  MascotServis.uykuEtkilesimMaliyeti
+                      onPressed: _islemSuruyor
                           ? null
                           : () => _guvenliIslem(() async {
                                 final sonuc = await MascotServis.uyuYap(uid);

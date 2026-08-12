@@ -76,6 +76,10 @@ class EngelServis {
         uid: current.uid,
         hedefUid: hedefUid,
       );
+      await BegeniYorumServis.engelleneninGonderilerindekiBegenileriKaldir(
+        ownerUid: current.uid,
+        likerUid: hedefUid,
+      );
     } catch (e) {
       debugPrint('engelle begeni temizligi ($hedefUid): $e');
     }

@@ -29,6 +29,7 @@ class PostCard extends StatefulWidget {
   final String userId; // Oturum açmış kullanıcı uid
   final dynamic createdAt; // Oluşturulma zamanı
   final VoidCallback? onKendiProfilineGit; // Kendi profiline geçiş callback
+  final ValueChanged<bool>? onBegeniDegisti; // Beğeni durumu değişince
 
   const PostCard({
     super.key,
@@ -45,6 +46,7 @@ class PostCard extends StatefulWidget {
     required this.userId,
     required this.createdAt,
     this.onKendiProfilineGit,
+    this.onBegeniDegisti,
   });
 
   @override
@@ -130,7 +132,12 @@ class _PostCardState extends State<PostCard> {
   }
 
   // Beğeni ekle/kaldır (optimistik UI)
-  Future<void> begeniyiDegistir() => _begeni.degistir(context);
+  Future<void> begeniyiDegistir() async {
+    await _begeni.degistir(
+      context,
+      onBasari: widget.onBegeniDegisti,
+    );
+  }
 
   // Yorum panelini alt sayfa olarak aç
   void yorumPaneliniAc() {

@@ -119,7 +119,7 @@ class _NewPostPageState extends State<NewPostPage> {
       }
 
       await SosyalServis.gonderiPaylasimHizLimitiKaydet(user.uid);
-      unawaited(MascotServis.etkilesimPuaniniGelismeyeEkle(user.uid, 10));
+      unawaited(MascotServis.sosyalOdulKaydet(user.uid, MascotServis.vilGonderi));
 
       if (mentionUidleri.isNotEmpty) {
         await SosyalServis.bahsetmeBildirimleriGonder(

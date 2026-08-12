@@ -95,10 +95,9 @@ class SosyalCore {
           .get();
       return blockedBy.exists;
     } on FirebaseException catch (e) {
-      // Gizli hesapta karşı tarafın blocked/blockedBy kolonunu okuma izni olmayabilir.
-      // Bu durumda engel yok sayılır; gerçek engeller zaten kendi hesabımızdan okundu.
+      // Okuma engellenirse etkileşimi güvenli tarafta kapat.
       debugPrint("engellendiMi read denied ($kaynakUid -> $hedefUid): ${e.code}");
-      return false;
+      return true;
     }
   }
 

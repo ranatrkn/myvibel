@@ -51,8 +51,8 @@ class FeedPageContentState extends State<FeedPageContent>
   bool _takipHazir = false; // Takip listesi yüklendi mi
   bool _engellerHazir = false; // Engel listeleri yüklendi mi
   bool _kendiPostlarYuklendi = false; // Kendi postları eklendi mi
-  bool _takipFeedPartisiYuklendi = false; // Takip partisi çekildi mi
-  int? _takipFeedCursorMs; // Takip feed zaman imleci (ms)
+  final Map<String, DocumentSnapshot<Map<String, dynamic>>> _takipChunkImlec =
+      {}; // Takip feed whereIn imleçleri
   String? _yuklemeHatasi; // Hata mesajı
   bool _feedYenilemeSuruyor = false; // Yenileme kilidi
   Set<String> _begenilenPostIdler = {}; // Beğeni durumu önbelleği
@@ -65,6 +65,18 @@ class FeedPageContentState extends State<FeedPageContent>
 
   // Dışarıdan feed yenileme
   Future<void> feediYenile() => _feediYenile();
+
+  // Beğeni değişince önbelleği güncelle
+  void begeniOnbelleginiGuncelle(String postId, bool begenildi) {
+    if (postId.isEmpty) return;
+    setState(() {
+      if (begenildi) {
+        _begenilenPostIdler.add(postId);
+      } else {
+        _begenilenPostIdler.remove(postId);
+      }
+    });
+  }
 
   @override
   void initState() {
@@ -211,8 +223,7 @@ class FeedPageContentState extends State<FeedPageContent>
         _yukleniyorDahaFazla = false;
         _dahaFazlaVar = true;
         _kendiPostlarYuklendi = false;
-        _takipFeedPartisiYuklendi = false;
-        _takipFeedCursorMs = null;
+        _takipChunkImlec.clear();
         _yuklemeHatasi = null;
         _kesfetBosPartiSayaci = 0;
         _begenilenPostIdler = {};
@@ -235,22 +246,10 @@ class FeedPageContentState extends State<FeedPageContent>
     return 0;
   }
 
-  // Takip feed için en eski post zamanını imleç yap
-  void _takipFeedCursorHazirla() {
-    final tum = [..._gorunenPostlar, ..._bekleyenPostlar];
-    if (tum.isEmpty) return;
-
-    var minMs = 0;
-    for (final doc in tum) {
-      final ms = _createdAtMs(doc.data());
-      if (ms <= 0) continue;
-      if (minMs == 0 || ms < minMs) {
-        minMs = ms;
-      }
-    }
-    if (minMs > 0) {
-      _takipFeedCursorMs = minMs;
-    }
+  // Takip feed chunk anahtarı
+  String _takipChunkAnahtari(List<String> userIds) {
+    final sirali = List<String>.from(userIds)..sort();
+    return sirali.join('|');
   }
 
   // Postu bekleyen kuyruğa ekle (filtrelerden geçerse)
@@ -350,21 +349,25 @@ class FeedPageContentState extends State<FeedPageContent>
   }
 
   // Tek takip edilen kullanıcının postlarını getir
-  Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>>
+  Future<({List<QueryDocumentSnapshot<Map<String, dynamic>>> docs, bool tamParti})>
       _takipEdilenPostlariniGetir({
     required String hedefUid,
     required String izleyiciUid,
-    int? cursorMs,
   }) async {
     QuerySnapshot<Map<String, dynamic>> snap;
+    final chunkKey = hedefUid;
     try {
-      snap = await FirebaseFirestore.instance
+      Query<Map<String, dynamic>> sorgu = FirebaseFirestore.instance
           .collection("posts")
           .where("userId", isEqualTo: hedefUid)
           .where("raporNedeniyleGizli", isEqualTo: false)
           .orderBy("createdAt", descending: true)
-          .limit(_partiBoyutu)
-          .get();
+          .limit(_partiBoyutu);
+      final imlec = _takipChunkImlec[chunkKey];
+      if (imlec != null) {
+        sorgu = sorgu.startAfterDocument(imlec);
+      }
+      snap = await sorgu.get();
     } catch (e) {
       debugPrint("takip feed $hedefUid indexed query failed: $e");
       snap = await FirebaseFirestore.instance
@@ -381,68 +384,64 @@ class FeedPageContentState extends State<FeedPageContent>
       (a, b) => _createdAtMs(b.data()).compareTo(_createdAtMs(a.data())),
     );
 
-    // İmleçten eski postları al (sayfalama)
-    if (cursorMs != null) {
-      docs = docs.where((doc) {
-        final ms = _createdAtMs(doc.data());
-        return ms == 0 || ms < cursorMs;
-      }).toList();
+    if (docs.isNotEmpty) {
+      _takipChunkImlec[chunkKey] = docs.last;
     }
 
     if (docs.length > _partiBoyutu) {
       docs = docs.sublist(0, _partiBoyutu);
     }
-    return docs;
+    return (docs: docs, tamParti: snap.docs.length >= _partiBoyutu);
   }
 
   // Takip edilen grubundan post partisi getir (whereIn ile tek sorgu)
-  Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>>
+  Future<({List<QueryDocumentSnapshot<Map<String, dynamic>>> docs, bool tamParti})>
       _takipChunkPostlariniGetir(
     List<String> userIds,
-    int? cursorMs,
   ) async {
-    if (userIds.isEmpty) return [];
+    if (userIds.isEmpty) {
+      return (docs: <QueryDocumentSnapshot<Map<String, dynamic>>>[], tamParti: false);
+    }
 
+    final chunkKey = _takipChunkAnahtari(userIds);
     QuerySnapshot<Map<String, dynamic>> snap;
     try {
-      snap = await FirebaseFirestore.instance
+      Query<Map<String, dynamic>> sorgu = FirebaseFirestore.instance
           .collection("posts")
           .where("userId", whereIn: userIds)
           .where("raporNedeniyleGizli", isEqualTo: false)
           .orderBy("createdAt", descending: true)
-          .limit(_partiBoyutu)
-          .get();
+          .limit(_partiBoyutu);
+      final imlec = _takipChunkImlec[chunkKey];
+      if (imlec != null) {
+        sorgu = sorgu.startAfterDocument(imlec);
+      }
+      snap = await sorgu.get();
     } catch (e) {
       debugPrint("takip feed whereIn query failed: $e");
-      final sonuclar = await Future.wait(
-        userIds.map(
-          (hedefUid) => _takipEdilenPostlariniGetir(
-            hedefUid: hedefUid,
-            izleyiciUid: '',
-            cursorMs: cursorMs,
-          ),
-        ),
-      );
+      var herhangiTamParti = false;
       final merged = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
-      for (final docs in sonuclar) {
-        merged.addAll(docs);
+      for (final hedefUid in userIds) {
+        final sonuc = await _takipEdilenPostlariniGetir(
+          hedefUid: hedefUid,
+          izleyiciUid: '',
+        );
+        if (sonuc.tamParti) herhangiTamParti = true;
+        merged.addAll(sonuc.docs);
       }
       merged.sort(
         (a, b) => _createdAtMs(b.data()).compareTo(_createdAtMs(a.data())),
       );
-      if (merged.length > _partiBoyutu) {
-        return merged.sublist(0, _partiBoyutu);
-      }
-      return merged;
+      final docs = merged.length > _partiBoyutu
+          ? merged.sublist(0, _partiBoyutu)
+          : merged;
+      return (docs: docs, tamParti: herhangiTamParti);
     }
 
     var docs =
         List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(snap.docs);
-    if (cursorMs != null) {
-      docs = docs.where((doc) {
-        final ms = _createdAtMs(doc.data());
-        return ms == 0 || ms < cursorMs;
-      }).toList();
+    if (docs.isNotEmpty) {
+      _takipChunkImlec[chunkKey] = docs.last;
     }
     docs.sort(
       (a, b) => _createdAtMs(b.data()).compareTo(_createdAtMs(a.data())),
@@ -450,42 +449,37 @@ class FeedPageContentState extends State<FeedPageContent>
     if (docs.length > _partiBoyutu) {
       docs = docs.sublist(0, _partiBoyutu);
     }
-    return docs;
+    return (docs: docs, tamParti: snap.docs.length >= _partiBoyutu);
   }
 
   // Tüm takip edilenlerden post partisi yükle
-  Future<int> _takipPostPartisiYukle(
+  Future<({int eklenen, bool dahaFazlaPostVar})> _takipPostPartisiYukle(
     String uid,
     Set<String> gosterilenIdler,
   ) async {
     final takipEdilen = _takipFeedHedefleri(uid);
 
     if (takipEdilen.isEmpty) {
-      return 0;
-    }
-
-    int? cursorMs;
-    if (_takipFeedPartisiYuklendi) {
-      _takipFeedCursorHazirla();
-      cursorMs = _takipFeedCursorMs;
+      return (eklenen: 0, dahaFazlaPostVar: false);
     }
 
     var eklenen = 0;
+    var herhangiTamParti = false;
     for (var i = 0; i < takipEdilen.length; i += _whereInChunk) {
       final chunkEnd = i + _whereInChunk > takipEdilen.length
           ? takipEdilen.length
           : i + _whereInChunk;
       final chunk = takipEdilen.sublist(i, chunkEnd);
-      final docs = await _takipChunkPostlariniGetir(chunk, cursorMs);
-      for (final doc in docs) {
+      final sonuc = await _takipChunkPostlariniGetir(chunk);
+      if (sonuc.tamParti) herhangiTamParti = true;
+      for (final doc in sonuc.docs) {
         if (_postuBekleyeneEkle(doc, uid, gosterilenIdler)) {
           eklenen++;
         }
       }
     }
 
-    _takipFeedPartisiYuklendi = true;
-    return eklenen;
+    return (eklenen: eklenen, dahaFazlaPostVar: herhangiTamParti);
   }
 
   // Keşfet/Akış sekmesi için genel post partisi yükle
@@ -604,13 +598,15 @@ class FeedPageContentState extends State<FeedPageContent>
       while (_bekleyenPostlar.length < _sayfaBoyutu && _dahaFazlaVar) {
         final oncekiSayi = _bekleyenPostlar.length;
         if (_aktifSekme == FeedSekmesi.takip) {
-          final eklenen =
+          final sonuc =
               await _takipPostPartisiYukle(user.uid, gosterilenIdler);
-          if (eklenen == 0 && _bekleyenPostlar.length == oncekiSayi) {
+          if (sonuc.eklenen == 0 &&
+              _bekleyenPostlar.length == oncekiSayi &&
+              !sonuc.dahaFazlaPostVar) {
             final takipHedefiVar = _takipFeedHedefleri(user.uid).isNotEmpty;
             if (!takipHedefiVar && _kendiPostlarYuklendi) {
               _dahaFazlaVar = false;
-            } else if (takipHedefiVar && _takipFeedPartisiYuklendi) {
+            } else if (takipHedefiVar) {
               _dahaFazlaVar = false;
             }
             break;
@@ -860,6 +856,9 @@ class FeedPageContentState extends State<FeedPageContent>
                                   userId: user.uid,
                                   onKendiProfilineGit:
                                       widget.onKendiProfilineGit,
+                                  onBegeniDegisti: (begenildi) =>
+                                      begeniOnbelleginiGuncelle(
+                                          postId, begenildi),
                                 );
                               },
                             ),

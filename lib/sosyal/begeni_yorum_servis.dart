@@ -12,6 +12,12 @@ import 'package:vibe_life/sosyal/sosyal_core.dart';
 
 // Beğeni ve yorum etkileşim servisi
 class BegeniYorumServis {
+  static int _sayacDeger(dynamic value, int varsayilan) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return varsayilan;
+  }
+
   /// Gönderi silinince tüm kullanıcıların likedPosts kayıtlarını temizler.
   static Future<void> postBegeniKayitlariniTemizle(String postId) async {
     if (postId.isEmpty) return;
@@ -90,6 +96,47 @@ class BegeniYorumServis {
         uid: uid,
         postId: liked.id,
         likedData: liked.data(),
+      );
+      if (silindi) kaldirilan++;
+    }
+    return kaldirilan;
+  }
+
+  /// Engellenen kullanıcının, engelleyenin gönderilerine verdiği beğenileri kaldırır.
+  static Future<int> engelleneninGonderilerindekiBegenileriKaldir({
+    required String ownerUid,
+    required String likerUid,
+  }) async {
+    if (ownerUid.isEmpty || likerUid.isEmpty || ownerUid == likerUid) return 0;
+
+    final posts = await SosyalCore.db
+        .collection('posts')
+        .where('userId', isEqualTo: ownerUid)
+        .get();
+    if (posts.docs.isEmpty) return 0;
+
+    var kaldirilan = 0;
+    for (final post in posts.docs) {
+      final likeSnap =
+          await post.reference.collection('likes').doc(likerUid).get();
+      if (!likeSnap.exists) continue;
+
+      final likedPostRef = SosyalCore.db
+          .collection('users')
+          .doc(likerUid)
+          .collection('likedPosts')
+          .doc(post.id);
+      final likedSnap = await likedPostRef.get();
+      final likedData = likedSnap.data() ??
+          <String, dynamic>{
+            'postOwnerId': ownerUid,
+            'puanAlindi': true,
+          };
+
+      final silindi = await _begeniSessizceKaldir(
+        uid: likerUid,
+        postId: post.id,
+        likedData: likedData,
       );
       if (silindi) kaldirilan++;
     }
@@ -318,6 +365,8 @@ class BegeniYorumServis {
       }
 
       final guncelPost = postSnapshot.data() ?? {};
+      final mevcutBegeni = _sayacDeger(guncelPost['begeniSayisi'], 0);
+      final mevcutYorum = _sayacDeger(guncelPost['yorumSayisi'], 0);
       transaction.set(likeRef, {
         'userId': currentUserId,
         'createdAt': FieldValue.serverTimestamp(),
@@ -331,6 +380,8 @@ class BegeniYorumServis {
         'avatarKey': guncelPost['avatarKey'] ?? '',
         'ownerHesapGizli': guncelPost['ownerHesapGizli'] == true,
         'raporNedeniyleGizli': guncelPost['raporNedeniyleGizli'] == true,
+        'begeniSayisi': mevcutBegeni + 1,
+        'yorumSayisi': mevcutYorum,
         'puanAlindi': !kendiGonderisi,
         'createdAt': FieldValue.serverTimestamp(),
       });
@@ -373,7 +424,7 @@ class BegeniYorumServis {
     }
 
     if (begenildi && !kendiGonderisi) {
-      unawaited(MascotServis.etkilesimPuaniniGelismeyeEkle(currentUserId, 2));
+      unawaited(MascotServis.sosyalOdulKaydet(currentUserId, MascotServis.vilBegeni));
     }
 
     if (begenildi &&
@@ -516,7 +567,7 @@ class BegeniYorumServis {
     }
 
     if (!kendiGonderisi) {
-      unawaited(MascotServis.etkilesimPuaniniGelismeyeEkle(currentUserId, 3));
+      unawaited(MascotServis.sosyalOdulKaydet(currentUserId, MascotServis.vilYorum));
       unawaited(MascotServis.sosyalAksiyon(currentUserId, 'yorum'));
       unawaited(
         HaftalikGorevServis.aksiyonKaydet(currentUserId, GorevAksiyon.yorum)

@@ -135,7 +135,7 @@ class TakipServis {
           hedefUid: doc.id,
         );
         if (verildi) {
-          unawaited(MascotServis.etkilesimPuaniniGelismeyeEkle(uid, 5));
+          unawaited(MascotServis.sosyalOdulKaydet(uid, MascotServis.vilTakip));
           unawaited(
             HaftalikGorevServis.aksiyonKaydet(uid, GorevAksiyon.takip)
                 .then((sonuc) {
@@ -557,7 +557,7 @@ class TakipServis {
     );
 
     if (puanVerildi) {
-      unawaited(MascotServis.etkilesimPuaniniGelismeyeEkle(current.uid, 5));
+      unawaited(MascotServis.sosyalOdulKaydet(current.uid, MascotServis.vilTakip));
     }
 
     return puanVerildi

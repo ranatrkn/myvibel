@@ -79,7 +79,10 @@ class PostBegeniDurumuYonetici {
     _yenile?.call();
   }
 
-  Future<void> degistir(BuildContext context) async {
+  Future<void> degistir(
+    BuildContext context, {
+    ValueChanged<bool>? onBasari,
+  }) async {
     if (islemSuruyor || userId.isEmpty) return;
 
     final eskiBegeniDurumu = begenildi;
@@ -99,6 +102,7 @@ class PostBegeniDurumuYonetici {
       begenildi = yeniBegeni;
       begeniSayisi = eskiBegeniSayisi + (yeniBegeni ? 1 : -1);
       _yenile?.call();
+      onBasari?.call(yeniBegeni);
 
       if (context.mounted && yeniBegeni && userId != postOwnerId) {
         puanAnimasyonuGoster(context, 2);
