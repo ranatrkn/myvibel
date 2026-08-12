@@ -27,8 +27,9 @@ class MascotLottieView extends StatelessWidget {
   final BorderRadius? borderRadius;
   final BoxDecoration? decoration;
 
-  /// Seviyeye göre animasyon dosyası seçer.
-  /// 1–5: blue1_5 · 6–10: blue6_10 · 11–20: blue11_20* · 21+: blue21*
+  /// Seviyeye ve ruh haline göre animasyon dosyası seçer.
+  /// 1–5: blue1_5 · 6–10: blue6_10 · 11–20: blue11_20 / yorgun
+  /// 21+: blue21 / uyku / uzgun / yorgun
   static String animasyonAsset(
     int seviye, {
     MascotGorselDurum durum = MascotGorselDurum.normal,
@@ -50,14 +51,10 @@ class MascotLottieView extends StatelessWidget {
     }
 
     if (level >= 11) {
-      switch (durum) {
-        case MascotGorselDurum.yorgun:
-          return 'assets/animations/blue11_20_yorgun.json';
-        case MascotGorselDurum.uzgun:
-          return 'assets/animations/blue11_20_uzgun.json';
-        default:
-          return 'assets/animations/blue11_20.json';
+      if (durum == MascotGorselDurum.yorgun) {
+        return 'assets/animations/blue11_20_yorgun.json';
       }
+      return 'assets/animations/blue11_20.json';
     }
 
     if (level >= 6) return 'assets/animations/blue6_10.json';
@@ -102,6 +99,7 @@ class MascotLottieView extends StatelessWidget {
     final kucukGorunum = width != null && width! <= 100;
     final lottie = Lottie.asset(
       _asset,
+      key: ValueKey(_asset),
       width: width,
       height: height,
       fit: fit,

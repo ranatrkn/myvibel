@@ -294,6 +294,20 @@ service cloud.firestore {
     // Gönderi doğrulama
     // -------------------------------------------------------------------------
 
+    function postAlintiOk() {
+      return !('alintiPostId' in request.resource.data)
+        || (
+          request.resource.data.alintiPostId is string
+          && request.resource.data.alintiPostId.size() > 0
+          && exists(/databases/$(database)/documents/posts/$(request.resource.data.alintiPostId))
+          && get(/databases/$(database)/documents/posts/$(request.resource.data.alintiPostId)).data.ownerHesapGizli == false
+          && get(/databases/$(database)/documents/posts/$(request.resource.data.alintiPostId)).data.raporNedeniyleGizli == false
+          && ('alintiSnapshot' in request.resource.data)
+          && request.resource.data.alintiSnapshot is map
+          && request.resource.data.alintiSnapshot.postId == request.resource.data.alintiPostId
+        );
+    }
+
     function postCreateOk() {
       return request.resource.data.userId == request.auth.uid
         && request.resource.data.begeniSayisi == 0
@@ -314,7 +328,8 @@ service cloud.firestore {
             || (request.resource.data.bahsetmeler is list
                 && request.resource.data.bahsetmeler.size() <= 10))
         && (!('mentionUidleri' in request.resource.data)
-            || request.resource.data.mentionUidleri is map);
+            || request.resource.data.mentionUidleri is map)
+        && postAlintiOk();
     }
 
     function ownerPostUpdateOk() {

@@ -2,6 +2,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:vibe_life/alinti_gonderi.dart';
 import 'package:vibe_life/app_theme.dart';
 import 'package:vibe_life/error_messages.dart';
 import 'package:vibe_life/feed_page.dart';
@@ -159,6 +160,11 @@ class _EtiketSayfasiState extends State<EtiketSayfasi> {
                                 _intDeger(post["yorumSayisi"], 0),
                             userId: user?.uid ?? "",
                             createdAt: post["createdAt"],
+                            ownerHesapGizli: post["ownerHesapGizli"] == true,
+                            alintiSnapshot: AlintiGonderiSnapshot.haritadan(
+                              post["alintiSnapshot"],
+                              postId: post["alintiPostId"]?.toString(),
+                            ),
                           );
                         },
                       ),

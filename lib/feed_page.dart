@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:vibe_life/alinti_gonderi.dart';
 import 'package:vibe_life/explore_page.dart';
 import 'package:vibe_life/feed/feed_content.dart';
 import 'package:vibe_life/haftalik_gorev_servis.dart';
@@ -38,6 +39,7 @@ class _FeedPageState extends State<FeedPage> with WidgetsBindingObserver {
   final _feedKey = GlobalKey<FeedPageContentState>();
   final Map<int, Widget> _sayfaOnbellek = {};
   final Set<int> _acilanSekmeler = {0};
+  AlintiGonderiBaglam? _alintiBaglam;
 
   @override
   void initState() {
@@ -56,19 +58,40 @@ class _FeedPageState extends State<FeedPage> with WidgetsBindingObserver {
     });
   }
 
+  void _alintiIlePaylas(AlintiGonderiBaglam baglam) {
+    setState(() {
+      _alintiBaglam = baglam;
+      _sayfaOnbellek.remove(2);
+      _acilanSekmeler.add(2);
+      _secilenIndeks = 2;
+    });
+  }
+
+  void _alintiBaglaminiTemizle() {
+    if (_alintiBaglam == null) return;
+    setState(() {
+      _alintiBaglam = null;
+      _sayfaOnbellek.remove(2);
+    });
+  }
+
   Widget _sayfaOlustur(int indeks) {
     switch (indeks) {
       case 0:
         return FeedPageContent(
           key: _feedKey,
           onKendiProfilineGit: () => _sekmeyeGit(4),
+          onAlintiYap: _alintiIlePaylas,
         );
       case 1:
         return const ExplorePage();
       case 2:
         return NewPostPage(
+          alintiBaglam: _alintiBaglam,
+          onAlintiIptal: _alintiBaglaminiTemizle,
           onPostCreated: () {
             FocusManager.instance.primaryFocus?.unfocus();
+            _alintiBaglaminiTemizle();
             _sekmeyeGit(0);
             _feedKey.currentState?.feediYenile();
           },

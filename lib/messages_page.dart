@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibe_life/app_theme.dart';
 import 'package:vibe_life/error_messages.dart';
-import 'package:vibe_life/feed_page.dart';
+import 'package:vibe_life/gonderi_detay_sayfasi.dart';
 import 'package:vibe_life/sosyal_servis.dart';
 import 'package:vibe_life/vibe_snackbar.dart';
 import 'package:vibe_life/widgets/vibe_avatar.dart';
@@ -963,7 +963,7 @@ class _ChatPageState extends State<ChatPage> {
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => _SohbetGonderiSayfasi(
+        builder: (context) => GonderiDetaySayfasi(
           postId: postId,
           currentUserId: myUid,
         ),
@@ -1474,68 +1474,6 @@ class _ChatPageState extends State<ChatPage> {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-// Sohbette iletilen gönderi detayı
-class _SohbetGonderiSayfasi extends StatelessWidget {
-  const _SohbetGonderiSayfasi({
-    required this.postId,
-    required this.currentUserId,
-  });
-
-  final String postId; // gönderi kimliği
-  final String currentUserId; // giriş yapmış kullanıcı uid
-
-  // Dinamik değeri int'e çevir
-  int _intDeger(dynamic value, int varsayilan) {
-    if (value is int) return value;
-    if (value is num) return value.toInt();
-    return varsayilan;
-  }
-
-  // Arayüzü oluştur
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text("Gönderi")),
-      body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-        stream: FirebaseFirestore.instance.collection("posts").doc(postId).snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          final post = snapshot.data?.data();
-          if (post == null) {
-            return const Center(child: Text("Gönderi bulunamadı."));
-          }
-
-          return ListView(
-            padding: const EdgeInsets.only(top: 8, bottom: 20),
-            children: [
-              PostCard(
-                key: ValueKey(postId),
-                postId: postId,
-                postOwnerId: post["userId"] ?? "",
-                kullaniciAdi: post["kullaniciAdi"] ?? "Vibe Kullanıcısı",
-                metin: post["metin"] ?? "",
-                mentionUidleri: SosyalServis.bahsetmeUidHaritasiParse(
-                  post["mentionUidleri"],
-                ),
-                photoUrl: post["photoUrl"] ?? "",
-                avatarKey: post["avatarKey"] ?? "",
-                baslangicBegeniSayisi: _intDeger(post["begeniSayisi"], 0),
-                baslangicYorumSayisi: _intDeger(post["yorumSayisi"], 0),
-                userId: currentUserId,
-                createdAt: post["createdAt"],
-                onKendiProfilineGit: () => Navigator.pop(context),
-              ),
-            ],
-          );
-        },
       ),
     );
   }

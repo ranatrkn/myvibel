@@ -95,7 +95,7 @@ class MascotServis {
   static const vilYorum = 3;
   static const vilBegeni = 2;
   static const vilTakip = 5;
-  static const yemekVilMaliyeti = 20;
+  static const yemekVilMaliyeti = 15;
   static const yemekGelisimPuani = 15;
   static const uykuGelisimPuani = 40;
   static const yemekToklukArtisi = 20;
@@ -301,6 +301,14 @@ class MascotServis {
   static int _simdiMs() => DateTime.now().millisecondsSinceEpoch;
 
   // Firestore verisini MascotDurum'a çevirir
+  /// Firestore'dan gelen ham `robot` alanını okur; seviye yoksa null döner.
+  static MascotDurum? tryParse(dynamic raw) {
+    if (raw is! Map) return null;
+    final map = Map<String, dynamic>.from(raw);
+    if (map['seviye'] == null) return null;
+    return parse(raw);
+  }
+
   static MascotDurum parse(dynamic raw) {
     final map =
         raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
@@ -360,14 +368,14 @@ class MascotServis {
 
   // Duruma göre animasyon durumu seçer
   static MascotGorselDurum gorselDurum(MascotDurum robot) {
-    if (odaAcik(robot.seviye) && uyuyorMu(robot)) {
+    if (uyuyorMu(robot) && enerjiAktif(robot.seviye)) {
       return MascotGorselDurum.uyku;
     }
     if (enerjiAktif(robot.seviye) && robot.enerji <= 25) {
       return MascotGorselDurum.yorgun;
     }
     if (toklukAktif(robot.seviye) && robot.tokluk <= 25) {
-      return MascotGorselDurum.uzgun;
+      return MascotGorselDurum.yorgun;
     }
     if (mutlulukAktif(robot.seviye) && robot.mutluluk <= 25) {
       return MascotGorselDurum.uzgun;

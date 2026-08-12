@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:vibe_life/alinti_gonderi.dart';
 import 'package:vibe_life/app_theme.dart';
 import 'package:vibe_life/error_messages.dart';
 import 'package:vibe_life/haftalik_gorev_servis.dart';
@@ -11,15 +12,23 @@ import 'package:vibe_life/puan_animasyon.dart';
 import 'package:vibe_life/maskot_servis.dart';
 import 'package:vibe_life/sosyal/sosyal_core.dart';
 import 'package:vibe_life/sosyal_servis.dart';
+import 'package:vibe_life/widgets/alinti_gonderi_onizleme.dart';
 import 'package:vibe_life/widgets/bahsetme_metin_alani.dart';
 import 'package:vibe_life/vibe_snackbar.dart';
 import 'package:vibe_life/widgets/maskot_lottie_view.dart';
 
 // Gönderi paylaşım formu
 class NewPostPage extends StatefulWidget {
-  final VoidCallback? onPostCreated; // Paylaşım sonrası callback
+  final VoidCallback? onPostCreated;
+  final AlintiGonderiBaglam? alintiBaglam;
+  final VoidCallback? onAlintiIptal;
 
-  const NewPostPage({super.key, this.onPostCreated});
+  const NewPostPage({
+    super.key,
+    this.onPostCreated,
+    this.alintiBaglam,
+    this.onAlintiIptal,
+  });
 
   @override
   State<NewPostPage> createState() => _NewPostPageState();
@@ -84,6 +93,35 @@ class _NewPostPageState extends State<NewPostPage> {
       final hesapGizli = userData?["hesapGizli"] == true;
       final mentionUidleri = await SosyalServis.bahsetmeUidleriniCoz(metin);
 
+      Map<String, dynamic>? alintiAlanlari;
+      final alinti = widget.alintiBaglam;
+      if (alinti != null) {
+        final alintiSnap = await FirebaseFirestore.instance
+            .collection('posts')
+            .doc(alinti.postId)
+            .get();
+        if (!alintiSnap.exists) {
+          mesajGoster('Alıntılanan gönderi bulunamadı.');
+          return;
+        }
+        final alintiPost = alintiSnap.data() ?? {};
+        if (alintiPost['ownerHesapGizli'] == true) {
+          mesajGoster('Gizli hesap gönderileri alıntılanamaz.');
+          return;
+        }
+        if (alintiPost['raporNedeniyleGizli'] == true) {
+          mesajGoster('Bu gönderi alıntılanamaz.');
+          return;
+        }
+        alintiAlanlari = {
+          'alintiPostId': alinti.postId,
+          'alintiSnapshot': AlintiGonderiSnapshot.gonderiden(
+            alinti.postId,
+            alintiPost,
+          ).toMap(),
+        };
+      }
+
       final firestore = FirebaseFirestore.instance;
       final postRef = firestore.collection("posts").doc();
       final batch = firestore.batch();
@@ -104,6 +142,7 @@ class _NewPostPageState extends State<NewPostPage> {
         "raporNedeniyleGizli": false,
         "ownerHesapGizli": hesapGizli,
         "createdAt": FieldValue.serverTimestamp(),
+        ...?alintiAlanlari,
       });
       batch.update(firestore.collection("users").doc(user.uid), {
         "puan": FieldValue.increment(10),
@@ -205,7 +244,9 @@ class _NewPostPageState extends State<NewPostPage> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Text(
-                        "Yeni Gönderi Oluştur",
+                        widget.alintiBaglam != null
+                            ? 'Alıntılı Gönderi'
+                            : 'Yeni Gönderi Oluştur',
                         style: TextStyle(
                           color: theme.colorScheme.onSurface,
                           fontSize: 22,
@@ -213,6 +254,25 @@ class _NewPostPageState extends State<NewPostPage> {
                           letterSpacing: 0.6,
                         ),
                       ),
+                      if (widget.alintiBaglam != null) ...[
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: AlintiGonderiOnizleme(
+                                snapshot: widget.alintiBaglam!.snapshot,
+                                currentUserId: user?.uid,
+                                detayaGit: false,
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: widget.onAlintiIptal,
+                              icon: Icon(Icons.close, color: vibe.mutedText),
+                              tooltip: 'Alıntıyı kaldır',
+                            ),
+                          ],
+                        ),
+                      ],
                       const SizedBox(height: 12),
                       SizedBox(
                         height: gonderiKutusuYuksekligi,
@@ -231,7 +291,9 @@ class _NewPostPageState extends State<NewPostPage> {
                             ),
                             decoration: InputDecoration(
                               counterText: "",
-                              hintText: "Bugün vibe'ın nasıl?",
+                              hintText: widget.alintiBaglam != null
+                                  ? 'Yorumunu ekle...'
+                                  : 'Bugün vibe\'ın nasıl?',
                               hintStyle: TextStyle(color: vibe.mutedText),
                               contentPadding: const EdgeInsets.all(18),
                               border: OutlineInputBorder(
@@ -259,7 +321,13 @@ class _NewPostPageState extends State<NewPostPage> {
                                   ),
                                 )
                               : const Icon(Icons.send),
-                          label: Text(isLoading ? "Paylaşılıyor..." : "Paylaş"),
+                          label: Text(
+                            isLoading
+                                ? 'Paylaşılıyor...'
+                                : widget.alintiBaglam != null
+                                    ? 'Alıntıyı paylaş'
+                                    : 'Paylaş',
+                          ),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: vibe.primaryButton,
                             foregroundColor: Colors.white,
@@ -283,9 +351,14 @@ class _NewPostPageState extends State<NewPostPage> {
                                 .snapshots()
                             : const Stream.empty(),
                         builder: (context, snapshot) {
+                          if (!snapshot.hasData) {
+                            return const SizedBox.shrink();
+                          }
                           final data = snapshot.data?.data();
-                          final mascotData = data?["robot"];
-                          final mascot = MascotServis.parse(mascotData);
+                          final mascot = MascotServis.tryParse(data?["robot"]);
+                          if (mascot == null) {
+                            return const SizedBox.shrink();
+                          }
                           final seviye = mascot.seviye;
                           final mascotIsmi = mascot.isim.trim();
                           final gosterilecekIsim =

@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:vibe_life/alinti_gonderi.dart';
 import 'package:vibe_life/app_theme.dart';
 import 'package:vibe_life/error_messages.dart';
 import 'package:vibe_life/messages_page.dart';
@@ -18,11 +19,13 @@ enum FeedSekmesi { takip, kesfet }
 
 // Feed ana içerik widget'ı
 class FeedPageContent extends StatefulWidget {
-  final VoidCallback onKendiProfilineGit; // Kendi profiline geçiş callback
+  final VoidCallback onKendiProfilineGit;
+  final ValueChanged<AlintiGonderiBaglam>? onAlintiYap;
 
   const FeedPageContent({
     super.key,
     required this.onKendiProfilineGit,
+    this.onAlintiYap,
   });
 
   @override
@@ -847,6 +850,12 @@ class FeedPageContentState extends State<FeedPageContent>
                                   photoUrl: post["photoUrl"] ?? "",
                                   avatarKey: post["avatarKey"] ?? "",
                                   createdAt: post["createdAt"],
+                                  ownerHesapGizli:
+                                      post["ownerHesapGizli"] == true,
+                                  alintiSnapshot: AlintiGonderiSnapshot.haritadan(
+                                    post["alintiSnapshot"],
+                                    postId: post["alintiPostId"]?.toString(),
+                                  ),
                                   baslangicBegeniSayisi:
                                       post["begeniSayisi"] ?? 0,
                                   baslangicYorumSayisi:
@@ -854,8 +863,11 @@ class FeedPageContentState extends State<FeedPageContent>
                                   baslangicBegenildi:
                                       _begenilenPostIdler.contains(postId),
                                   userId: user.uid,
+                                  engellenenKullanicilar: _engelledigimIdler,
+                                  beniEngelleyenler: _beniEngelleyenIdler,
                                   onKendiProfilineGit:
                                       widget.onKendiProfilineGit,
+                                  onAlintiYap: widget.onAlintiYap,
                                   onBegeniDegisti: (begenildi) =>
                                       begeniOnbelleginiGuncelle(
                                           postId, begenildi),
@@ -918,32 +930,6 @@ class _FeedUstBar extends StatefulWidget {
 }
 
 class _FeedUstBarState extends State<_FeedUstBar> {
-  Map<String, dynamic>? _userData;
-  bool _yukleniyor = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _kullaniciyiYukle();
-  }
-
-  Future<void> _kullaniciyiYukle() async {
-    try {
-      final snap = await FirebaseFirestore.instance
-          .collection("users")
-          .doc(widget.uid)
-          .get();
-      if (!mounted) return;
-      setState(() {
-        _userData = snap.data();
-        _yukleniyor = false;
-      });
-    } catch (e) {
-      debugPrint("feed ust bar yukleme: $e");
-      if (mounted) setState(() => _yukleniyor = false);
-    }
-  }
-
   int _intDeger(dynamic value, int varsayilan) {
     if (value is int) return value;
     if (value is num) return value.toInt();
@@ -981,25 +967,52 @@ class _FeedUstBarState extends State<_FeedUstBar> {
     final theme = Theme.of(context);
     final vibe = context.vibe;
 
-    if (_yukleniyor) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-        child: SizedBox(
-          height: 75,
-          child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-        ),
-      );
-    }
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.uid)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+            child: SizedBox(
+              height: 75,
+              child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+            ),
+          );
+        }
 
-    final data = _userData ?? {};
-    final kullaniciAdi = data["kullaniciAdi"] ?? "Vibe Kullanıcısı";
-    final puan = _intDeger(data["puan"], 0);
-    final mascot = MascotServis.parse(data["robot"]);
+        final data = snapshot.data!.data() ?? {};
+        final mascot = MascotServis.tryParse(data['robot']);
+        if (mascot == null) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+            child: SizedBox(
+              height: 75,
+              child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+            ),
+          );
+        }
+        return _ustBarIcerik(context, theme, vibe, data, mascot);
+      },
+    );
+  }
+
+  Widget _ustBarIcerik(
+    BuildContext context,
+    ThemeData theme,
+    VibeThemeExtension vibe,
+    Map<String, dynamic> data,
+    MascotDurum mascot,
+  ) {
+    final kullaniciAdi = data['kullaniciAdi'] ?? 'Vibe Kullanıcısı';
+    final puan = _intDeger(data['puan'], 0);
     final seviye = mascot.seviye;
     final odaAcik = MascotServis.odaAcik(seviye);
     final ruhHali = odaAcik
         ? MascotServis.ruhHaliMesaji(mascot)
-        : "${MascotServis.odaAcilisSeviyesi}. seviyede maskot sistemi açılır.";
+        : '${MascotServis.odaAcilisSeviyesi}. seviyede maskot sistemi açılır.';
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
@@ -1040,7 +1053,7 @@ class _FeedUstBarState extends State<_FeedUstBar> {
                   ),
                 ),
                 Text(
-                  "@$kullaniciAdi • $puan puan • Seviye $seviye",
+                  '@$kullaniciAdi • $puan puan • Seviye $seviye',
                   style: TextStyle(
                     color: vibe.subtleText,
                     fontSize: 13,

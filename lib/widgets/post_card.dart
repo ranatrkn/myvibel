@@ -1,13 +1,16 @@
 // Tek gönderi kartı: beğeni, yorum, iletme, şikayet ve engelleme
 import 'package:flutter/material.dart';
+import 'package:vibe_life/alinti_gonderi.dart';
 import 'package:vibe_life/app_theme.dart';
 import 'package:vibe_life/error_messages.dart';
 import 'package:vibe_life/etiket_navigasyon.dart';
+import 'package:vibe_life/newpost_page.dart';
 import 'package:vibe_life/profile_page.dart' hide tarihSaatYaz;
 import 'package:vibe_life/sosyal_servis.dart';
 import 'package:vibe_life/user_profile_page.dart';
 import 'package:vibe_life/utils/tarih_saat.dart';
 import 'package:vibe_life/vibe_snackbar.dart';
+import 'package:vibe_life/widgets/alinti_gonderi_onizleme.dart';
 import 'package:vibe_life/widgets/gonderi_ilet_paneli.dart';
 import 'package:vibe_life/widgets/hashtag_metin.dart';
 import 'package:vibe_life/widgets/post_begeni_yardimci.dart';
@@ -28,8 +31,13 @@ class PostCard extends StatefulWidget {
   final bool? baslangicBegenildi; // Önbellekten beğeni durumu
   final String userId; // Oturum açmış kullanıcı uid
   final dynamic createdAt; // Oluşturulma zamanı
+  final bool ownerHesapGizli; // Gizli hesap gönderisi mi
+  final AlintiGonderiSnapshot? alintiSnapshot; // Alıntılanan gönderi
+  final Set<String>? engellenenKullanicilar;
+  final Set<String>? beniEngelleyenler;
   final VoidCallback? onKendiProfilineGit; // Kendi profiline geçiş callback
   final ValueChanged<bool>? onBegeniDegisti; // Beğeni durumu değişince
+  final ValueChanged<AlintiGonderiBaglam>? onAlintiYap; // Alıntıla
 
   const PostCard({
     super.key,
@@ -45,8 +53,13 @@ class PostCard extends StatefulWidget {
     this.baslangicBegenildi,
     required this.userId,
     required this.createdAt,
+    this.ownerHesapGizli = false,
+    this.alintiSnapshot,
+    this.engellenenKullanicilar,
+    this.beniEngelleyenler,
     this.onKendiProfilineGit,
     this.onBegeniDegisti,
+    this.onAlintiYap,
   });
 
   @override
@@ -252,6 +265,40 @@ class _PostCardState extends State<PostCard> {
     }
   }
 
+  // Gönderiyi alıntıla (yalnızca açık hesap gönderileri; alıntı zinciri korunur)
+  void _gonderiyiAlintila() {
+    if (!_alintiYapilabilir) return;
+    final baglam = AlintiGonderiBaglam(
+      postId: widget.postId,
+      snapshot: AlintiGonderiSnapshot(
+        postId: widget.postId,
+        userId: widget.postOwnerId,
+        kullaniciAdi: widget.kullaniciAdi,
+        metin: widget.metin,
+        photoUrl: widget.photoUrl,
+        avatarKey: widget.avatarKey,
+        createdAt: widget.createdAt,
+        icAlinti: widget.alintiSnapshot,
+      ),
+    );
+    if (widget.onAlintiYap != null) {
+      widget.onAlintiYap!(baglam);
+      return;
+    }
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => NewPostPage(
+          alintiBaglam: baglam,
+          onPostCreated: () => Navigator.pop(context),
+        ),
+      ),
+    );
+  }
+
+  bool get _alintiYapilabilir =>
+      !widget.ownerHesapGizli && widget.userId.isNotEmpty;
+
   // Gönderiyi DM ile ilet
   Future<void> _gonderiyiIlet() async {
     await gonderiIletPaneliniGoster(
@@ -338,9 +385,16 @@ class _PostCardState extends State<PostCard> {
                         _kullaniciyiEngelle();
                       } else if (value == "share_post") {
                         _gonderiyiIlet();
+                      } else if (value == "quote_post") {
+                        _gonderiyiAlintila();
                       }
                     },
                     itemBuilder: (context) => [
+                      if (_alintiYapilabilir)
+                        const PopupMenuItem(
+                          value: "quote_post",
+                          child: Text("Alıntıla"),
+                        ),
                       const PopupMenuItem(
                         value: "share_post",
                         child: Text("Gönderiyi İlet"),
@@ -362,21 +416,41 @@ class _PostCardState extends State<PostCard> {
           // Gönderi metni (hashtag ve mention destekli)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
-            child: HashtagMetin(
-              metin: widget.metin,
-              mentionUidleri: widget.mentionUidleri,
-              style: TextStyle(
-                color: theme.colorScheme.onSurface,
-                fontWeight: FontWeight.w500,
-              ),
-              onHashtagTap: (tag) => etiketSayfasinaGit(context, tag),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (widget.metin.isNotEmpty)
+                  HashtagMetin(
+                    metin: widget.metin,
+                    mentionUidleri: widget.mentionUidleri,
+                    style: TextStyle(
+                      color: theme.colorScheme.onSurface,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    onHashtagTap: (tag) => etiketSayfasinaGit(context, tag),
+                  ),
+                if (widget.alintiSnapshot != null) ...[
+                  if (widget.metin.isNotEmpty) const SizedBox(height: 10),
+                  AlintiGonderiOnizleme(
+                    snapshot: widget.alintiSnapshot!,
+                    currentUserId: widget.userId,
+                    onKendiProfilineGit: widget.onKendiProfilineGit,
+                    onAlintiYap: widget.onAlintiYap,
+                    engellenenKullanicilar: widget.engellenenKullanicilar,
+                    beniEngelleyenler: widget.beniEngelleyenler,
+                    compact: true,
+                  ),
+                ],
+              ],
             ),
           ),
           // Beğeni, yorum ve ilet butonları
           Padding(
             padding: const EdgeInsets.all(12),
-            child: Row(
-              children: [
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
                 InkWell(
                   borderRadius: BorderRadius.circular(28),
                   onTap: begeniyiDegistir,
@@ -432,6 +506,24 @@ class _PostCardState extends State<PostCard> {
                     ),
                   ),
                 ),
+                if (_alintiYapilabilir) ...[
+                  const SizedBox(width: 8),
+                  InkWell(
+                    borderRadius: BorderRadius.circular(28),
+                    onTap: _gonderiyiAlintila,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 10,
+                      ),
+                      child: Icon(
+                        Icons.reply_outlined,
+                        color: vibe.mutedText,
+                        size: 24,
+                      ),
+                    ),
+                  ),
+                ],
                 InkWell(
                   borderRadius: BorderRadius.circular(28),
                   onTap: _gonderiyiIlet,
@@ -448,6 +540,7 @@ class _PostCardState extends State<PostCard> {
                   ),
                 ),
               ],
+            ),
             ),
           ),
         ],

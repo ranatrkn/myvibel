@@ -366,7 +366,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
           final hesapGizli = data['hesapGizli'] == true;
 
           final mascotData = data['robot'];
-          final mascotDurum = MascotServis.parse(mascotData);
+          final mascotDurum = MascotServis.tryParse(mascotData);
 
           return SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
@@ -406,7 +406,9 @@ class _UserProfilePageState extends State<UserProfilePage> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                _mascotKarti(mascotDurum),
+                mascotDurum != null
+                    ? _mascotKarti(mascotDurum)
+                    : _mascotKartiYukleniyor(),
                 const SizedBox(height: 16),
                 Row(
                   children: [
@@ -600,6 +602,21 @@ class _UserProfilePageState extends State<UserProfilePage> {
             ),
           );
         },
+      ),
+    );
+  }
+
+  Widget _mascotKartiYukleniyor() {
+    final vibe = context.vibe;
+    return Container(
+      width: double.infinity,
+      height: 140,
+      padding: const EdgeInsets.all(18),
+      decoration: vibe.cardDecoration(),
+      alignment: Alignment.center,
+      child: const CircularProgressIndicator(
+        color: VibeAppTheme.accent,
+        strokeWidth: 2,
       ),
     );
   }

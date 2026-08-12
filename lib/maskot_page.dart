@@ -69,7 +69,12 @@ class _MascotPageState extends State<MascotPage> {
           }
 
           final data = snapshot.data!.data() ?? {};
-          final mascot = MascotServis.parse(data['robot']);
+          final mascot = MascotServis.tryParse(data['robot']);
+          if (mascot == null) {
+            return const Center(
+              child: CircularProgressIndicator(color: VibeAppTheme.accent),
+            );
+          }
           final gorevDurumu = MascotServis.gunlukGorevlerAcik(mascot.seviye)
               ? HaftalikGorevServis.kullaniciVerisindenDurum(data)
               : null;
@@ -267,8 +272,7 @@ class _MascotPageState extends State<MascotPage> {
                   if (MascotServis.yemekSistemiAcik(mascot.seviye))
                     _aksiyonButon(
                       label:
-                          'Yemek ver (+${MascotServis.yemekToklukArtisi} tokluk, '
-                          '${MascotServis.yemekVilMaliyeti} vil)',
+                          'Yemek (${MascotServis.yemekVilMaliyeti} vil)',
                       icon: Icons.restaurant,
                       onPressed: _islemSuruyor ||
                               mascot.tokluk >= 100 ||

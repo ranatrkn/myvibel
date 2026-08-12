@@ -653,7 +653,7 @@ class _ProfilePageState extends State<ProfilePage> {
   void ayarlarPaneliniAc(
     String mascotIsim,
     bool baslangicHesapGizli,
-    int seviye,
+    int? seviye,
     bool isModerator,
   ) {
     bool hesapGizli = baslangicHesapGizli;
@@ -714,13 +714,15 @@ class _ProfilePageState extends State<ProfilePage> {
                         },
                       ),
                       ListTile(
-                        leading: MascotLottieView(
-                          seviye: seviye,
-                          width: 24,
-                          height: 24,
-                          fit: BoxFit.contain,
-                          tamEkranAc: false,
-                        ),
+                        leading: seviye != null
+                            ? MascotLottieView(
+                                seviye: seviye,
+                                width: 24,
+                                height: 24,
+                                fit: BoxFit.contain,
+                                tamEkranAc: false,
+                              )
+                            : Icon(Icons.smart_toy, color: sheetVibe.mutedText),
                         title: Text(
                           "Maskot İsmini Değiştir",
                           style: TextStyle(color: onSurface),
@@ -979,9 +981,9 @@ class _ProfilePageState extends State<ProfilePage> {
           final puan = _intDeger(data?["puan"], 0);
 
           final mascotData = data?["robot"];
-          final mascotDurum = MascotServis.parse(mascotData);
-          final mascotIsim = mascotDurum.isim;
-          final seviye = mascotDurum.seviye;
+          final mascotDurum = MascotServis.tryParse(mascotData);
+          final mascotIsim = mascotDurum?.isim ?? 'Mini Vibe';
+          final seviye = mascotDurum?.seviye;
           final hesapGizli = data?["hesapGizli"] == true;
           final isModerator = data?["isModerator"] == true;
 
@@ -1058,7 +1060,9 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                 ),
                 const SizedBox(height: 18),
-                _mascotKarti(mascotDurum, puan),
+                mascotDurum != null
+                    ? _mascotKarti(mascotDurum, puan)
+                    : _mascotKartiYukleniyor(),
                 const SizedBox(height: 18),
                 _sekmeSecici(user.uid),
                 const SizedBox(height: 12),
@@ -1230,6 +1234,20 @@ class _ProfilePageState extends State<ProfilePage> {
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
       child: kutu,
+    );
+  }
+
+  Widget _mascotKartiYukleniyor() {
+    return Container(
+      width: double.infinity,
+      height: 160,
+      padding: const EdgeInsets.all(18),
+      decoration: _kartDekorasyonu(),
+      alignment: Alignment.center,
+      child: const CircularProgressIndicator(
+        color: VibeAppTheme.accent,
+        strokeWidth: 2,
+      ),
     );
   }
 
