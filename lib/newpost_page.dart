@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:vibe_life/alinti_gonderi.dart';
 import 'package:vibe_life/app_theme.dart';
 import 'package:vibe_life/error_messages.dart';
+import 'package:vibe_life/icerik_filtre_servis.dart';
 import 'package:vibe_life/haftalik_gorev_servis.dart';
 import 'package:vibe_life/puan_animasyon.dart';
 import 'package:vibe_life/maskot_servis.dart';
@@ -64,6 +65,11 @@ class _NewPostPageState extends State<NewPostPage> {
       mesajGoster(
         "Gönderi en fazla ${SosyalCore.gonderiMetinMaxKarakter} karakter olabilir.",
       );
+      return;
+    }
+
+    if (IcerikFiltreServis.uygunsuzMu(metin)) {
+      mesajGoster(IcerikFiltreServis.uygunsuzMetinHata);
       return;
     }
 

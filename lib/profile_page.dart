@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:vibe_life/alinti_gonderi.dart';
 import 'package:vibe_life/app_check_config.dart';
 import 'package:vibe_life/app_check_debug.dart';
 import 'package:vibe_life/app_theme.dart';
@@ -19,6 +20,7 @@ import 'package:vibe_life/puan_animasyon.dart';
 import 'package:vibe_life/sosyal_servis.dart';
 import 'package:vibe_life/destek_talepleri_panel_page.dart';
 import 'package:vibe_life/etiket_navigasyon.dart';
+import 'package:vibe_life/widgets/alinti_gonderi_onizleme.dart';
 import 'package:vibe_life/widgets/hashtag_metin.dart';
 import 'package:vibe_life/maskot_page.dart';
 import 'package:vibe_life/maskot_servis.dart';
@@ -367,6 +369,21 @@ class _ProfilePageState extends State<ProfilePage> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
+    final userDoc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .get();
+    if (!mounted) return;
+    final mascot = MascotServis.tryParse(userDoc.data()?['robot']);
+    final vilGerekir = mascot != null &&
+        MascotServis.gonderiSilVilGerekir(mascot.seviye);
+    if (vilGerekir && !MascotServis.gonderiSilVilYeterli(mascot)) {
+      mesajGoster(
+        'Gönderi silmek için ${MascotServis.gonderiSilVilMaliyeti} vil gerekli.',
+      );
+      return;
+    }
+
     final onay = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -376,7 +393,9 @@ class _ProfilePageState extends State<ProfilePage> {
           style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
         ),
         content: Text(
-          "Bu işlem geri alınamaz.",
+          vilGerekir
+              ? 'Bu işlem geri alınamaz ve ${MascotServis.gonderiSilVilMaliyeti} vil harcanır.'
+              : 'Bu işlem geri alınamaz.',
           style: TextStyle(color: context.vibe.mutedText),
         ),
         actions: [
@@ -1289,7 +1308,6 @@ class _ProfilePageState extends State<ProfilePage> {
                       width: 86,
                       height: 86,
                       fit: BoxFit.contain,
-                      repeat: false,
                       tamEkranAc: false,
                     ),
                   ),
@@ -1543,6 +1561,10 @@ class _ProfilePageState extends State<ProfilePage> {
                   silmeButonuGoster: true,
                   onSil: () => gonderiSil(doc.id),
                   createdAt: post["createdAt"],
+                  alintiSnapshot: AlintiGonderiSnapshot.haritadan(
+                    post["alintiSnapshot"],
+                    postId: post["alintiPostId"]?.toString(),
+                  ),
                 );
               }).toList(),
             ),
@@ -1693,6 +1715,7 @@ class _ProfilPostCard extends StatefulWidget {
   final bool silmeButonuGoster; // silme butonu gösterilsin mi
   final VoidCallback? onSil; // silme geri çağrısı
   final dynamic createdAt; // oluşturulma zamanı
+  final AlintiGonderiSnapshot? alintiSnapshot;
 
   const _ProfilPostCard({
     super.key,
@@ -1710,6 +1733,7 @@ class _ProfilPostCard extends StatefulWidget {
     required this.silmeButonuGoster,
     this.onSil,
     required this.createdAt,
+    this.alintiSnapshot,
   });
 
   @override
@@ -1883,14 +1907,28 @@ class _ProfilPostCardState extends State<_ProfilPostCard> {
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
-            child: HashtagMetin(
-              metin: widget.metin,
-              mentionUidleri: widget.mentionUidleri,
-              style: TextStyle(
-                color: theme.colorScheme.onSurface,
-                fontWeight: FontWeight.w500,
-              ),
-              onHashtagTap: (tag) => etiketSayfasinaGit(context, tag),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (widget.metin.isNotEmpty)
+                  HashtagMetin(
+                    metin: widget.metin,
+                    mentionUidleri: widget.mentionUidleri,
+                    style: TextStyle(
+                      color: theme.colorScheme.onSurface,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    onHashtagTap: (tag) => etiketSayfasinaGit(context, tag),
+                  ),
+                if (widget.alintiSnapshot != null) ...[
+                  if (widget.metin.isNotEmpty) const SizedBox(height: 10),
+                  AlintiGonderiOnizleme(
+                    snapshot: widget.alintiSnapshot!,
+                    currentUserId: widget.userId,
+                    compact: true,
+                  ),
+                ],
+              ],
             ),
           ),
           Padding(

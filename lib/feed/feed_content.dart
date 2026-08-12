@@ -1034,7 +1034,6 @@ class _FeedUstBarState extends State<_FeedUstBar> {
                 gorselDurum: mascot.gorselDurum,
                 width: 75,
                 height: 75,
-                repeat: false,
                 tamEkranAc: true,
               ),
             ),

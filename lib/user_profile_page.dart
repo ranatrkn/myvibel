@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:vibe_life/alinti_gonderi.dart';
 import 'package:vibe_life/app_theme.dart';
 import 'package:vibe_life/error_messages.dart';
 import 'package:vibe_life/follow_list_page.dart';
@@ -11,6 +12,7 @@ import 'package:vibe_life/messages_page.dart';
 import 'package:vibe_life/puan_animasyon.dart';
 import 'package:vibe_life/sosyal_servis.dart';
 import 'package:vibe_life/etiket_navigasyon.dart';
+import 'package:vibe_life/widgets/alinti_gonderi_onizleme.dart';
 import 'package:vibe_life/widgets/hashtag_metin.dart';
 import 'package:vibe_life/widgets/post_begeni_yardimci.dart';
 import 'package:vibe_life/maskot_servis.dart';
@@ -918,6 +920,10 @@ class _UserProfilePageState extends State<UserProfilePage> {
               baslangicBegeniSayisi: _intDeger(post['begeniSayisi'], 0),
               baslangicYorumSayisi: _intDeger(post['yorumSayisi'], 0),
               createdAt: post['createdAt'],
+              alintiSnapshot: AlintiGonderiSnapshot.haritadan(
+                post['alintiSnapshot'],
+                postId: post['alintiPostId']?.toString(),
+              ),
             );
           }).toList(),
         );
@@ -941,6 +947,7 @@ class _UserProfilePostCard extends StatefulWidget {
     required this.baslangicBegeniSayisi,
     required this.baslangicYorumSayisi,
     required this.createdAt,
+    this.alintiSnapshot,
   });
 
   final String postId; // gönderi kimliği
@@ -954,6 +961,7 @@ class _UserProfilePostCard extends StatefulWidget {
   final int baslangicBegeniSayisi; // başlangıç beğeni sayısı
   final int baslangicYorumSayisi; // başlangıç yorum sayısı
   final dynamic createdAt; // oluşturulma zamanı
+  final AlintiGonderiSnapshot? alintiSnapshot;
 
   @override
   State<_UserProfilePostCard> createState() => _UserProfilePostCardState();
@@ -1125,14 +1133,28 @@ class _UserProfilePostCardState extends State<_UserProfilePostCard> {
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
-            child: HashtagMetin(
-              metin: widget.metin,
-              mentionUidleri: widget.mentionUidleri,
-              style: TextStyle(
-                color: theme.colorScheme.onSurface,
-                fontWeight: FontWeight.w500,
-              ),
-              onHashtagTap: (tag) => etiketSayfasinaGit(context, tag),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (widget.metin.isNotEmpty)
+                  HashtagMetin(
+                    metin: widget.metin,
+                    mentionUidleri: widget.mentionUidleri,
+                    style: TextStyle(
+                      color: theme.colorScheme.onSurface,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    onHashtagTap: (tag) => etiketSayfasinaGit(context, tag),
+                  ),
+                if (widget.alintiSnapshot != null) ...[
+                  if (widget.metin.isNotEmpty) const SizedBox(height: 10),
+                  AlintiGonderiOnizleme(
+                    snapshot: widget.alintiSnapshot!,
+                    currentUserId: widget.currentUserId,
+                    compact: true,
+                  ),
+                ],
+              ],
             ),
           ),
           Padding(

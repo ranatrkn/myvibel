@@ -2,6 +2,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:vibe_life/icerik_filtre_servis.dart';
 import 'package:vibe_life/sosyal/bildirim_servis.dart';
 import 'package:vibe_life/sosyal/etiket_servis.dart';
 import 'package:vibe_life/sosyal/sosyal_core.dart';
@@ -200,6 +201,10 @@ class MesajServis {
     if (await SosyalCore.engellendiMi(
         kaynakUid: current.uid, hedefUid: hedefUid)) {
       throw "Bu kullanıcı ile mesajlaşamazsın.";
+    }
+
+    if (mesajTipi == "text") {
+      IcerikFiltreServis.uygunsuzsaAt(temizMetin);
     }
 
     final chatRef = SosyalCore.db.collection("chats").doc(chatId);

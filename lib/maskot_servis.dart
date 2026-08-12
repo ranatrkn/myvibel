@@ -95,6 +95,7 @@ class MascotServis {
   static const vilYorum = 3;
   static const vilBegeni = 2;
   static const vilTakip = 5;
+  static const gonderiSilVilMaliyeti = 5;
   static const yemekVilMaliyeti = 15;
   static const yemekGelisimPuani = 15;
   static const uykuGelisimPuani = 40;
@@ -250,6 +251,22 @@ class MascotServis {
   static bool yemekSistemiAcik(int seviye) => seviye >= toklukAcilisSeviyesi;
 
   static bool vilCuzdaniAcik(int seviye) => seviye >= toklukAcilisSeviyesi;
+
+  static bool gonderiSilVilGerekir(int seviye) => vilCuzdaniAcik(seviye);
+
+  static bool gonderiSilVilYeterli(MascotDurum robot) {
+    if (!gonderiSilVilGerekir(robot.seviye)) return true;
+    return robot.vil >= gonderiSilVilMaliyeti;
+  }
+
+  static Map<String, dynamic> gonderiSilIcinVilHarca(
+    Map<String, dynamic> robot,
+  ) {
+    final seviye = _int(robot['seviye'], 1);
+    if (!gonderiSilVilGerekir(seviye)) return robot;
+    _vilHarca(robot, gonderiSilVilMaliyeti);
+    return robot;
+  }
 
   static bool uyuSistemiAcik(int seviye) => seviye >= enerjiAcilisSeviyesi;
 

@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:vibe_life/haftalik_gorev_servis.dart';
+import 'package:vibe_life/icerik_filtre_servis.dart';
 import 'package:vibe_life/maskot_servis.dart';
 import 'package:vibe_life/sosyal/bildirim_servis.dart';
 import 'package:vibe_life/sosyal/etiket_servis.dart';
@@ -477,6 +478,9 @@ class BegeniYorumServis {
             kaynakUid: currentUserId, hedefUid: postOwnerId)) {
       throw 'Bu kullanıcı ile etkileşim kuramazsın.';
     }
+
+    IcerikFiltreServis.uygunsuzsaAt(metin.trim());
+
     await SosyalCore.aksiyonHizLimitiKontrol(
       uid: currentUserId,
       aksiyon: 'yorum',
@@ -615,6 +619,14 @@ class BegeniYorumServis {
 
       final userSnap = await tx.get(userRef);
       final userData = userSnap.data() ?? <String, dynamic>{};
+      final robotHam = userData['robot'];
+      final mascot = MascotServis.tryParse(robotHam);
+      if (mascot != null &&
+          MascotServis.gonderiSilVilGerekir(mascot.seviye) &&
+          !MascotServis.gonderiSilVilYeterli(mascot)) {
+        throw 'Gönderi silmek için ${MascotServis.gonderiSilVilMaliyeti} vil gerekli.';
+      }
+
       final mevcutPuan = userData['puan'];
       final puanInt = mevcutPuan is num ? mevcutPuan.toInt() : 0;
       final sonGonderiPuanPostId =
@@ -629,6 +641,14 @@ class BegeniYorumServis {
       };
       if (puanDusus > 0) {
         userGuncelleme['puan'] = FieldValue.increment(-puanDusus);
+      }
+      if (mascot != null && MascotServis.gonderiSilVilGerekir(mascot.seviye)) {
+        final robot = MascotServis.gonderiSilIcinVilHarca(
+          Map<String, dynamic>.from(
+            robotHam is Map ? Map<String, dynamic>.from(robotHam) : <String, dynamic>{},
+          ),
+        );
+        userGuncelleme['robot'] = robot;
       }
       tx.update(userRef, userGuncelleme);
     });

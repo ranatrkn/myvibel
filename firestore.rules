@@ -54,6 +54,32 @@ service cloud.firestore {
         : 1;
     }
 
+    function robotEtkilesimPuaniFrom(data) {
+      return data.robot is map && data.robot.etkilesimPuani is number
+        ? data.robot.etkilesimPuani
+        : 0;
+    }
+
+    function robotEtkilesimPuaniChangedBy(delta) {
+      return robotEtkilesimPuaniFrom(request.resource.data)
+        == robotEtkilesimPuaniFrom(resource.data) + delta;
+    }
+
+    function gonderiSilPostIdOk() {
+      let postId = request.resource.data.sonGonderiPuanPostId;
+      return postId is string
+        && postId.size() > 0
+        && exists(/databases/$(database)/documents/posts/$(postId))
+        && !existsAfter(/databases/$(database)/documents/posts/$(postId));
+    }
+
+    function gonderiSilVilHarcaniyor() {
+      return robotSeviyeFrom(resource.data) >= 6
+        && robotEtkilesimPuaniFrom(resource.data) >= 5
+        && robotEtkilesimPuaniChangedBy(-5)
+        && request.resource.data.robot.seviye == resource.data.robot.seviye;
+    }
+
     // -------------------------------------------------------------------------
     // Sosyal grafik
     // -------------------------------------------------------------------------
@@ -211,14 +237,16 @@ service cloud.firestore {
             && request.resource.data.sonGonderiPuanPostId is string
             && request.resource.data.sonGonderiPuanPostId.size() > 0
             && exists(/databases/$(database)/documents/posts/$(request.resource.data.sonGonderiPuanPostId))
-            && !existsAfter(/databases/$(database)/documents/posts/$(request.resource.data.sonGonderiPuanPostId)))
+            && !existsAfter(/databases/$(database)/documents/posts/$(request.resource.data.sonGonderiPuanPostId))
+            && robotSeviyeFrom(resource.data) < 6)
           || (isOwner(userId)
             && changedOnly(['gonderiSayisi', 'sonGonderiPuanPostId'])
             && intChangedBy('gonderiSayisi', -1)
             && request.resource.data.sonGonderiPuanPostId is string
             && request.resource.data.sonGonderiPuanPostId.size() > 0
             && exists(/databases/$(database)/documents/posts/$(request.resource.data.sonGonderiPuanPostId))
-            && !existsAfter(/databases/$(database)/documents/posts/$(request.resource.data.sonGonderiPuanPostId)))
+            && !existsAfter(/databases/$(database)/documents/posts/$(request.resource.data.sonGonderiPuanPostId))
+            && robotSeviyeFrom(resource.data) < 6)
           || (isOwner(userId)
             && changedOnly(['puan', 'gonderiSayisi', 'sonGonderiPuanPostId'])
             && intChangedBy('gonderiSayisi', -1)
@@ -228,7 +256,27 @@ service cloud.firestore {
             && request.resource.data.sonGonderiPuanPostId is string
             && request.resource.data.sonGonderiPuanPostId.size() > 0
             && exists(/databases/$(database)/documents/posts/$(request.resource.data.sonGonderiPuanPostId))
-            && !existsAfter(/databases/$(database)/documents/posts/$(request.resource.data.sonGonderiPuanPostId)))
+            && !existsAfter(/databases/$(database)/documents/posts/$(request.resource.data.sonGonderiPuanPostId))
+            && robotSeviyeFrom(resource.data) < 6)
+          || (isOwner(userId)
+            && changedOnly(['puan', 'gonderiSayisi', 'sonGonderiPuanPostId', 'robot'])
+            && intChangedBy('puan', -10)
+            && intChangedBy('gonderiSayisi', -1)
+            && gonderiSilPostIdOk()
+            && gonderiSilVilHarcaniyor())
+          || (isOwner(userId)
+            && changedOnly(['gonderiSayisi', 'sonGonderiPuanPostId', 'robot'])
+            && intChangedBy('gonderiSayisi', -1)
+            && gonderiSilPostIdOk()
+            && gonderiSilVilHarcaniyor())
+          || (isOwner(userId)
+            && changedOnly(['puan', 'gonderiSayisi', 'sonGonderiPuanPostId', 'robot'])
+            && intChangedBy('gonderiSayisi', -1)
+            && intField(request.resource.data, 'puan', 0) < intField(resource.data, 'puan', 0)
+            && intField(request.resource.data, 'puan', 0) >= 0
+            && intField(resource.data, 'puan', 0) - intField(request.resource.data, 'puan', 0) <= 10
+            && gonderiSilPostIdOk()
+            && gonderiSilVilHarcaniyor())
           || (isOwner(userId)
             && changedOnly(['puan', 'yorumSayisi', 'sonYorumPuanPostId', 'sonYorumPuanCommentId'])
             && intChangedBy('puan', 3)

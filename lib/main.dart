@@ -1,4 +1,6 @@
 // Oturum durumuna göre giriş veya akış sayfası
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
@@ -10,6 +12,7 @@ import 'firebase_bootstrap.dart';
 import 'kayit_servis.dart';
 import 'login_page.dart';
 import 'theme_controller.dart';
+import 'widgets/maskot_lottie_view.dart';
 
 late final ThemeController themeController;
 
@@ -18,6 +21,9 @@ Future<void> main() async {
   await firebaseGuvenlikBaslat();
   themeController = ThemeController();
   await themeController.load();
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    unawaited(MascotLottieView.tumAnimasyonlariOnbellegeAl());
+  });
   runApp(const VibeLifeApp());
 }
 
