@@ -1,6 +1,6 @@
 rules_version = '2';
 
-// Vibe Life — Firestore güvenlik kuralları
+// MyVibel — Firestore güvenlik kuralları
 // Koleksiyonlar: usernames, users (+ alt koleksiyonlar), posts (+ likes/comments),
 // reports, chats (+ messages)
 
@@ -22,6 +22,31 @@ service cloud.firestore {
     function isModerator() {
       return isSignedIn()
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isModerator == true;
+    }
+
+    /// E-posta doğrulanmış veya Google/Apple bağlı hesap
+    /// (şifreyle girişte sign_in_provider=password olsa bile identities'te OAuth kalır).
+    function emailVerified() {
+      return isSignedIn() && (
+        request.auth.token.email_verified == true
+        || request.auth.token.firebase.sign_in_provider == 'google.com'
+        || request.auth.token.firebase.sign_in_provider == 'apple.com'
+        || ('google.com' in request.auth.token.firebase.identities)
+        || ('apple.com' in request.auth.token.firebase.identities)
+      );
+    }
+
+    /// Karşılıklı engel yok (gönderenin blocked / blockedBy görünümü).
+    function notBlockedPair(otherUid) {
+      return otherUid is string
+        && otherUid.size() > 0
+        && otherUid != request.auth.uid
+        && !exists(/databases/$(database)/documents/users/$(request.auth.uid)/blocked/$(otherUid))
+        && !exists(/databases/$(database)/documents/users/$(request.auth.uid)/blockedBy/$(otherUid));
+    }
+
+    function chatOtherParticipant(parts) {
+      return parts[0] == request.auth.uid ? parts[1] : parts[0];
     }
 
     // -------------------------------------------------------------------------
@@ -60,9 +85,182 @@ service cloud.firestore {
         : 0;
     }
 
+    function robotToklukFrom(data) {
+      return data.robot is map && data.robot.tokluk is number
+        ? data.robot.tokluk
+        : 0;
+    }
+
     function robotEtkilesimPuaniChangedBy(delta) {
       return robotEtkilesimPuaniFrom(request.resource.data)
-        == robotEtkilesimPuaniFrom(resource.data) + delta;
+          == robotEtkilesimPuaniFrom(resource.data) + delta;
+    }
+
+    function robotGelisimFrom(data) {
+      return data.robot is map && data.robot.gelisimPuani is number
+        ? data.robot.gelisimPuani
+        : 0;
+    }
+
+    // Vil yalnızca kanıtlı sosyal işlemde artsın.
+    function sosyalRobotOdulAlanlariOk(keys) {
+      return keys.hasOnly([
+        'etkilesimPuani',
+        'gelisimPuani',
+        'seviye',
+        'kazanilanSeviyeOdulleri',
+        'tokluk',
+        'enerji',
+        'mutluluk',
+        'isim',
+        'renk',
+        'sonUygulamaMs',
+        'sonEtkilesimMs',
+        'sonMutlulukTickMs',
+        'sonToklukPozitifMs',
+        'sonEnerjiDususMs',
+        'sonToklukTickMs',
+        'sonAktiviteMs',
+        'sonBakim',
+        'uykuBitisMs',
+        'uykuBaslangicMs',
+        'uykuBaslangicEnerji'
+      ]);
+    }
+
+    function sosyalVilKazaniyor(miktar) {
+      return resource.data.robot is map
+        && request.resource.data.robot is map
+        && robotSeviyeFrom(resource.data) >= 6
+        && robotSeviyeFrom(request.resource.data) == robotSeviyeFrom(resource.data)
+        && sosyalRobotOdulAlanlariOk(
+          request.resource.data.robot.diff(resource.data.robot).affectedKeys()
+        )
+        && robotEtkilesimPuaniChangedBy(miktar)
+        && miktar > 0
+        && robotGelisimFrom(request.resource.data)
+            == robotGelisimFrom(resource.data);
+    }
+
+    // Seviye 1–5: aynı işlemde gelişim (vil değil).
+    function sosyalGelisimKazaniyor(miktar) {
+      let eskiSeviye = robotSeviyeFrom(resource.data);
+      let yeniSeviye = robotSeviyeFrom(request.resource.data);
+      return resource.data.robot is map
+        && request.resource.data.robot is map
+        && eskiSeviye < 6
+        && robotEtkilesimPuaniFrom(request.resource.data)
+            == robotEtkilesimPuaniFrom(resource.data)
+        && yeniSeviye >= eskiSeviye
+        && yeniSeviye <= 6
+        && yeniSeviye <= eskiSeviye + 1
+        && sosyalRobotOdulAlanlariOk(
+          request.resource.data.robot.diff(resource.data.robot).affectedKeys()
+        )
+        && (
+          (yeniSeviye == eskiSeviye
+            && robotGelisimFrom(request.resource.data)
+                == robotGelisimFrom(resource.data) + miktar)
+          || yeniSeviye == eskiSeviye + 1
+        );
+    }
+
+    function sosyalMaskotOdulOk(miktar) {
+      return sosyalVilKazaniyor(miktar) || sosyalGelisimKazaniyor(miktar);
+    }
+
+    // Yalnızca robot alanında sosyal ödül (gönderi/beğeni sonrası ayrı yazım).
+    function ownerSosyalMaskotOdulYazOk() {
+      return resource.data.robot is map
+        && request.resource.data.robot is map
+        && changedOnly(['robot'])
+        && (
+          sosyalMaskotOdulOk(2)
+          || sosyalMaskotOdulOk(3)
+          || sosyalMaskotOdulOk(5)
+          || sosyalMaskotOdulOk(10)
+        );
+    }
+
+    // Profil / yemek / uyku: vil artmasın, seviye zıplamasın, tokluk +20 tavan.
+    function ownerRobotBakimOk() {
+      return resource.data.robot is map
+        && request.resource.data.robot is map
+        && changedOnly(['robot'])
+        && robotEtkilesimPuaniFrom(request.resource.data)
+            <= robotEtkilesimPuaniFrom(resource.data)
+        && robotSeviyeFrom(request.resource.data)
+            <= robotSeviyeFrom(resource.data) + 1
+        && robotToklukFrom(request.resource.data) <= 100
+        && (
+          robotToklukFrom(request.resource.data)
+              <= robotToklukFrom(resource.data) + 20
+          || ownerVilHarcamaliYemekOk()
+        )
+        && (!('isim' in request.resource.data.robot)
+            || !(request.resource.data.robot.isim is string)
+            || request.resource.data.robot.isim.size() <= 24);
+    }
+
+    // Vibel ismi / rengi: seviye ve vil sabit kalsın (iç alan diff'ine güvenme).
+    function ownerRobotGorunumOk() {
+      return resource.data.robot is map
+        && request.resource.data.robot is map
+        && changedOnly(['robot'])
+        && robotSeviyeFrom(request.resource.data)
+            == robotSeviyeFrom(resource.data)
+        && robotEtkilesimPuaniFrom(request.resource.data)
+            == robotEtkilesimPuaniFrom(resource.data)
+        && robotGelisimFrom(request.resource.data)
+            == robotGelisimFrom(resource.data)
+        && robotToklukFrom(request.resource.data)
+            <= robotToklukFrom(resource.data)
+        && (!('isim' in request.resource.data.robot)
+            || !(request.resource.data.robot.isim is string)
+            || request.resource.data.robot.isim.size() <= 24)
+        && (!('renk' in request.resource.data.robot)
+            || (request.resource.data.robot.renk is string
+                && request.resource.data.robot.renk.size() > 0
+                && request.resource.data.robot.renk.size() <= 32));
+    }
+
+    // 15 vil harcanınca tokluk 0–100 arası serbest (açlık düşüşü + yemek).
+    function ownerVilHarcamaliYemekOk() {
+      return robotSeviyeFrom(resource.data) >= 6
+        && robotEtkilesimPuaniFrom(resource.data)
+            - robotEtkilesimPuaniFrom(request.resource.data) == 15
+        && robotEtkilesimPuaniFrom(request.resource.data) >= 0
+        && robotToklukFrom(request.resource.data) >= 0
+        && robotToklukFrom(request.resource.data) <= 100;
+    }
+
+    // Sadece robot değişsin; vil artmasın. hasOnly bazen fazla alan görüyor.
+    function ownerRobotYemekYazOk() {
+      return resource.data.robot is map
+        && request.resource.data.robot is map
+        && robotSeviyeFrom(resource.data) >= 6
+        && robotSeviyeFrom(request.resource.data)
+            <= robotSeviyeFrom(resource.data) + 1
+        && robotToklukFrom(request.resource.data) >= 0
+        && robotToklukFrom(request.resource.data) <= 100
+        && robotEtkilesimPuaniFrom(request.resource.data) >= 0
+        && robotEtkilesimPuaniFrom(request.resource.data)
+            <= robotEtkilesimPuaniFrom(resource.data)
+        && !request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny([
+              'puan',
+              'isModerator',
+              'kullaniciAdi',
+              'adSoyad',
+              'uid',
+              'email',
+              'hesapGizli',
+              'aramaSkoru',
+              'raporNedeniyleGizli',
+              'gonderiSayisi',
+              'begeniSayisi',
+              'yorumSayisi'
+            ]);
     }
 
     function gonderiSilPostIdOk() {
@@ -73,11 +271,69 @@ service cloud.firestore {
         && !existsAfter(/databases/$(database)/documents/posts/$(postId));
     }
 
-    function gonderiSilVilHarcaniyor() {
+    function sosyalVilHarcaniyor(miktar) {
       return robotSeviyeFrom(resource.data) >= 6
-        && robotEtkilesimPuaniFrom(resource.data) >= 5
-        && robotEtkilesimPuaniChangedBy(-5)
-        && request.resource.data.robot.seviye == resource.data.robot.seviye;
+        && robotEtkilesimPuaniFrom(resource.data) >= miktar
+        && robotEtkilesimPuaniChangedBy(-miktar)
+        && request.resource.data.robot.seviye == resource.data.robot.seviye
+        && request.resource.data.robot.diff(resource.data.robot)
+            .affectedKeys().hasOnly(['etkilesimPuani']);
+    }
+
+    function gonderiSilVilHarcaniyor() {
+      return sosyalVilHarcaniyor(3);
+    }
+
+    function arkadasMaskotYemekOk(userId) {
+      let ust = request.resource.data.diff(resource.data).affectedKeys();
+      return isSignedIn()
+        && request.auth.uid != userId
+        && (karsilikliTakipOk(request.auth.uid, userId)
+          || exists(/databases/$(database)/documents/users/$(userId)/retyBaglari/$(request.auth.uid)))
+        && request.resource.data.robot is map
+        && !ust.hasAny([
+          'puan',
+          'isModerator',
+          'kullaniciAdi',
+          'adSoyad',
+          'uid',
+          'email',
+          'hesapGizli',
+          'aramaSkoru',
+          'raporNedeniyleGizli'
+        ])
+        && robotToklukFrom(request.resource.data) <= 100
+        && robotToklukFrom(request.resource.data)
+            <= robotToklukFrom(resource.data) + 20
+        && robotToklukFrom(request.resource.data)
+            >= robotToklukFrom(resource.data);
+    }
+
+    function yorumSilOdulGeriAlOk(userId) {
+      let postId = request.resource.data.sonYorumPuanPostId;
+      let commentId = request.resource.data.sonYorumPuanCommentId;
+      return postId is string
+        && postId.size() > 0
+        && commentId is string
+        && commentId.size() > 0
+        && exists(/databases/$(database)/documents/posts/$(postId)/comments/$(commentId))
+        && !existsAfter(/databases/$(database)/documents/posts/$(postId)/comments/$(commentId))
+        && get(/databases/$(database)/documents/posts/$(postId)/comments/$(commentId)).data.userId == userId
+        && get(/databases/$(database)/documents/posts/$(postId)).data.userId != userId;
+    }
+
+    function takipGeriAlOdulOk(userId) {
+      let hedef = request.resource.data.sonTakipOdulUid;
+      let odulYol = /databases/$(database)/documents/users/$(userId)/followRewarded/$(hedef);
+      return hedef is string
+        && hedef.size() > 0
+        && exists(odulYol)
+        && existsAfter(odulYol)
+        && get(odulYol).data.puanVerildi == true
+        && get(odulYol).data.vilGeriAlindi != true
+        && getAfter(odulYol).data.vilGeriAlindi == true
+        && exists(/databases/$(database)/documents/users/$(userId)/following/$(hedef))
+        && !existsAfter(/databases/$(database)/documents/users/$(userId)/following/$(hedef));
     }
 
     // -------------------------------------------------------------------------
@@ -90,6 +346,35 @@ service cloud.firestore {
 
     function isFollowing(followerUid, targetUid) {
       return exists(/databases/$(database)/documents/users/$(followerUid)/following/$(targetUid));
+    }
+
+    function karsilikliTakipOk(uidA, uidB) {
+      return (isFollowing(uidA, uidB) || isFollower(uidB, uidA))
+        && (isFollowing(uidB, uidA) || isFollower(uidA, uidB));
+    }
+
+    function retyBagYazOk() {
+      return request.resource.data.keys()
+        .hasOnly(['benimMs', 'onunMs', 'ilkMs', 'takipKesildiMs']);
+    }
+
+    // Takipten çıkınca 3 günlük silme süresini yaz/iptal et.
+    function retyBagTakipKesmeOk(ownerUid, bagOtherUid) {
+      return isSignedIn()
+        && (isOwner(ownerUid) || request.auth.uid == bagOtherUid)
+        && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['takipKesildiMs'])
+        && (
+          !('takipKesildiMs' in request.resource.data)
+          || (
+            request.resource.data.takipKesildiMs is int
+            && request.resource.data.takipKesildiMs > 0
+            && (
+              !('takipKesildiMs' in resource.data)
+              || request.resource.data.takipKesildiMs == resource.data.takipKesildiMs
+            )
+          )
+        );
     }
 
     function userIsPrivate(uid) {
@@ -150,7 +435,8 @@ service cloud.firestore {
     // -------------------------------------------------------------------------
 
     function userCreateOk() {
-      return request.resource.data.uid == request.auth.uid
+      return emailVerified()
+        && request.resource.data.uid == request.auth.uid
         && request.resource.data.puan == 0
         && request.resource.data.gonderiSayisi == 0
         && request.resource.data.begeniSayisi == 0
@@ -158,6 +444,8 @@ service cloud.firestore {
         && request.resource.data.hesapGizli == false
         && request.resource.data.aramaSkoru == 0
         && !('isModerator' in request.resource.data)
+        && !('email' in request.resource.data)
+        && !('dogumTarihi' in request.resource.data)
         && request.resource.data.kullaniciAdi is string
         && request.resource.data.kullaniciAdi.size() >= 3
         && request.resource.data.kullaniciAdi.size() <= 30
@@ -173,12 +461,16 @@ service cloud.firestore {
           'kullaniciAdiKucuk',
           'photoUrl',
           'avatarKey',
-          'email',
           'hesapGizli',
-          'robot'
+          // Eski kayıtlardan PII temizliği (FieldValue.delete)
+          'email',
+          'dogumTarihi'
         ])
+        // Public belgeye yeni e-posta / doğum tarihi eklenemez; silinebilir.
+        && (!('email' in request.resource.data) || ('email' in resource.data))
+        && (!('dogumTarihi' in request.resource.data) || ('dogumTarihi' in resource.data))
         && !request.resource.data.diff(resource.data).affectedKeys()
-            .hasAny(['isModerator', 'raporNedeniyleGizli', 'aramaSkoru', 'uid']);
+            .hasAny(['isModerator', 'raporNedeniyleGizli', 'aramaSkoru', 'uid', 'puan', 'robot']);
     }
 
     function haftalikGorevUpdateOk() {
@@ -216,6 +508,15 @@ service cloud.firestore {
           || (isOwner(userId)
             && changedOnly(['begeniSayisi', 'sonBegeniPuanPostId'])
             && intChangedBy('begeniSayisi', -1))
+          || (isOwner(userId)
+            && changedOnly(['puan', 'begeniSayisi', 'sonBegeniPuanPostId', 'robot'])
+            && intChangedBy('puan', -2)
+            && intChangedBy('begeniSayisi', -1)
+            && sosyalVilHarcaniyor(2))
+          || (isOwner(userId)
+            && changedOnly(['begeniSayisi', 'sonBegeniPuanPostId', 'robot'])
+            && intChangedBy('begeniSayisi', -1)
+            && sosyalVilHarcaniyor(2))
         );
     }
 
@@ -230,6 +531,15 @@ service cloud.firestore {
             && request.resource.data.sonGonderiPuanPostId.size() > 0
             && !exists(/databases/$(database)/documents/posts/$(request.resource.data.sonGonderiPuanPostId))
             && getAfter(/databases/$(database)/documents/posts/$(request.resource.data.sonGonderiPuanPostId)).data.userId == userId)
+          || (isOwner(userId)
+            && changedOnly(['puan', 'gonderiSayisi', 'sonGonderiPuanPostId', 'robot'])
+            && intChangedBy('puan', 10)
+            && intChangedBy('gonderiSayisi', 1)
+            && request.resource.data.sonGonderiPuanPostId is string
+            && request.resource.data.sonGonderiPuanPostId.size() > 0
+            && !exists(/databases/$(database)/documents/posts/$(request.resource.data.sonGonderiPuanPostId))
+            && getAfter(/databases/$(database)/documents/posts/$(request.resource.data.sonGonderiPuanPostId)).data.userId == userId
+            && sosyalMaskotOdulOk(10))
           || (isOwner(userId)
             && changedOnly(['puan', 'gonderiSayisi', 'sonGonderiPuanPostId'])
             && intChangedBy('puan', -10)
@@ -288,6 +598,17 @@ service cloud.firestore {
             && !exists(/databases/$(database)/documents/posts/$(request.resource.data.sonYorumPuanPostId)/comments/$(request.resource.data.sonYorumPuanCommentId))
             && getAfter(/databases/$(database)/documents/posts/$(request.resource.data.sonYorumPuanPostId)/comments/$(request.resource.data.sonYorumPuanCommentId)).data.userId == userId)
           || (isOwner(userId)
+            && changedOnly(['puan', 'yorumSayisi', 'sonYorumPuanPostId', 'sonYorumPuanCommentId', 'robot'])
+            && intChangedBy('puan', 3)
+            && intChangedBy('yorumSayisi', 1)
+            && request.resource.data.sonYorumPuanPostId is string
+            && request.resource.data.sonYorumPuanPostId.size() > 0
+            && request.resource.data.sonYorumPuanCommentId is string
+            && request.resource.data.sonYorumPuanCommentId.size() > 0
+            && !exists(/databases/$(database)/documents/posts/$(request.resource.data.sonYorumPuanPostId)/comments/$(request.resource.data.sonYorumPuanCommentId))
+            && getAfter(/databases/$(database)/documents/posts/$(request.resource.data.sonYorumPuanPostId)/comments/$(request.resource.data.sonYorumPuanCommentId)).data.userId == userId
+            && sosyalMaskotOdulOk(3))
+          || (isOwner(userId)
             && changedOnly(['puan', 'begeniSayisi', 'sonBegeniPuanPostId'])
             && intChangedBy('puan', 2)
             && intChangedBy('begeniSayisi', 1)
@@ -297,6 +618,17 @@ service cloud.firestore {
             && existsAfter(/databases/$(database)/documents/users/$(userId)/likedPosts/$(request.resource.data.sonBegeniPuanPostId))
             && !exists(/databases/$(database)/documents/posts/$(request.resource.data.sonBegeniPuanPostId)/likes/$(userId))
             && existsAfter(/databases/$(database)/documents/posts/$(request.resource.data.sonBegeniPuanPostId)/likes/$(userId)))
+          || (isOwner(userId)
+            && changedOnly(['puan', 'begeniSayisi', 'sonBegeniPuanPostId', 'robot'])
+            && intChangedBy('puan', 2)
+            && intChangedBy('begeniSayisi', 1)
+            && request.resource.data.sonBegeniPuanPostId is string
+            && request.resource.data.sonBegeniPuanPostId.size() > 0
+            && !exists(/databases/$(database)/documents/users/$(userId)/likedPosts/$(request.resource.data.sonBegeniPuanPostId))
+            && existsAfter(/databases/$(database)/documents/users/$(userId)/likedPosts/$(request.resource.data.sonBegeniPuanPostId))
+            && !exists(/databases/$(database)/documents/posts/$(request.resource.data.sonBegeniPuanPostId)/likes/$(userId))
+            && existsAfter(/databases/$(database)/documents/posts/$(request.resource.data.sonBegeniPuanPostId)/likes/$(userId))
+            && sosyalMaskotOdulOk(2))
           || (isOwner(userId)
             && changedOnly(['puan', 'begeniSayisi', 'sonBegeniPuanPostId'])
             && intChangedBy('puan', -2)
@@ -308,6 +640,17 @@ service cloud.firestore {
             && exists(/databases/$(database)/documents/posts/$(request.resource.data.sonBegeniPuanPostId)/likes/$(userId))
             && !existsAfter(/databases/$(database)/documents/posts/$(request.resource.data.sonBegeniPuanPostId)/likes/$(userId)))
           || (isOwner(userId)
+            && changedOnly(['puan', 'begeniSayisi', 'sonBegeniPuanPostId', 'robot'])
+            && intChangedBy('puan', -2)
+            && intChangedBy('begeniSayisi', -1)
+            && request.resource.data.sonBegeniPuanPostId is string
+            && request.resource.data.sonBegeniPuanPostId.size() > 0
+            && exists(/databases/$(database)/documents/users/$(userId)/likedPosts/$(request.resource.data.sonBegeniPuanPostId))
+            && !existsAfter(/databases/$(database)/documents/users/$(userId)/likedPosts/$(request.resource.data.sonBegeniPuanPostId))
+            && exists(/databases/$(database)/documents/posts/$(request.resource.data.sonBegeniPuanPostId)/likes/$(userId))
+            && !existsAfter(/databases/$(database)/documents/posts/$(request.resource.data.sonBegeniPuanPostId)/likes/$(userId))
+            && sosyalVilHarcaniyor(2))
+          || (isOwner(userId)
             && changedOnly(['begeniSayisi', 'sonBegeniPuanPostId'])
             && intChangedBy('begeniSayisi', -1)
             && request.resource.data.sonBegeniPuanPostId is string
@@ -317,12 +660,42 @@ service cloud.firestore {
             && exists(/databases/$(database)/documents/posts/$(request.resource.data.sonBegeniPuanPostId)/likes/$(userId))
             && !existsAfter(/databases/$(database)/documents/posts/$(request.resource.data.sonBegeniPuanPostId)/likes/$(userId)))
           || (isOwner(userId)
+            && changedOnly(['puan', 'yorumSayisi', 'sonYorumPuanPostId', 'sonYorumPuanCommentId'])
+            && intChangedBy('puan', -3)
+            && intChangedBy('yorumSayisi', -1)
+            && yorumSilOdulGeriAlOk(userId)
+            && robotSeviyeFrom(resource.data) < 6)
+          || (isOwner(userId)
+            && changedOnly(['yorumSayisi', 'sonYorumPuanPostId', 'sonYorumPuanCommentId'])
+            && intChangedBy('yorumSayisi', -1)
+            && yorumSilOdulGeriAlOk(userId)
+            && robotSeviyeFrom(resource.data) < 6)
+          || (isOwner(userId)
+            && changedOnly(['puan', 'yorumSayisi', 'sonYorumPuanPostId', 'sonYorumPuanCommentId', 'robot'])
+            && intChangedBy('puan', -3)
+            && intChangedBy('yorumSayisi', -1)
+            && yorumSilOdulGeriAlOk(userId)
+            && sosyalVilHarcaniyor(2))
+          || (isOwner(userId)
+            && changedOnly(['yorumSayisi', 'sonYorumPuanPostId', 'sonYorumPuanCommentId', 'robot'])
+            && intChangedBy('yorumSayisi', -1)
+            && yorumSilOdulGeriAlOk(userId)
+            && sosyalVilHarcaniyor(2))
+          || (isOwner(userId)
             && changedOnly(['puan', 'sonTakipOdulUid'])
             && intChangedBy('puan', 5)
             && request.resource.data.sonTakipOdulUid is string
             && request.resource.data.sonTakipOdulUid.size() > 0
             && !exists(/databases/$(database)/documents/users/$(userId)/followRewarded/$(request.resource.data.sonTakipOdulUid))
             && existsAfter(/databases/$(database)/documents/users/$(userId)/followRewarded/$(request.resource.data.sonTakipOdulUid)))
+          || (isOwner(userId)
+            && changedOnly(['puan', 'sonTakipOdulUid', 'robot'])
+            && intChangedBy('puan', 5)
+            && request.resource.data.sonTakipOdulUid is string
+            && request.resource.data.sonTakipOdulUid.size() > 0
+            && !exists(/databases/$(database)/documents/users/$(userId)/followRewarded/$(request.resource.data.sonTakipOdulUid))
+            && existsAfter(/databases/$(database)/documents/users/$(userId)/followRewarded/$(request.resource.data.sonTakipOdulUid))
+            && sosyalMaskotOdulOk(5))
           || (isOwner(userId)
             && changedOnly(['puan', 'sonTakipOdulUid'])
             && intChangedBy('puan', 5)
@@ -332,8 +705,42 @@ service cloud.firestore {
             && get(/databases/$(database)/documents/users/$(userId)/followRewarded/$(request.resource.data.sonTakipOdulUid)).data.puanVerildi == false
             && getAfter(/databases/$(database)/documents/users/$(userId)/followRewarded/$(request.resource.data.sonTakipOdulUid)).data.puanVerildi == true)
           || (isOwner(userId)
+            && changedOnly(['puan', 'sonTakipOdulUid', 'robot'])
+            && intChangedBy('puan', 5)
+            && request.resource.data.sonTakipOdulUid is string
+            && request.resource.data.sonTakipOdulUid.size() > 0
+            && exists(/databases/$(database)/documents/users/$(userId)/followRewarded/$(request.resource.data.sonTakipOdulUid))
+            && get(/databases/$(database)/documents/users/$(userId)/followRewarded/$(request.resource.data.sonTakipOdulUid)).data.puanVerildi == false
+            && getAfter(/databases/$(database)/documents/users/$(userId)/followRewarded/$(request.resource.data.sonTakipOdulUid)).data.puanVerildi == true
+            && sosyalMaskotOdulOk(5))
+          || (isOwner(userId)
+            && changedOnly(['puan', 'sonTakipOdulUid'])
+            && intChangedBy('puan', -5)
+            && takipGeriAlOdulOk(userId)
+            && robotSeviyeFrom(resource.data) < 6)
+          || (isOwner(userId)
+            && changedOnly(['puan'])
+            && intChangedBy('puan', -5)
+            && takipGeriAlOdulOk(userId)
+            && robotSeviyeFrom(resource.data) < 6)
+          || (isOwner(userId)
+            && changedOnly(['puan', 'sonTakipOdulUid', 'robot'])
+            && intChangedBy('puan', -5)
+            && takipGeriAlOdulOk(userId)
+            && sosyalVilHarcaniyor(3))
+          || (isOwner(userId)
             && changedOnly(['puan', 'robot'])
-            && intChangedBy('puan', -20))
+            && intChangedBy('puan', -5)
+            && takipGeriAlOdulOk(userId)
+            && sosyalVilHarcaniyor(3))
+          || (isOwner(userId)
+            && changedOnly(['sonTakipOdulUid', 'robot'])
+            && takipGeriAlOdulOk(userId)
+            && sosyalVilHarcaniyor(3))
+          || (isOwner(userId)
+            && changedOnly(['robot'])
+            && takipGeriAlOdulOk(userId)
+            && sosyalVilHarcaniyor(3))
           || ownerBegeniUnlikeSyncOk(userId)
         );
     }
@@ -357,7 +764,8 @@ service cloud.firestore {
     }
 
     function postCreateOk() {
-      return request.resource.data.userId == request.auth.uid
+      return emailVerified()
+        && request.resource.data.userId == request.auth.uid
         && request.resource.data.begeniSayisi == 0
         && request.resource.data.yorumSayisi == 0
         && request.resource.data.skor == 0
@@ -474,6 +882,56 @@ service cloud.firestore {
         && getAfter(/databases/$(database)/documents/posts/$(postId)/comments/$(commentId)).data.userId == request.auth.uid;
     }
 
+    function postSelfCommentDecrementOk(postId) {
+      let commentId = request.resource.data.sonYorumId;
+      return resource.data.userId == request.auth.uid
+        && changedOnly(['yorumSayisi', 'sonYorumId'])
+        && commentId is string
+        && commentId.size() > 0
+        && intChangedBy('yorumSayisi', -1)
+        && exists(/databases/$(database)/documents/posts/$(postId)/comments/$(commentId))
+        && !existsAfter(/databases/$(database)/documents/posts/$(postId)/comments/$(commentId))
+        && get(/databases/$(database)/documents/posts/$(postId)/comments/$(commentId)).data.userId == request.auth.uid;
+    }
+
+    function postOwnerCommentRemoveOk(postId) {
+      let commentId = request.resource.data.sonYorumId;
+      return resource.data.userId == request.auth.uid
+        && commentId is string
+        && commentId.size() > 0
+        && exists(/databases/$(database)/documents/posts/$(postId)/comments/$(commentId))
+        && !existsAfter(/databases/$(database)/documents/posts/$(postId)/comments/$(commentId))
+        && get(/databases/$(database)/documents/posts/$(postId)/comments/$(commentId)).data.userId != request.auth.uid
+        && changedOnly(['yorumSayisi', 'skor', 'sonYorumId'])
+        && intChangedBy('yorumSayisi', -1)
+        && intChangedBy('skor', -5);
+    }
+
+    function postCommentThreadRemoveOk(postId) {
+      let commentId = request.resource.data.sonYorumId;
+      let n = intField(resource.data, 'yorumSayisi', 0)
+          - intField(request.resource.data, 'yorumSayisi', 0);
+      let skorDusus = intField(resource.data, 'skor', 0)
+          - intField(request.resource.data, 'skor', 0);
+      return commentId is string
+        && commentId.size() > 0
+        && n >= 1
+        && n <= 40
+        && skorDusus >= 0
+        && skorDusus <= n * 5
+        && skorDusus % 5 == 0
+        && exists(/databases/$(database)/documents/posts/$(postId)/comments/$(commentId))
+        && !existsAfter(/databases/$(database)/documents/posts/$(postId)/comments/$(commentId))
+        && (
+          get(/databases/$(database)/documents/posts/$(postId)/comments/$(commentId)).data.userId == request.auth.uid
+          || resource.data.userId == request.auth.uid
+        )
+        && (
+          (skorDusus == 0 && changedOnly(['yorumSayisi', 'sonYorumId']))
+          || (skorDusus > 0 && changedOnly(['yorumSayisi', 'skor', 'sonYorumId']))
+        );
+    }
+
     function postCounterUpdateOk(postId) {
       return postLikeIncrementOk(postId)
         || postLikeDecrementOk(postId)
@@ -481,7 +939,10 @@ service cloud.firestore {
         || postSelfLikeDecrementOk(postId)
         || postCommentIncrementOk(postId)
         || postCommentDecrementOk(postId)
-        || postSelfCommentIncrementOk(postId);
+        || postSelfCommentIncrementOk(postId)
+        || postSelfCommentDecrementOk(postId)
+        || postOwnerCommentRemoveOk(postId)
+        || postCommentThreadRemoveOk(postId);
     }
 
     function postReportUpdateOk(postId) {
@@ -517,30 +978,87 @@ service cloud.firestore {
     // Bildirim / rapor doğrulama
     // -------------------------------------------------------------------------
 
-    function notificationCreateOk() {
+    function notificationCreateOk(userId) {
       return request.resource.data.gonderenUid == request.auth.uid
+        && userId != request.auth.uid
+        && notBlockedPair(userId)
         && request.resource.data.tip in [
           'follow',
           'follow_request',
           'follow_accepted',
           'like',
           'comment',
+          'comment_reply',
           'message',
-          'mention'
+          'mention',
+          'maskot_yemek'
         ]
         && request.resource.data.okundu == false
         && request.resource.data.gonderenKullaniciAdi is string
         && request.resource.data.metin is string
-        && request.resource.data.metin.size() <= 300;
+        && request.resource.data.metin.size() <= 300
+        && notificationTipKanitiOk(userId);
+    }
+
+    function notificationTipKanitiOk(userId) {
+      let tip = request.resource.data.tip;
+      let postId = request.resource.data.get('postId', '');
+      let chatId = request.resource.data.get('chatId', '');
+      return (tip == 'follow'
+          && exists(/databases/$(database)/documents/users/$(userId)/followers/$(request.auth.uid)))
+        || (tip == 'follow_request'
+          && exists(/databases/$(database)/documents/users/$(userId)/followRequests/$(request.auth.uid)))
+        || (tip == 'follow_accepted'
+          && exists(/databases/$(database)/documents/users/$(request.auth.uid)/followers/$(userId)))
+        || (tip == 'like'
+          && postId is string
+          && postId.size() > 0
+          && exists(/databases/$(database)/documents/posts/$(postId)/likes/$(request.auth.uid))
+          && get(/databases/$(database)/documents/posts/$(postId)).data.userId == userId)
+        || ((tip == 'comment' || tip == 'comment_reply' || tip == 'mention')
+          && postId is string
+          && postId.size() > 0
+          && exists(/databases/$(database)/documents/posts/$(postId)))
+        || (tip == 'message'
+          && chatId is string
+          && chatId.size() > 0
+          && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants
+          && userId in get(/databases/$(database)/documents/chats/$(chatId)).data.participants)
+        || (tip == 'maskot_yemek'
+          && (karsilikliTakipOk(request.auth.uid, userId)
+            || exists(/databases/$(database)/documents/users/$(userId)/retyBaglari/$(request.auth.uid))));
+    }
+
+    function hesapSilmeGeriBildirimOk() {
+      return request.resource.data.uid == request.auth.uid
+        && request.resource.data.neden is string
+        && request.resource.data.neden.size() >= 2
+        && request.resource.data.neden.size() <= 80
+        && request.resource.data.digerMetin is string
+        && request.resource.data.digerMetin.size() <= 400
+        && request.resource.data.sorunMetin is string
+        && request.resource.data.sorunMetin.size() <= 1000;
     }
 
     function reportCreateOk() {
-      return request.resource.data.reporterUid == request.auth.uid
+      return emailVerified()
+        && request.resource.data.reporterUid == request.auth.uid
         && request.resource.data.status == 'pending'
         && request.resource.data.type in ['post', 'comment', 'user']
         && request.resource.data.reason is string
         && request.resource.data.reason.size() >= 3
         && request.resource.data.reason.size() <= 120;
+    }
+
+    function reportUpdateOk() {
+      return request.resource.data.reporterUid == resource.data.reporterUid
+        && request.resource.data.type == resource.data.type
+        && request.resource.data.reason == resource.data.reason
+        && request.resource.data.status in [
+          'pending', 'reviewed', 'action_taken', 'rejected'
+        ]
+        && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['status', 'reviewedAt', 'reviewedBy']);
     }
 
     function supportTicketUpdateOk() {
@@ -558,7 +1076,8 @@ service cloud.firestore {
     }
 
     function supportTicketCreateOk() {
-      return request.resource.data.userId == request.auth.uid
+      return emailVerified()
+        && request.resource.data.userId == request.auth.uid
         && request.resource.data.status == 'pending'
         && request.resource.data.kategori in ['hesap', 'hata', 'kvkk', 'oneri', 'diger']
         && request.resource.data.konu is string
@@ -590,9 +1109,14 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly([
           'targetUid',
           'createdAt',
-          'puanVerildi'
+          'puanVerildi',
+          'vilGeriAlindi'
         ])
-        && request.resource.data.puanVerildi is bool;
+        && request.resource.data.puanVerildi is bool
+        && (
+          !('vilGeriAlindi' in request.resource.data)
+          || request.resource.data.vilGeriAlindi == false
+        );
     }
 
     function followRewardedCreateOk(userId, targetId) {
@@ -659,6 +1183,20 @@ service cloud.firestore {
         && request.resource.data.email is string;
     }
 
+    // Rezervasyon süresi dolmuşsa (veya expiresAt yoksa) başkası devralabilir.
+    function usernameHoldDevralinabilir(data) {
+      return !('expiresAt' in data)
+        || !(data.expiresAt is timestamp)
+        || data.expiresAt < request.time;
+    }
+
+    function usernameHoldBaskasindaAktif(username) {
+      let yol = /databases/$(database)/documents/usernameHolds/$(username);
+      return exists(yol)
+        && get(yol).data.uid != request.auth.uid
+        && !usernameHoldDevralinabilir(get(yol).data);
+    }
+
     function usernameHoldOk(username) {
       return request.resource.data.uid == request.auth.uid
         && request.resource.data.kullaniciAdiKucuk == username
@@ -675,10 +1213,27 @@ service cloud.firestore {
     }
 
     match /usernameHolds/{username} {
-      allow read: if isSignedIn();
-      allow create, update: if isSignedIn() && usernameHoldOk(username);
+      // Önemli: belge yokken resource.data erişimi permission-denied verir.
+      // Kayıt transaction'ı önce hold'u okur; yoksa da get izinli olmalı.
+      // Aktif hold (uid/expiresAt) giriş yapan herkese açık — aksi halde
+      // "başkasında mı / süresi doldu mu?" kontrolü yapılamaz.
+      allow get: if isSignedIn();
+      // Temizlik: kendi hold'larını uid ile sorgula.
+      allow list: if isSignedIn() && resource.data.uid == request.auth.uid;
+      allow create: if isSignedIn() && usernameHoldOk(username);
+      // Başkasının aktif rezervasyonu üzerine yazılamaz; süresi dolan devralınabilir
+      allow update: if isSignedIn()
+        && usernameHoldOk(username)
+        && (
+          resource.data.uid == request.auth.uid
+          || usernameHoldDevralinabilir(resource.data)
+        );
       allow delete: if isSignedIn()
-        && (resource.data.uid == request.auth.uid || isModerator());
+        && (
+          !exists(/databases/$(database)/documents/usernameHolds/$(username))
+          || resource.data.uid == request.auth.uid
+          || isModerator()
+        );
     }
 
     // =========================================================================
@@ -686,12 +1241,28 @@ service cloud.firestore {
     // =========================================================================
 
     match /usernames/{username} {
-      allow read: if true;
+      // Girişte oturum yokken kullanıcı adı → e-posta çözümlemesi için get açık.
+      // list kapalı: tüm adları / e-postaları tarama engeli.
+      allow get: if true;
+      allow list: if isSignedIn();
       allow create: if isSignedIn()
+        && emailVerified()
         && request.resource.data.uid == request.auth.uid
+        && request.resource.data.email is string
+        && request.resource.data.email.size() >= 5
+        && request.resource.data.email.size() <= 320
         && username.size() >= 3
-        && username.size() <= 30;
-      allow update, delete: if isSignedIn() && resource.data.uid == request.auth.uid;
+        && username.size() <= 30
+        && !usernameHoldBaskasindaAktif(username);
+      allow update: if isSignedIn()
+        && resource.data.uid == request.auth.uid
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['kullaniciAdi', 'email', 'createdAt']);
+      allow delete: if isSignedIn() && (
+        !exists(/databases/$(database)/documents/usernames/$(username))
+        || resource.data.uid == request.auth.uid
+      );
     }
 
     // =========================================================================
@@ -699,16 +1270,35 @@ service cloud.firestore {
     // =========================================================================
 
     match /users/{userId} {
-      // Keşfet / liderlik listeleri tüm profilleri okur; içerik gizliliği post kurallarında.
-      allow get, list: if isSignedIn();
+      // Tekil profil get: kullanıcı adı ile girişte eski e-posta alanı için oturumsuz okuma.
+      // list hâlâ giriş gerektirir (toplu tarama).
+      allow get: if true;
+      allow list: if isSignedIn();
       allow create: if isOwner(userId) && userCreateOk();
-      allow update: if (isOwner(userId) && ownerUserUpdateOk())
-        || ownerScoreUpdateOk(userId)
+      // Önemli: ownerScoreUpdateOk çok dallı; önce ucuz robot/profil kuralları.
+      // Aksi halde 1000 ifade limiti dolup renk/isim yazımı permission-denied olur.
+      allow update: if (isOwner(userId) && ownerRobotGorunumOk())
+        || (isOwner(userId) && ownerRobotBakimOk())
+        || (isOwner(userId) && ownerSosyalMaskotOdulYazOk())
+        || (isOwner(userId) && changedOnly(['robot']) && ownerVilHarcamaliYemekOk())
+        || (isOwner(userId) && ownerRobotYemekYazOk())
+        || (isOwner(userId) && ownerUserUpdateOk())
         || (isOwner(userId) && haftalikGorevUpdateOk())
+        || arkadasMaskotYemekOk(userId)
+        || ownerScoreUpdateOk(userId)
         || (isModerator()
           && request.resource.data.diff(resource.data).affectedKeys()
               .hasOnly(['raporNedeniyleGizli', 'raporGuncellenmeTarihi']));
       allow delete: if isOwner(userId) || isModerator();
+
+      // account: yalnızca sahip. loginEmail: kullanıcı adı ile giriş (sadece e-posta).
+      match /private/{docId} {
+        allow get: if docId == 'loginEmail'
+          || (isOwner(userId) && docId == 'account');
+        allow list: if false;
+        allow create, update, delete: if isOwner(userId)
+          && (docId == 'account' || docId == 'loginEmail');
+      }
 
       match /following/{targetId} {
         allow read: if canReadSocialGraph(userId)
@@ -718,6 +1308,37 @@ service cloud.firestore {
         allow create: if followingCreateOk(userId, targetId);
         allow update: if followingCreateOk(userId, targetId);
         allow delete: if isOwner(userId) || request.auth.uid == targetId || isModerator();
+      }
+
+      match /retyBaglari/{otherUid} {
+        allow get: if isOwner(userId) || request.auth.uid == otherUid;
+        allow list: if isOwner(userId);
+        allow create: if isSignedIn()
+          && retyBagYazOk()
+          && (
+            isOwner(userId)
+            || (
+              request.auth.uid == otherUid
+              && request.auth.uid != userId
+              && karsilikliTakipOk(request.auth.uid, userId)
+            )
+          );
+        allow update: if isSignedIn()
+          && (
+            (
+              retyBagYazOk()
+              && (
+                isOwner(userId)
+                || (
+                  request.auth.uid == otherUid
+                  && request.auth.uid != userId
+                  && karsilikliTakipOk(request.auth.uid, userId)
+                )
+              )
+            )
+            || retyBagTakipKesmeOk(userId, otherUid)
+          );
+        allow delete: if isOwner(userId) || request.auth.uid == otherUid;
       }
 
       match /followers/{followerId} {
@@ -742,7 +1363,7 @@ service cloud.firestore {
       match /notifications/{notificationId} {
         allow read: if isOwner(userId)
           || (isSignedIn() && resource.data.gonderenUid == request.auth.uid);
-        allow create: if isSignedIn() && notificationCreateOk();
+        allow create: if isSignedIn() && notificationCreateOk(userId);
         allow update: if isOwner(userId)
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['okundu']);
         allow delete: if isOwner(userId)
@@ -763,27 +1384,45 @@ service cloud.firestore {
 
       match /likedPosts/{postId} {
         allow read: if isOwner(userId)
-          || (isSignedIn() && request.auth.uid == resource.data.postOwnerId);
+          || (isSignedIn() && resource.data.postOwnerId == request.auth.uid);
         allow create: if isOwner(userId)
           && request.resource.data.postId == postId
           && existsAfter(/databases/$(database)/documents/posts/$(postId)/likes/$(request.auth.uid))
           && (!('puanAlindi' in request.resource.data)
               || request.resource.data.puanAlindi is bool);
         allow delete: if isOwner(userId);
-        allow update: if false;
+        // Gönderi sahibi avatar/ad senkronu (beğenilenler anlık görüntüsü).
+        allow update: if isSignedIn()
+          && resource.data.postOwnerId == request.auth.uid
+          && request.resource.data.postId == resource.data.postId
+          && request.resource.data.postOwnerId == resource.data.postOwnerId
+          && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['kullaniciAdi', 'avatarKey', 'photoUrl']);
       }
 
       match /followRewarded/{targetId} {
         allow read: if isOwner(userId) || request.auth.uid == targetId;
         allow create: if followRewardedCreateOk(userId, targetId);
-        allow delete: if isOwner(userId);
+        allow delete: if isOwner(userId)
+          && resource.data.puanVerildi != true;
         allow update: if isOwner(userId)
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['puanVerildi'])
-          && request.resource.data.puanVerildi == true
           && request.resource.data.targetUid == resource.data.targetUid
           && (
-            resource.data.puanVerildi == false
-            || !('puanVerildi' in resource.data)
+            (
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly(['puanVerildi'])
+              && request.resource.data.puanVerildi == true
+              && (
+                resource.data.puanVerildi == false
+                || !('puanVerildi' in resource.data)
+              )
+            )
+            || (
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly(['vilGeriAlindi'])
+              && resource.data.puanVerildi == true
+              && resource.data.vilGeriAlindi != true
+              && request.resource.data.vilGeriAlindi == true
+              && request.resource.data.puanVerildi == true
+            )
           );
       }
     }
@@ -797,7 +1436,12 @@ service cloud.firestore {
     // =========================================================================
 
     match /posts/{postId} {
-      allow read: if canReadPostData(resource.data) || begendigiPostMu(postId);
+      // list: exists() içeren OR sorguları bozar (özellikle web).
+      // get: belge yokken resource.data permission-denied vermesin.
+      allow get: if !exists(/databases/$(database)/documents/posts/$(postId))
+        || canReadPostData(resource.data)
+        || begendigiPostMu(postId);
+      allow list: if canReadPostData(resource.data);
       allow create: if isSignedIn() && postCreateOk();
       allow update: if isSignedIn() && (
         (resource.data.userId == request.auth.uid
@@ -811,7 +1455,8 @@ service cloud.firestore {
 
       match /likes/{likeId} {
         allow read: if isSignedIn()
-          && (canReadPost(postId) || likeId == request.auth.uid);
+          && (postOwner(postId) == request.auth.uid
+              || likeId == request.auth.uid);
         allow create: if isSignedIn()
           && canReadPost(postId)
           && request.auth.uid == likeId
@@ -822,7 +1467,9 @@ service cloud.firestore {
       }
 
       match /comments/{commentId} {
-        allow read: if canReadPost(postId) || request.auth.uid == resource.data.userId;
+        allow read: if !exists(/databases/$(database)/documents/posts/$(postId)/comments/$(commentId))
+          || canReadPost(postId)
+          || request.auth.uid == resource.data.userId;
         allow create: if canReadPost(postId)
           && request.resource.data.userId == request.auth.uid
           && request.resource.data.metin is string
@@ -834,13 +1481,32 @@ service cloud.firestore {
               || (request.resource.data.bahsetmeler is list
                   && request.resource.data.bahsetmeler.size() <= 10))
           && (!('mentionUidleri' in request.resource.data)
-              || request.resource.data.mentionUidleri is map);
+              || request.resource.data.mentionUidleri is map)
+          && (!('parentId' in request.resource.data)
+              || (request.resource.data.parentId is string
+                  && request.resource.data.parentId.size() > 0
+                  && request.resource.data.parentId.size() <= 128
+                  && exists(/databases/$(database)/documents/posts/$(postId)/comments/$(request.resource.data.parentId))));
         allow update: if canReadPost(postId) && (
           commentReportUpdateOk(postId, commentId)
           || (isModerator() && moderatorContentUpdateOk())
+          || (
+            resource.data.userId == request.auth.uid
+            && request.resource.data.userId == resource.data.userId
+            && request.resource.data.metin == resource.data.metin
+            && request.resource.data.diff(resource.data).affectedKeys()
+                .hasOnly(['kullaniciAdi', 'avatarKey', 'photoUrl'])
+          )
         );
         allow delete: if resource.data.userId == request.auth.uid
-          || (canReadPost(postId) && postOwner(postId) == request.auth.uid);
+          || (canReadPost(postId) && postOwner(postId) == request.auth.uid)
+          || (
+            'parentId' in resource.data
+            && resource.data.parentId is string
+            && resource.data.parentId.size() > 0
+            && exists(/databases/$(database)/documents/posts/$(postId)/comments/$(resource.data.parentId))
+            && get(/databases/$(database)/documents/posts/$(postId)/comments/$(resource.data.parentId)).data.userId == request.auth.uid
+          );
       }
     }
 
@@ -857,16 +1523,26 @@ service cloud.firestore {
         || (isSignedIn() && resource.data.userId == request.auth.uid);
     }
 
+    match /hesapSilmeGeriBildirimleri/{docId} {
+      allow read: if isModerator();
+      allow create: if isSignedIn() && hesapSilmeGeriBildirimOk();
+      allow update, delete: if isModerator();
+    }
+
     // =========================================================================
     // reports — moderasyon kuyruğu
     // =========================================================================
 
     match /reports/{reportId} {
-      allow read: if isModerator();
-      allow create: if isSignedIn() && reportCreateOk();
-      allow update: if isModerator();
-      allow delete: if isModerator()
+      allow read: if isModerator()
         || (isSignedIn() && resource.data.reporterUid == request.auth.uid);
+      allow create: if isSignedIn() && reportCreateOk();
+      allow update: if isModerator() && reportUpdateOk();
+      // Hedef kullanıcı şikayet kanıtını silemesin.
+      allow delete: if isModerator()
+        || (isSignedIn()
+          && resource.data.reporterUid == request.auth.uid
+          && resource.data.status == 'pending');
     }
 
     // =========================================================================
@@ -874,11 +1550,17 @@ service cloud.firestore {
     // =========================================================================
 
     match /chats/{chatId} {
-      allow read: if isSignedIn()
+      // Belge yokken resource.data permission-denied vermesin (get-then-set).
+      allow get: if isSignedIn() && (
+        !exists(/databases/$(database)/documents/chats/$(chatId))
+        || request.auth.uid in resource.data.participants
+      );
+      allow list: if isSignedIn()
         && request.auth.uid in resource.data.participants;
-      allow create: if isSignedIn()
+      allow create: if emailVerified()
         && request.auth.uid in request.resource.data.participants
-        && request.resource.data.participants.size() == 2;
+        && request.resource.data.participants.size() == 2
+        && notBlockedPair(chatOtherParticipant(request.resource.data.participants));
       allow update: if isSignedIn()
         && request.auth.uid in resource.data.participants
         && request.resource.data.participants == resource.data.participants
@@ -898,11 +1580,14 @@ service cloud.firestore {
       match /messages/{messageId} {
         allow read: if isSignedIn()
           && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
-        allow create: if isSignedIn()
+        allow create: if emailVerified()
           && request.resource.data.senderUid == request.auth.uid
           && request.resource.data.metin is string
           && request.resource.data.metin.size() <= 2000
           && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants
+          && notBlockedPair(chatOtherParticipant(
+            get(/databases/$(database)/documents/chats/$(chatId)).data.participants
+          ))
           && (!('mesajTipi' in request.resource.data)
               || request.resource.data.mesajTipi in ['text', 'post_forward'])
           && (!('postId' in request.resource.data)
@@ -920,7 +1605,7 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys()
               .hasOnly(['deleted', 'metin']);
         allow delete: if isSignedIn()
-          && resource.data.senderUid == request.auth.uid;
+          && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
       }
     }
 
@@ -935,17 +1620,17 @@ service cloud.firestore {
     }
 
     match /{path=**}/followRequests/{requestId} {
-      allow delete: if isSignedIn()
+      allow read, delete: if isSignedIn()
         && resource.data.userId == request.auth.uid;
     }
 
     match /{path=**}/followRewarded/{rewardId} {
-      allow delete: if isSignedIn()
+      allow read, delete: if isSignedIn()
         && resource.data.targetUid == request.auth.uid;
     }
 
     match /{path=**}/notifications/{notificationId} {
-      allow delete: if isSignedIn()
+      allow read, delete: if isSignedIn()
         && resource.data.gonderenUid == request.auth.uid;
     }
   }
