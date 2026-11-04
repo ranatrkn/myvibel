@@ -1,0 +1,23 @@
+---
+description: Maestro mobil test kurallari ve akis standartlari
+globs: maestro/**/*.yaml,lib/**/*.dart
+alwaysApply: false
+---
+
+# Maestro Testing Rules
+
+- Maestro, Android uygulamasini gercek cihaz uzerinde test etmek icin kullanilir.
+- Testlerden once Flutter uygulamasinin Android cihazda calisir durumda oldugundan emin ol.
+- Maestro testleri proje icindeki `maestro/` klasorunde tutulur.
+- Test dosyalari `.yaml` uzantili olmalidir.
+- Testlerde mumkun oldugunca erisilebilir metinler ve stabil UI elementleri kullanilir (`MaestroSemantics` etiketleri).
+- Koordinata dayali tiklamalardan mumkun oldugunca kacinilir.
+- Yeni bir ozellik gelistirildiginde, mumkunse ilgili Maestro testi de olusturulur.
+- Kod degisikliklerinden sonra ilgili Maestro testleri calistirilir.
+- Maestro testi basarisiz olursa once hata analiz edilir, sonra gerekli kod veya test duzeltilir.
+- Test basarisizliginin nedeni anlasilmadan rastgele kod degisiklikleri yapilmaz.
+- Maestro testleri gercek kullanici akislarini dogrular.
+- Testler mumkun oldugunca bagimsiz ve tekrar calistirilabilir olmalidir.
+- Maestro komutlari Windows PowerShell ortaminda calistirilir.
+- Test oncesi tercih edilen akis: `flows/launch.yaml` (`stopApp` + `openLink: myvibel://app`).
+- Alt menu ve kritik butonlar icin `lib/maestro_semantics.dart` etiketlerini kullan.

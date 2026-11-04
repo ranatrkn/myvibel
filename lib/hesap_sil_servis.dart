@@ -1,15 +1,29 @@
 // Hesap silme: Firestore ve Auth verilerini temizler.
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
+
+import 'apple_giris_servis.dart';
+import 'auth_eposta.dart';
+import 'google_giris_servis.dart';
+import 'kayit_servis.dart';
+import 'sosyal_oauth.dart';
 
 // Kullanıcı hesabını ve tüm ilişkili verileri siler
 class HesapSilServis {
-  // Hata olsa bile silme akışını durdurmaz
+  // İlişkili kayıt hatası tüm silmeyi durdurmasın; profil/Auth silinmeli.
   static Future<void> _guvenliCalistir(Future<void> Function() islem) async {
     try {
       await islem();
-    } catch (_) {
-      // Tek kayıt hatası tüm silmeyi durdurmasın.
+    } catch (e, st) {
+      debugPrint('hesap silme adımı atlandı: $e\n$st');
+    }
+  }
+
+  static Future<void> _varsaSil(DocumentReference<Map<String, dynamic>> ref) async {
+    final snap = await ref.get();
+    if (snap.exists) {
+      await ref.delete();
     }
   }
 
@@ -108,42 +122,8 @@ class HesapSilServis {
         );
       }
     } catch (_) {
-      await _yorumlariSilIndexesiz(firestore, uid);
-    }
-  }
-
-  static Future<void> _yorumlariSilIndexesiz(
-    FirebaseFirestore firestore,
-    String uid,
-  ) async {
-    DocumentSnapshot<Map<String, dynamic>>? sonPost;
-
-    while (true) {
-      Query<Map<String, dynamic>> sorgu = firestore
-          .collection("posts")
-          .orderBy(FieldPath.documentId)
-          .limit(100);
-
-      if (sonPost != null) {
-        sorgu = sorgu.startAfterDocument(sonPost);
-      }
-
-      final postlar = await sorgu.get();
-      if (postlar.docs.isEmpty) break;
-      sonPost = postlar.docs.last;
-
-      for (final post in postlar.docs) {
-        final yorumlar = await post.reference
-            .collection("comments")
-            .where("userId", isEqualTo: uid)
-            .get();
-
-        for (final yorum in yorumlar.docs) {
-          await _guvenliCalistir(
-            () => _tekYorumuSil(firestore, yorum.reference),
-          );
-        }
-      }
+      // Index yoksa başkalarının gönderilerindeki yorumlar orphan kalabilir;
+      // kendi gönderilerindeki yorumlar _gonderilerimiSil ile silinir.
     }
   }
 
@@ -175,10 +155,8 @@ class HesapSilServis {
         .get();
 
     for (final sohbet in sohbetler.docs) {
-      await _guvenliCalistir(() async {
-        await _altKoleksiyonuSil(sohbet.reference.collection("messages"));
-        await sohbet.reference.delete();
-      });
+      await _altKoleksiyonuSil(sohbet.reference.collection("messages"));
+      await sohbet.reference.delete();
     }
   }
 
@@ -308,21 +286,57 @@ class HesapSilServis {
     }
   }
 
-  static Future<void> _raporlarimiSil(
+  static Future<void> _raporlariSil(
     FirebaseFirestore firestore,
     String uid,
   ) async {
-    try {
-      final raporlar = await firestore
-          .collection("reports")
-          .where("reporterUid", isEqualTo: uid)
-          .get();
-
-      for (final doc in raporlar.docs) {
-        await _guvenliCalistir(() => doc.reference.delete());
+    Future<void> alanaGoreSil(String alan) async {
+      try {
+        final raporlar = await firestore
+            .collection("reports")
+            .where(alan, isEqualTo: uid)
+            .get();
+        for (final doc in raporlar.docs) {
+          await _guvenliCalistir(() => doc.reference.delete());
+        }
+      } catch (e) {
+        debugPrint('rapor silme ($alan) atlandı: $e');
       }
-    } catch (_) {
-      // index yoksa atla
+    }
+
+    await alanaGoreSil("reporterUid");
+    await alanaGoreSil("targetUid");
+  }
+
+  static Future<void> _retyBaglariniSil(
+    FirebaseFirestore firestore,
+    DocumentReference<Map<String, dynamic>> userRef,
+    String uid,
+  ) async {
+    final baglar = await userRef.collection("retyBaglari").get();
+    for (final doc in baglar.docs) {
+      await _guvenliCalistir(() async {
+        await firestore
+            .collection("users")
+            .doc(doc.id)
+            .collection("retyBaglari")
+            .doc(uid)
+            .delete();
+        await doc.reference.delete();
+      });
+    }
+  }
+
+  static Future<void> _destekTalepleriniSil(
+    FirebaseFirestore firestore,
+    String uid,
+  ) async {
+    final talepler = await firestore
+        .collection("supportTickets")
+        .where("userId", isEqualTo: uid)
+        .get();
+    for (final doc in talepler.docs) {
+      await _guvenliCalistir(() => doc.reference.delete());
     }
   }
 
@@ -338,6 +352,7 @@ class HesapSilServis {
       "blocked",
       "blockedBy",
       "followRewarded",
+      "retyBaglari",
     ];
 
     for (final ad in altKoleksiyonlar) {
@@ -345,50 +360,153 @@ class HesapSilServis {
     }
   }
 
+  /// Kullanıcı adı, hold, pending ve profil belgesi. Profil silinemezse hesap
+  /// Auth'tan da silinmez — aksi halde sahipsiz hayalet profil kalır.
+  static Future<void> _profilKimliginiSil(
+    FirebaseFirestore firestore,
+    DocumentReference<Map<String, dynamic>> userRef,
+    String uid,
+  ) async {
+    final userDoc = await userRef.get();
+    final kullaniciAdiKucuk =
+        userDoc.data()?["kullaniciAdiKucuk"]?.toString() ?? "";
+    if (kullaniciAdiKucuk.isNotEmpty) {
+      await _guvenliCalistir(
+        () => _varsaSil(firestore.collection("usernames").doc(kullaniciAdiKucuk)),
+      );
+      await _guvenliCalistir(
+        () => _varsaSil(
+          firestore.collection("usernameHolds").doc(kullaniciAdiKucuk),
+        ),
+      );
+    }
+    await _guvenliCalistir(
+      () => _varsaSil(firestore.collection("pendingProfiles").doc(uid)),
+    );
+    if (userDoc.exists) {
+      await userRef.delete();
+    }
+  }
+
+  static const silmeNedenleri = [
+    'Uygulamayı yeterince kullanmıyorum',
+    'Vibel bakımı yorucu geldi',
+    'Arkadaşlarımı burada bulamadım',
+    'Bildirimler veya bakımı unutmak canımı sıktı',
+    'Gizlilik endişem var',
+    'Başka bir hesap açacağım',
+    'Diğer...',
+  ];
+
+  static Future<void> silmeGeriBildirimiKaydet({
+    required String neden,
+    required String digerMetin,
+    required String sorunMetin,
+  }) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    await FirebaseFirestore.instance
+        .collection('hesapSilmeGeriBildirimleri')
+        .add({
+      'uid': user.uid,
+      'neden': neden.trim(),
+      'digerMetin': digerMetin.trim(),
+      'sorunMetin': sorunMetin.trim(),
+      'olusturmaMs': DateTime.now().millisecondsSinceEpoch,
+    });
+  }
+
   /// Firestore verilerini ve Auth hesabını siler.
   /// Giriş ekranına yönlendirme [main.dart] içindeki auth dinleyicisiyle olur.
-  static Future<void> hesabiSil(String sifre) async {
+  static Future<void> hesabiSil({
+    String? sifre,
+    bool googleOnayiYapildi = false,
+    bool appleOnayiYapildi = false,
+  }) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       throw Exception("Kullanıcı bulunamadı.");
     }
 
-    final email = user.email;
-    if (email == null || email.isEmpty) {
-      throw Exception("E-posta adresi bulunamadı.");
+    final epostaHesabi = epostaSifreKullanicisiMi(user);
+    final googleHesabi = GoogleGirisServis.googleKullanicisiMi(user);
+    final appleHesabi = AppleGirisServis.appleKullanicisiMi(user);
+
+    if (!epostaHesabi && !googleHesabi && !appleHesabi) {
+      throw Exception("Bu hesap türü silinemiyor.");
     }
 
-    final credential = EmailAuthProvider.credential(
-      email: email,
-      password: sifre,
-    );
+    if (epostaHesabi) {
+      final email = FirebaseAuth.instance.currentUser?.email;
+      if (email == null || email.isEmpty) {
+        throw Exception("E-posta adresi bulunamadı.");
+      }
+      if (sifre == null || sifre.trim().isEmpty) {
+        throw Exception("Şifre boş olamaz.");
+      }
+      await FirebaseAuth.instance.currentUser!.reauthenticateWithCredential(
+        EmailAuthProvider.credential(email: email, password: sifre.trim()),
+      );
+    } else if (googleHesabi && !googleOnayiYapildi) {
+      await GoogleGirisServis.yenidenDogrula();
+    } else if (appleHesabi && !appleOnayiYapildi) {
+      await AppleGirisServis.yenidenDogrula();
+    }
 
-    await user.reauthenticateWithCredential(credential);
+    final guncel = FirebaseAuth.instance.currentUser;
+    if (guncel == null) {
+      throw Exception("Oturum doğrulanamadı.");
+    }
 
-    final uid = user.uid;
+    final uid = guncel.uid;
     final firestore = FirebaseFirestore.instance;
     final userRef = firestore.collection("users").doc(uid);
 
-    await _begeniVerileriniSil(firestore, userRef, uid);
-    await _yorumlariSil(firestore, uid);
-    await _gonderilerimiSil(firestore, uid);
-    await _sohbetleriSil(firestore, uid);
-    await _takipBaglantilariniSil(firestore, userRef, uid);
-    await _engellemeleriTemizle(firestore, userRef, uid);
-    await _followRewardedTemizle(firestore, userRef, uid);
-    await _gidenTakipIstekleriniSil(firestore, uid);
-    await _gonderdigimBildirimleriSil(firestore, uid);
-    await _raporlarimiSil(firestore, uid);
-    await _kullaniciAltKoleksiyonlariniSil(userRef);
+    // Profil belgesi önce silinsin; aksi halde keşfet/liderlikte hayalet kalır.
+    await _profilKimliginiSil(firestore, userRef, uid);
+    await _guvenliCalistir(() => KayitServis.profilOnbelleginiTemizle(uid));
 
-    final userDoc = await userRef.get();
-    final kullaniciAdiKucuk =
-        userDoc.data()?["kullaniciAdiKucuk"]?.toString() ?? "";
-    if (kullaniciAdiKucuk.isNotEmpty) {
-      await firestore.collection("usernames").doc(kullaniciAdiKucuk).delete();
+    await _guvenliCalistir(() => _begeniVerileriniSil(firestore, userRef, uid));
+    await _guvenliCalistir(() => _yorumlariSil(firestore, uid));
+    await _guvenliCalistir(() => _gonderilerimiSil(firestore, uid));
+    await _guvenliCalistir(() => _sohbetleriSil(firestore, uid));
+    await _guvenliCalistir(
+      () => _takipBaglantilariniSil(firestore, userRef, uid),
+    );
+    await _guvenliCalistir(
+      () => _engellemeleriTemizle(firestore, userRef, uid),
+    );
+    await _guvenliCalistir(
+      () => _followRewardedTemizle(firestore, userRef, uid),
+    );
+    await _guvenliCalistir(() => _gidenTakipIstekleriniSil(firestore, uid));
+    await _guvenliCalistir(() => _gonderdigimBildirimleriSil(firestore, uid));
+    await _guvenliCalistir(() => _raporlariSil(firestore, uid));
+    await _guvenliCalistir(() => _destekTalepleriniSil(firestore, uid));
+    await _guvenliCalistir(() => _retyBaglariniSil(firestore, userRef, uid));
+    await _guvenliCalistir(() => _kullaniciAltKoleksiyonlariniSil(userRef));
+
+    try {
+      await guncel.delete();
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'requires-recent-login') {
+        if (epostaHesabi) {
+          final email = guncel.email;
+          if (email == null || sifre == null || sifre.trim().isEmpty) rethrow;
+          await guncel.reauthenticateWithCredential(
+            EmailAuthProvider.credential(email: email, password: sifre.trim()),
+          );
+        } else if (appleHesabi || SosyalOAuth.appleMu(guncel)) {
+          await AppleGirisServis.yenidenDogrula();
+        } else {
+          await GoogleGirisServis.yenidenDogrula(hesabiYenidenSec: false);
+        }
+        await FirebaseAuth.instance.currentUser?.delete();
+      } else {
+        rethrow;
+      }
     }
 
-    await userRef.delete();
-    await user.delete();
+    await GoogleGirisServis.googleOturumunuKapat();
   }
 }

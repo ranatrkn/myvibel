@@ -1,0 +1,472 @@
+appId: com.myvibel.app
+---
+# Uctan uca tiklanabilir yuzeyler. Cikis Yap ve hesap silme ONAYI yok.
+# Daha detayli akis: maestro/detayli-test.yaml
+# Sifre sifirlama maili gonderilmez. Gizli Hesap anahtari degistirilmez.
+- runFlow: flows/launch.yaml
+- runFlow: flows/ana-sayfaya-don.yaml
+
+# ---------- ANA: sekmeler, maskot, mesajlar, gonderi ----------
+- assertVisible: "Takip Edilen"
+- tapOn:
+    text: "Akış"
+    optional: true
+- tapOn:
+    text: "Takip Edilen"
+    optional: true
+
+# Maskot karti (Lottie tam ekran)
+- tapOn:
+    point: "143,348"
+    optional: true
+- runFlow:
+    when:
+      visible: "Kapat|Tam ekran.*"
+    commands:
+      - back
+- runFlow:
+    when:
+      visible: "Uyandır|Yemek \\(.*|Uyu \\(.*"
+    commands:
+      - tapOn:
+          text: "Uyandır"
+          optional: true
+      - tapOn:
+          text: "Yemek \\(.*"
+          optional: true
+      - tapOn:
+          text: "Uyu \\(.*"
+          optional: true
+      - back
+- runFlow: flows/ana-sayfaya-don.yaml
+
+# Mesajlar
+- tapOn: "Mesajlar"
+- extendedWaitUntil:
+    visible: "Sohbetlerde ara.*"
+    timeout: 20000
+- tapOn:
+    text: "Sohbetlerde ara.*"
+    optional: true
+- hideKeyboard
+- tapOn: "Yeni sohbet"
+- waitForAnimationToEnd:
+    timeout: 3000
+- runFlow:
+    when:
+      visible: "Yeni Sohbet.*"
+    commands:
+      - tapOn:
+          text: "Kullanıcı ara.*"
+          optional: true
+      - hideKeyboard
+      - back
+- tapOn:
+    text: "rana"
+    optional: true
+- tapOn:
+    text: "ttt"
+    optional: true
+- runFlow:
+    when:
+      visible: "Mesaj yaz.*"
+    commands:
+      - tapOn:
+          text: "Sessize al.*"
+          optional: true
+      - tapOn:
+          text: "Sessize almayı kaldır"
+          optional: true
+      - tapOn:
+          text: "Mesaj yaz.*"
+          optional: true
+      - hideKeyboard
+      - back
+- runFlow: flows/ana-sayfaya-don.yaml
+
+# Gonderi aksiyonlari
+- tapOn:
+    text: "Gönderiyi beğen"
+    index: 0
+    optional: true
+- tapOn:
+    text: "Yorumları aç"
+    index: 0
+    optional: true
+- runFlow:
+    when:
+      visible: "Yorumlar.*"
+    commands:
+      - back
+- tapOn:
+    text: "Gönderiyi alıntıla"
+    index: 0
+    optional: true
+- runFlow:
+    when:
+      visible: "Alıntı.*"
+    commands:
+      - tapOn:
+          text: "Alıntıyı kaldır"
+          optional: true
+      - back
+- tapOn:
+    text: "Gönderiyi ilet"
+    index: 0
+    optional: true
+- runFlow:
+    when:
+      visible: "İlet.*"
+    commands:
+      - back
+
+# Uc nokta menusu (ilk gonderi)
+- tapOn:
+    text: "Gönderi menüsü"
+    index: 0
+    optional: true
+- tapOn:
+    point: "939,713"
+    optional: true
+- runFlow:
+    when:
+      visible: "Alıntıla|Gönderiyi İlet"
+    commands:
+      - back
+
+# ---------- KEŞFET ----------
+- runFlow: flows/ana-sayfaya-don.yaml
+- runFlow: flows/sekme-kesfet.yaml
+- extendedWaitUntil:
+    visible: "Liderlik"
+    timeout: 25000
+- tapOn:
+    text: "Liderlik"
+    optional: true
+- runFlow:
+    when:
+      visible: "Seviye Liderliği.*"
+    commands:
+      - tapOn:
+          text: "Vil"
+          optional: true
+      - tapOn:
+          text: "Seviye"
+          optional: true
+      - back
+- tapOn:
+    text: "Takip Et"
+    index: 0
+    optional: true
+- tapOn:
+    text: "Takip Ediliyor"
+    index: 0
+    optional: true
+- tapOn:
+    text: "İstek Gönderildi"
+    index: 0
+    optional: true
+- tapOn:
+    text: "Kullanıcı veya etiket ara"
+    optional: true
+- runFlow:
+    when:
+      visible: "Kullanıcı veya etiket ara"
+    commands:
+      - inputText: "sss"
+      - waitForAnimationToEnd:
+          timeout: 4000
+      - tapOn:
+          text: "sss"
+          optional: true
+- runFlow:
+    when:
+      visible: "Mesaj Gönder|Yemek ver.*"
+    commands:
+      - tapOn:
+          text: "Mesaj Gönder"
+          optional: true
+      - runFlow:
+          when:
+            visible: "Mesaj yaz.*"
+          commands:
+            - back
+      - tapOn:
+          text: "Yemek ver.*"
+          optional: true
+      - tapOn:
+          text: "Takip Ediliyor"
+          optional: true
+      - tapOn:
+          text: "Takip Et"
+          optional: true
+      - tapOn:
+          text: "Takipçi"
+          optional: true
+      - back
+      - tapOn:
+          text: "Takip Edilen"
+          optional: true
+      - back
+      - back
+
+# ---------- YENİ GÖNDERİ ----------
+- runFlow: flows/ana-sayfaya-don.yaml
+- runFlow: flows/sekme-yeni.yaml
+- extendedWaitUntil:
+    visible: "Paylaş"
+    timeout: 20000
+- tapOn: "Paylaş"
+- tapOn:
+    text: "Gönderi metni"
+    optional: true
+- hideKeyboard
+- tapOn: "Paylaş"
+
+# ---------- BİLDİRİM ----------
+- runFlow: flows/ana-sayfaya-don.yaml
+- runFlow: flows/sekme-bildirim.yaml
+- extendedWaitUntil:
+    visible: "Bildirimler"
+    timeout: 20000
+- tapOn:
+    text: "Tümünü okundu işaretle"
+    optional: true
+- tapOn:
+    text: "Temizle"
+    optional: true
+- tapOn:
+    text: "Kabul Et"
+    optional: true
+- tapOn:
+    text: "Reddet"
+    optional: true
+
+# ---------- PROFİL ----------
+- runFlow: flows/ana-sayfaya-don.yaml
+- runFlow: flows/sekme-profil.yaml
+- extendedWaitUntil:
+    visible: "Beğendiklerim"
+    timeout: 25000
+- tapOn:
+    text: "Beğendiklerim"
+    optional: true
+- tapOn:
+    text: "Gönderilerim.*"
+    optional: true
+- tapOn:
+    text: "Takipçi listesi"
+    optional: true
+- tapOn:
+    text: "Takipçi"
+    optional: true
+- runFlow:
+    when:
+      visible: "Takipçi"
+    commands:
+      - tapOn:
+          text: "Takip Edilen.*"
+          optional: true
+      - back
+- tapOn:
+    text: "Takip edilen listesi"
+    optional: true
+- tapOn:
+    text: "Takip Edilen"
+    optional: true
+- runFlow:
+    when:
+      notVisible: "Beğendiklerim"
+    commands:
+      - back
+- tapOn:
+    text: "Liderlik tablosu"
+    optional: true
+- runFlow:
+    when:
+      visible: "Seviye Liderliği.*"
+    commands:
+      - back
+- tapOn:
+    text: "Profili düzenle"
+    optional: true
+- runFlow:
+    when:
+      visible: "Profili Düzenle.*"
+    commands:
+      - tapOn:
+          text: "Vazgeç"
+          optional: true
+- tapOn:
+    text: "Arkadaşlık bağları"
+    optional: true
+- runFlow:
+    when:
+      visible: "Arkadaşlık bağları"
+    commands:
+      - back
+- tapOn:
+    text: "Vibel odası"
+    optional: true
+- tapOn:
+    text: "Maskot odasini ac"
+    optional: true
+- runFlow:
+    when:
+      visible: ".*odası|Uyandır|Yemek \\(.*"
+    commands:
+      - tapOn:
+          text: "Uyandır"
+          optional: true
+      - tapOn:
+          text: "Yemek \\(.*"
+          optional: true
+      - tapOn:
+          text: "Uyu \\(.*"
+          optional: true
+      - back
+
+# ---------- AYARLAR ----------
+- tapOn:
+    text: "Ayarlar"
+    optional: true
+- extendedWaitUntil:
+    visible: "Gizli Hesap.*"
+    timeout: 15000
+- tapOn:
+    text: "Koyu"
+    optional: true
+- tapOn:
+    text: "Açık"
+    optional: true
+- tapOn:
+    text: "Koyu"
+    optional: true
+- tapOn: "Vibel İsmini Değiştir"
+- runFlow:
+    when:
+      visible: "Vibel İsmi.*"
+    commands:
+      - tapOn: "Vazgeç"
+- tapOn:
+    text: "Ayarlar"
+    optional: true
+- tapOn:
+    text: "Moderasyon Paneli"
+    optional: true
+- runFlow:
+    when:
+      visible: "Moderasyon Paneli.*"
+    commands:
+      - tapOn:
+          text: "Bekliyor"
+          optional: true
+      - tapOn:
+          text: "İncelendi"
+          optional: true
+      - tapOn:
+          text: "Reddedildi"
+          optional: true
+      - back
+- tapOn:
+    text: "Ayarlar"
+    optional: true
+- tapOn:
+    text: "Destek Talepleri"
+    optional: true
+- runFlow:
+    when:
+      visible: "Destek Talepleri.*"
+    commands:
+      - back
+- tapOn:
+    text: "Ayarlar"
+    optional: true
+- tapOn: "Engellenenler"
+- runFlow:
+    when:
+      visible: "Engellenen.*"
+    commands:
+      - back
+- tapOn:
+    text: "Ayarlar"
+    optional: true
+- runFlow:
+    when:
+      visible: "Şifre Değiştir"
+    commands:
+      - scrollUntilVisible:
+          element: "Şifre Değiştir"
+          direction: DOWN
+          optional: true
+      - tapOn:
+          text: "Şifre Değiştir"
+          optional: true
+      - tapOn:
+          text: "Vazgeç"
+          optional: true
+- runFlow: flows/reopen-settings.yaml
+- scrollUntilVisible:
+    element: "Kullanım Koşulları"
+    direction: DOWN
+    optional: true
+- tapOn: "Kullanım Koşulları"
+- tapOn:
+    text: "Web sürümü"
+    optional: true
+- back
+- runFlow: flows/reopen-settings.yaml
+- scrollUntilVisible:
+    element: "Gizlilik Politikası"
+    direction: DOWN
+- tapOn: "Gizlilik Politikası"
+- tapOn:
+    text: "Web sürümü"
+    optional: true
+- back
+- runFlow: flows/reopen-settings.yaml
+- scrollUntilVisible:
+    element: "Yardım / SSS"
+    direction: DOWN
+- tapOn: "Yardım / SSS"
+- tapOn:
+    text: "Vibel nasıl gelişir?"
+    optional: true
+- tapOn:
+    text: "Vil nedir?"
+    optional: true
+- tapOn:
+    text: "Gizli hesap ne yapar?"
+    optional: true
+- back
+- runFlow: flows/reopen-settings.yaml
+- scrollUntilVisible:
+    element: "Sürüm Notları"
+    direction: DOWN
+    optional: true
+- runFlow:
+    when:
+      visible: "Sürüm Notları"
+    commands:
+      - tapOn: "Sürüm Notları"
+      - back
+- runFlow: flows/reopen-settings.yaml
+- scrollUntilVisible:
+    element: "Destek ve Geri Bildirim"
+    direction: DOWN
+- tapOn: "Destek ve Geri Bildirim"
+- tapOn:
+    text: "Talebi Gönder"
+    optional: true
+- back
+- runFlow: flows/reopen-settings.yaml
+- scrollUntilVisible:
+    element: "Hesabı Sil"
+    direction: DOWN
+- tapOn: "Hesabı Sil"
+- tapOn: "Vazgeç"
+
+# Cikis Yap tiklanmaz
+
+- runFlow: flows/ana-sayfaya-don.yaml
+- assertVisible: "Takip Edilen"

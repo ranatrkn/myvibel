@@ -1,0 +1,10 @@
+appId: com.myvibel.app
+---
+- runFlow: ../flows/ana-sayfaya-don.yaml
+- tapOn: "Alt menü Bildirimler"
+- extendedWaitUntil:
+    visible: "Bildirimler"
+    timeout: 20000
+- tapOn:
+    text: "Tümünü okundu işaretle"
+    optional: true

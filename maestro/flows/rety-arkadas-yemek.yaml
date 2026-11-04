@@ -1,0 +1,22 @@
+appId: com.myvibel.app
+---
+# Karşılıklı takipteki Vibel'e yemek verme. Yetki hatası olmamalı.
+- runFlow: launch.yaml
+- tapOn: "Alt menü Keşfet"
+- extendedWaitUntil:
+    visible: "Kullanıcı veya etiket ara"
+    timeout: 20000
+- tapOn: "Kullanıcı veya etiket ara"
+- inputText: "sss"
+- waitForAnimationToEnd:
+    timeout: 4000
+- tapOn: "sss"
+- scrollUntilVisible:
+    element: "Yemek ver.*"
+    direction: DOWN
+    timeout: 15000
+- tapOn: "Yemek ver.*"
+- waitForAnimationToEnd:
+    timeout: 8000
+- assertNotVisible: "İşlem reddedildi.*"
+- assertNotVisible: ".*permission.*"

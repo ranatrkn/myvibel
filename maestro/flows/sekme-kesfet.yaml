@@ -1,0 +1,14 @@
+appId: com.myvibel.app
+---
+- tapOn:
+    text: "Alt menü Keşfet"
+    optional: true
+- runFlow:
+    when:
+      notVisible: "Liderlik"
+    commands:
+      - tapOn:
+          text: "Alt menü Keşfet"
+          optional: true
+- waitForAnimationToEnd:
+    timeout: 2500

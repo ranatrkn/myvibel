@@ -1,37 +1,57 @@
 // Kendi profil sayfası: bilgi kartı, maskot gelişimi, gönderiler, ayarlar ve moderasyon
+import 'package:myvibel/tek_sefer_navigasyon.dart';
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:vibe_life/alinti_gonderi.dart';
-import 'package:vibe_life/app_check_config.dart';
-import 'package:vibe_life/app_check_debug.dart';
-import 'package:vibe_life/app_theme.dart';
-import 'package:vibe_life/error_messages.dart';
-import 'package:vibe_life/hesap_sil_servis.dart';
-import 'package:vibe_life/auth_eposta.dart' as auth_eposta;
-import 'package:vibe_life/sifre_degistir_servis.dart';
-import 'package:vibe_life/follow_list_page.dart';
-import 'package:vibe_life/leaderboard_page.dart';
-import 'package:vibe_life/maestro_semantics.dart';
-import 'package:vibe_life/puan_animasyon.dart';
-import 'package:vibe_life/sosyal_servis.dart';
-import 'package:vibe_life/destek_talepleri_panel_page.dart';
-import 'package:vibe_life/etiket_navigasyon.dart';
-import 'package:vibe_life/widgets/alinti_gonderi_onizleme.dart';
-import 'package:vibe_life/widgets/hashtag_metin.dart';
-import 'package:vibe_life/maskot_page.dart';
-import 'package:vibe_life/maskot_servis.dart';
-import 'package:vibe_life/legal_pages.dart';
-import 'package:vibe_life/widgets/maskot_durum_bari.dart';
-import 'package:vibe_life/widgets/maskot_gelisim_cercevesi.dart';
-import 'package:vibe_life/widgets/maskot_lottie_view.dart';
-import 'package:vibe_life/widgets/post_begeni_yardimci.dart';
-import 'package:vibe_life/widgets/theme_mode_segment.dart';
-import 'package:vibe_life/widgets/vibe_avatar.dart';
-import 'package:vibe_life/vibe_snackbar.dart';
+import 'package:myvibel/alinti_gonderi.dart';
+import 'package:myvibel/app_check_config.dart';
+import 'package:myvibel/app_check_debug.dart';
+import 'package:myvibel/app_theme.dart';
+import 'package:myvibel/widgets/vibe_yukleniyor.dart';
+import 'package:myvibel/error_messages.dart';
+import 'package:myvibel/hesap_sil_servis.dart';
+import 'package:myvibel/auth_eposta.dart' as auth_eposta;
+import 'package:myvibel/sifre_degistir_servis.dart';
+import 'package:myvibel/follow_list_page.dart';
+import 'package:myvibel/apple_giris_servis.dart';
+import 'package:myvibel/google_giris_servis.dart';
+import 'package:myvibel/leaderboard_page.dart';
+import 'package:myvibel/maestro_semantics.dart';
+import 'package:myvibel/sosyal/lider_tac_servis.dart';
+import 'package:myvibel/sosyal_oauth.dart';
+import 'package:myvibel/sosyal/sosyal_core.dart';
+import 'package:myvibel/sosyal_servis.dart';
+import 'package:myvibel/yas_hesap_kontrol.dart';
+import 'package:myvibel/ebeveyn_kontrol.dart';
+import 'package:myvibel/moderator_konsol_page.dart';
+import 'package:myvibel/etiket_navigasyon.dart';
+import 'package:myvibel/widgets/alinti_gonderi_onizleme.dart';
+import 'package:myvibel/widgets/hashtag_metin.dart';
+import 'package:myvibel/maskot_page.dart';
+import 'package:myvibel/maskot_servis.dart';
+import 'package:myvibel/widgets/mascot_ruh_hali_metni.dart';
+import 'package:myvibel/legal_pages.dart';
+import 'package:myvibel/widgets/maskot_durum_bari.dart';
+import 'package:myvibel/widgets/isim_yan_rozet.dart';
+import 'package:myvibel/widgets/maskot_gelisim_cercevesi.dart';
+import 'package:myvibel/widgets/maskot_lottie_view.dart';
+import 'package:myvibel/rety_renk.dart';
+import 'package:myvibel/widgets/post_begeni_yardimci.dart';
+import 'package:myvibel/widgets/profil_gonderi_gorunumu.dart';
+import 'package:myvibel/widgets/theme_mode_segment.dart';
+import 'package:myvibel/widgets/rety_bag_rozeti.dart';
+import 'package:myvibel/widgets/vil_harcama_uyarisi.dart';
+import 'package:myvibel/widgets/vil_rozeti.dart';
+import 'package:myvibel/widgets/vibe_avatar.dart';
+import 'package:myvibel/widgets/vibe_ikonlar.dart';
+import 'package:myvibel/widgets/web_shell.dart';
+import 'package:myvibel/widgets/vibe_gradient_scaffold.dart';
+import 'package:myvibel/vibe_snackbar.dart';
+import 'package:myvibel/widgets/begenenler_paneli.dart';
+import 'package:myvibel/widgets/yorum_paneli.dart';
 
 // Firestore Timestamp'i okunabilir tarihe çevir
 String tarihSaatYaz(dynamic value) {
@@ -49,15 +69,18 @@ String tarihSaatYaz(dynamic value) {
 
 // Kendi profil sayfası widget'ı
 class ProfilePage extends StatefulWidget {
-  const ProfilePage({super.key});
+  const ProfilePage({super.key, this.aktif = true});
+
+  final bool aktif;
 
   @override
-  State<ProfilePage> createState() => _ProfilePageState();
+  State<ProfilePage> createState() => ProfilePageState();
 }
 
 // Profil sayfası durumu ve iş mantığı
-class _ProfilePageState extends State<ProfilePage> {
+class ProfilePageState extends State<ProfilePage> {
   int seciliSekme = 0; // seçili profil sekmesi
+  ProfilGonderiGorunumu _gonderiGorunumu = ProfilGonderiGorunumu.liste;
   final Set<String> _silinenPostIdleri =
       {}; // optimistik silinen gönderi id'leri
   QuerySnapshot<Map<String, dynamic>>?
@@ -67,15 +90,26 @@ class _ProfilePageState extends State<ProfilePage> {
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
       _gonderiAbonelik; // gönderi stream aboneliği
   Timer? _gonderiOnbellekZamanAsimi; // önbellek gecikme zamanlayıcısı
+  bool _begeniTemizligiYapildi = false;
 
   // Widget ilk yüklendiğinde çalışır
   @override
   void initState() {
     super.initState();
-    _gonderiDinlemeyiBaslat();
+    unawaited(LiderTacServis.instance.baslat());
+    unawaited(HaftaRozetServis.instance.yenile());
+    _gonderiDinlemeyiAyarla();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _gecersizBegeniKayitlariniTemizle();
     });
+  }
+
+  @override
+  void didUpdateWidget(covariant ProfilePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.aktif != widget.aktif) {
+      _gonderiDinlemeyiAyarla();
+    }
   }
 
   void _gecersizBegeniKayitlariniTemizle() async {
@@ -100,19 +134,50 @@ class _ProfilePageState extends State<ProfilePage> {
     super.dispose();
   }
 
-  // Kullanıcının gönderilerini dinlemeye başla
-  void _gonderiDinlemeyiBaslat() {
+  Query<Map<String, dynamic>>? _kendiGonderiSorgusu() {
     final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return;
-
-    _gonderiAbonelik?.cancel();
-    _gonderiOnbellekZamanAsimi?.cancel();
-    _gonderiAbonelik = FirebaseFirestore.instance
+    if (uid == null) return null;
+    return FirebaseFirestore.instance
         .collection("posts")
         .where("userId", isEqualTo: uid)
         .orderBy("createdAt", descending: true)
-        .limit(40)
-        .snapshots()
+        .limit(40);
+  }
+
+  // Kullanıcının gönderilerini dinlemeye başla
+  void _gonderiDinlemeyiAyarla() {
+    // Sekme kapalıyken dinlemeyi kesme: yeni paylaşım profilde gecikmesin.
+    if (_gonderiAbonelik == null) {
+      _gonderiDinlemeyiBaslat();
+    }
+    unawaited(_gonderileriSunucudanYenile());
+  }
+
+  Future<void> _gonderileriSunucudanYenile() async {
+    final sorgu = _kendiGonderiSorgusu();
+    if (sorgu == null) return;
+    try {
+      final snap = await sorgu.get(const GetOptions(source: Source.server));
+      if (!mounted) return;
+      _gonderiSnapIsle(snap);
+    } catch (_) {
+      // Ağ yoksa stream günceller.
+    }
+  }
+
+  void gonderileriYenile() {
+    unawaited(_gonderileriSunucudanYenile());
+  }
+
+  // Kullanıcının gönderilerini dinlemeye başla
+  void _gonderiDinlemeyiBaslat() {
+    final sorgu = _kendiGonderiSorgusu();
+    if (sorgu == null) return;
+
+    _gonderiAbonelik?.cancel();
+    _gonderiOnbellekZamanAsimi?.cancel();
+    _gonderiAbonelik = sorgu
+        .snapshots(includeMetadataChanges: true)
         .listen(_gonderiSnapIsle);
   }
 
@@ -120,23 +185,33 @@ class _ProfilePageState extends State<ProfilePage> {
   void _gonderiSnapIsle(QuerySnapshot<Map<String, dynamic>> snap) {
     if (!mounted) return;
 
-    if (!snap.metadata.isFromCache) {
-      _gonderiOnbellekZamanAsimi?.cancel();
-      _gonderiOnbellekZamanAsimi = null;
-      _bekleyenOnbellekGonderiSnap = null;
-      final mevcutIdler = snap.docs.map((d) => d.id).toSet();
-      _silinenPostIdleri.removeWhere((id) => !mevcutIdler.contains(id));
-      setState(() => _sunucuGonderiSnap = snap);
+    final yeniIdler = snap.docs.map((d) => d.id).toSet();
+    final eskiIdler =
+        _sunucuGonderiSnap?.docs.map((d) => d.id).toSet() ?? <String>{};
+    final yeniGonderiVar = yeniIdler.difference(eskiIdler).isNotEmpty;
+
+    if (snap.metadata.isFromCache &&
+        _sunucuGonderiSnap != null &&
+        eskiIdler.difference(yeniIdler).isNotEmpty) {
       return;
     }
 
-    if (_sunucuGonderiSnap != null) return;
+    if (!snap.metadata.isFromCache ||
+        _sunucuGonderiSnap == null ||
+        yeniGonderiVar) {
+      _gonderiOnbellekZamanAsimi?.cancel();
+      _gonderiOnbellekZamanAsimi = null;
+      _bekleyenOnbellekGonderiSnap = null;
+      _silinenPostIdleri.removeWhere((id) => !yeniIdler.contains(id));
+      setState(() => _sunucuGonderiSnap = snap);
+      return;
+    }
 
     _bekleyenOnbellekGonderiSnap = snap;
     _gonderiOnbellekZamanAsimi ??= Timer(
       const Duration(milliseconds: 1500),
       () {
-        if (!mounted || _sunucuGonderiSnap != null) return;
+        if (!mounted) return;
         final onbellek = _bekleyenOnbellekGonderiSnap;
         if (onbellek == null) return;
         setState(() => _sunucuGonderiSnap = onbellek);
@@ -162,10 +237,7 @@ class _ProfilePageState extends State<ProfilePage> {
     return const Padding(
       padding: EdgeInsets.symmetric(vertical: 18),
       child: Center(
-        child: CircularProgressIndicator(
-          color: Colors.redAccent,
-          strokeWidth: 2,
-        ),
+        child: VibeYukleniyor(renk: Colors.redAccent),
       ),
     );
   }
@@ -183,21 +255,53 @@ class _ProfilePageState extends State<ProfilePage> {
     return DateTime.fromMillisecondsSinceEpoch(0);
   }
 
+  // Beğendiklerim: likedPosts yalnız postId/sahip tutar; içerik gönderiden okunur.
+  final Map<String, Map<String, dynamic>> _begenilenPostOnbellek = {};
+  final Set<String> _begenilenPostIstendi = {};
+
+  void _begenilenPostlariGetir(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> likedDocs,
+  ) {
+    final eksik = likedDocs
+        .map((d) => d.id)
+        .where((id) => !_begenilenPostIstendi.contains(id))
+        .toList();
+    if (eksik.isEmpty) return;
+    _begenilenPostIstendi.addAll(eksik);
+    unawaited(Future.wait(eksik.map((id) async {
+      try {
+        final snap = await SosyalCore.gonderiRef(id).get();
+        final data = snap.data();
+        if (data != null) _begenilenPostOnbellek[id] = data;
+      } catch (_) {}
+    })).then((_) {
+      if (mounted) setState(() {});
+    }));
+  }
+
   Map<String, dynamic> _begenilenPostVerisi(
     QueryDocumentSnapshot<Map<String, dynamic>> liked,
   ) {
     final likedData = liked.data();
+    final post = _begenilenPostOnbellek[liked.id] ?? const <String, dynamic>{};
     return {
-      'userId': likedData['postOwnerId'] ?? '',
-      'kullaniciAdi': likedData['kullaniciAdi'] ?? 'Vibe Kullanıcısı',
-      'metin': likedData['metin'] ?? '',
-      'photoUrl': likedData['photoUrl'] ?? '',
-      'avatarKey': likedData['avatarKey'] ?? '',
+      'userId': post['userId'] ?? likedData['postOwnerId'] ?? '',
+      'kullaniciAdi':
+          post['kullaniciAdi'] ?? likedData['kullaniciAdi'] ?? 'Vibe Kullanıcısı',
+      'metin': post['metin'] ?? likedData['metin'] ?? '',
+      'photoUrl': post['photoUrl'] ?? likedData['photoUrl'] ?? '',
+      'avatarKey': post['avatarKey'] ?? likedData['avatarKey'] ?? '',
+      'mentionUidleri': post['mentionUidleri'],
+      'alintiSnapshot': post['alintiSnapshot'],
+      'alintiPostId': post['alintiPostId'],
       'ownerHesapGizli': likedData['ownerHesapGizli'] == true,
-      'raporNedeniyleGizli': likedData['raporNedeniyleGizli'] == true,
-      'begeniSayisi': _intDeger(likedData['begeniSayisi'], 0),
-      'yorumSayisi': _intDeger(likedData['yorumSayisi'], 0),
-      'createdAt': likedData['createdAt'],
+      'raporNedeniyleGizli': post['raporNedeniyleGizli'] == true ||
+          likedData['raporNedeniyleGizli'] == true,
+      'begeniSayisi':
+          _intDeger(post['begeniSayisi'] ?? likedData['begeniSayisi'], 0),
+      'yorumSayisi':
+          _intDeger(post['yorumSayisi'] ?? likedData['yorumSayisi'], 0),
+      'createdAt': post['createdAt'] ?? likedData['createdAt'],
     };
   }
 
@@ -222,16 +326,51 @@ class _ProfilePageState extends State<ProfilePage> {
     // hata yakalamalı blok
     try {
       await MascotServis.isimGuncelle(user.uid, yeniIsim);
-      mesajGoster("Maskot ismi güncellendi.", tip: VibeMesajTipi.basari);
+      mesajGoster("Vibel ismi güncellendi.", tip: VibeMesajTipi.basari);
       // hata yakala
     } catch (e) {
       mesajGoster(
         internetAwareErrorMessage(
           error: e,
-          fallback: "Maskot ismi güncellenemedi.",
+          fallback: "Vibel ismi güncellenemedi.",
         ),
       );
     }
+  }
+
+  Future<String?> _mevcutSifreSor() async {
+    final kontrol = TextEditingController();
+    final vibe = context.vibe;
+    final sonuc = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: vibe.dialogBackground,
+        title: Text(
+          'E-postayı değiştir',
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+        ),
+        content: TextField(
+          controller: kontrol,
+          obscureText: true,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'Mevcut şifre',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Vazgeç'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, kontrol.text),
+            child: const Text('Gönder'),
+          ),
+        ],
+      ),
+    );
+    kontrol.dispose();
+    return sonuc;
   }
 
   // Profili düzenle
@@ -267,16 +406,25 @@ class _ProfilePageState extends State<ProfilePage> {
     try {
       bool emailGuncellendi = true;
 
-      if (sonuc.email != (user.email ?? email)) {
-        // hata yakalamalı blok
+      if (sonuc.email.trim().toLowerCase() !=
+          (user.email ?? email).trim().toLowerCase()) {
+        if (!mounted) return;
+        final sifre = await _mevcutSifreSor();
+        if (sifre == null || sifre.isEmpty) return;
         try {
-          await user.verifyBeforeUpdateEmail(sonuc.email);
+          await auth_eposta.epostaDegisikligiBaslat(
+            user: user,
+            yeniEmail: sonuc.email,
+            mevcutSifre: sifre,
+          );
           emailGuncellendi = false;
           mesajGoster(
-            "Doğrulama maili gönderildi. E-postanı onayladıktan sonra güncellenecek.",
+            "Yeni adrese doğrulama maili gitti. Linke basınca giriş adresin değişir. Gönderen: destek@myvibel.com",
+            tip: VibeMesajTipi.basari,
           );
-        } on FirebaseAuthException catch (_) {
-          emailGuncellendi = false;
+        } on FirebaseAuthException catch (e) {
+          mesajGoster(auth_eposta.epostaDegistirmeHataMesaji(e));
+          return;
         }
       }
 
@@ -311,47 +459,130 @@ class _ProfilePageState extends State<ProfilePage> {
         yeniKullaniciAdiKucuk: yeniKullaniciAdiKucuk,
       );
 
+      // Public profilde e-posta tutulmaz (rules reddeder). Avatar/ad güncellemesi
+      // email alanına takılmasın diye asla users/{uid}.email yazma.
       await userRef.update({
         "adSoyad": sonuc.adSoyad,
         "kullaniciAdi": sonuc.kullaniciAdi,
         "kullaniciAdiKucuk": yeniKullaniciAdiKucuk,
         "avatarKey": sonuc.avatarKey,
-        if (emailGuncellendi) "email": sonuc.email,
+        "photoUrl": "",
+        if (mevcutData.containsKey('email')) "email": FieldValue.delete(),
+        if (mevcutData.containsKey('dogumTarihi'))
+          "dogumTarihi": FieldValue.delete(),
       });
 
-      final posts = await firestore
-          .collection("posts")
-          .where("userId", isEqualTo: user.uid)
-          .get();
+      if (emailGuncellendi || sonuc.email.trim().isNotEmpty) {
+        final emailNorm = (emailGuncellendi
+                ? sonuc.email
+                : (user.email ?? sonuc.email))
+            .trim()
+            .toLowerCase();
+        if (emailNorm.contains('@')) {
+          try {
+            await userRef.collection('private').doc('account').set({
+              'email': emailNorm,
+              'updatedAt': FieldValue.serverTimestamp(),
+            }, SetOptions(merge: true));
+            await userRef.collection('private').doc('loginEmail').set({
+              'email': emailNorm,
+            });
+          } catch (e) {
+            debugPrint('profil private email: $e');
+          }
+        }
+      }
 
-      if (posts.docs.isNotEmpty) {
-        var batch = firestore.batch();
-        var sayac = 0;
+      try {
+        final avatarAlanlari = {
+          "kullaniciAdi": sonuc.kullaniciAdi,
+          "avatarKey": sonuc.avatarKey,
+          "photoUrl": "",
+        };
 
-        for (final doc in posts.docs) {
-          batch.update(doc.reference, {
-            "kullaniciAdi": sonuc.kullaniciAdi,
-            "avatarKey": sonuc.avatarKey,
-          });
-          sayac++;
-          if (sayac >= 400) {
+        final posts = await firestore
+            .collection("posts")
+            .where("userId", isEqualTo: user.uid)
+            .get();
+
+        if (posts.docs.isNotEmpty) {
+          var batch = firestore.batch();
+          var sayac = 0;
+
+          for (final doc in posts.docs) {
+            batch.update(doc.reference, avatarAlanlari);
+            sayac++;
+            if (sayac >= 400) {
+              await batch.commit();
+              batch = firestore.batch();
+              sayac = 0;
+            }
+          }
+
+          if (sayac > 0) {
             await batch.commit();
-            batch = firestore.batch();
-            sayac = 0;
           }
         }
 
-        if (sayac > 0) {
-          await batch.commit();
+        // Kendi yorumlarındaki avatar/ad senkronu
+        try {
+          final yorumlar = await firestore
+              .collectionGroup('comments')
+              .where('userId', isEqualTo: user.uid)
+              .limit(400)
+              .get();
+          if (yorumlar.docs.isNotEmpty) {
+            var batch = firestore.batch();
+            var sayac = 0;
+            for (final doc in yorumlar.docs) {
+              batch.update(doc.reference, avatarAlanlari);
+              sayac++;
+              if (sayac >= 400) {
+                await batch.commit();
+                batch = firestore.batch();
+                sayac = 0;
+              }
+            }
+            if (sayac > 0) await batch.commit();
+          }
+        } catch (e) {
+          debugPrint('profil yorum avatar senkron: $e');
         }
+
+        // Beğenilenler anlık görüntüsü (gönderi sahibi alanları)
+        try {
+          final liked = await firestore
+              .collectionGroup('likedPosts')
+              .where('postOwnerId', isEqualTo: user.uid)
+              .limit(400)
+              .get();
+          if (liked.docs.isNotEmpty) {
+            var batch = firestore.batch();
+            var sayac = 0;
+            for (final doc in liked.docs) {
+              batch.update(doc.reference, avatarAlanlari);
+              sayac++;
+              if (sayac >= 400) {
+                await batch.commit();
+                batch = firestore.batch();
+                sayac = 0;
+              }
+            }
+            if (sayac > 0) await batch.commit();
+          }
+        } catch (e) {
+          debugPrint('profil likedPosts avatar senkron: $e');
+        }
+      } catch (e) {
+        debugPrint('profil gonderi avatar senkron: $e');
+        mesajGoster(
+          "Profil güncellendi; bazı eski gönderilerde fotoğraf biraz gecikebilir.",
+          tip: VibeMesajTipi.uyari,
+        );
       }
 
       if (emailGuncellendi) {
         mesajGoster("Profil güncellendi.", tip: VibeMesajTipi.basari);
-      } else {
-        mesajGoster(
-          "Profil güncellendi. E-posta değiştirmek için tekrar giriş gerekebilir.",
-        );
       }
       // hata yakala
     } catch (e) {
@@ -375,8 +606,8 @@ class _ProfilePageState extends State<ProfilePage> {
         .get();
     if (!mounted) return;
     final mascot = MascotServis.tryParse(userDoc.data()?['robot']);
-    final vilGerekir = mascot != null &&
-        MascotServis.gonderiSilVilGerekir(mascot.seviye);
+    final vilGerekir =
+        mascot != null && MascotServis.gonderiSilVilGerekir(mascot.seviye);
     if (vilGerekir && !MascotServis.gonderiSilVilYeterli(mascot)) {
       mesajGoster(
         'Gönderi silmek için ${MascotServis.gonderiSilVilMaliyeti} vil gerekli.',
@@ -393,9 +624,7 @@ class _ProfilePageState extends State<ProfilePage> {
           style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
         ),
         content: Text(
-          vilGerekir
-              ? 'Bu işlem geri alınamaz ve ${MascotServis.gonderiSilVilMaliyeti} vil harcanır.'
-              : 'Bu işlem geri alınamaz.',
+          'Bu işlem geri alınamaz.',
           style: TextStyle(color: context.vibe.mutedText),
         ),
         actions: [
@@ -412,6 +641,17 @@ class _ProfilePageState extends State<ProfilePage> {
     );
 
     if (onay != true) return;
+    if (!mounted) return;
+
+    if (vilGerekir) {
+      final vilOnay = await VilHarcamaUyarisi.onayla(
+        context: context,
+        islem: VilHarcamaUyarisi.gonderiSil,
+        maliyet: MascotServis.gonderiSilVilMaliyeti,
+        vilHarcanacak: true,
+      );
+      if (!vilOnay || !mounted) return;
+    }
 
     setState(() => _silinenPostIdleri.add(postId));
 
@@ -471,7 +711,14 @@ class _ProfilePageState extends State<ProfilePage> {
 
   // Çıkış yap
   Future<void> cikisYap() async {
-    await FirebaseAuth.instance.signOut();
+    try {
+      await GoogleGirisServis.oturumuKapat();
+    } catch (e) {
+      debugPrint('cikisYap: $e');
+      try {
+        await FirebaseAuth.instance.signOut();
+      } catch (_) {}
+    }
   }
 
   // Hesap silme paneli
@@ -571,6 +818,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                 child: ListTile(
                                   leading: vibeAvatar(
                                     radius: 20,
+                                    userId: hedefUid,
                                     photoUrl: photoUrl,
                                     avatarKey: avatarKey,
                                     fallbackText: kullaniciAdi,
@@ -637,6 +885,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
   // Hesap gizliliğini değiştir
   Future<void> hesapGizliliginiDegistir(bool yeniDeger) async {
+    if (YasHesapKontrol.maybeOf(context)?.cocukHesabi == true) return;
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
@@ -673,20 +922,26 @@ class _ProfilePageState extends State<ProfilePage> {
     String mascotIsim,
     bool baslangicHesapGizli,
     int? seviye,
-    bool isModerator,
-  ) {
+    bool isModerator, {
+    RetyRenk renk = RetyRenk.varsayilan,
+  }) {
     bool hesapGizli = baslangicHesapGizli;
 
-    final vibe = context.vibe;
-
+    // Arka plan builder içinde: sayfadaki tema anahtarı açıkken de renk güncellensin.
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: vibe.sheetBackground,
+      backgroundColor: Colors.transparent,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (sheetContext) {
+      builder: (sheetContext) => Material(
+        color: sheetContext.vibe.sheetBackground,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Builder(builder: (sheetContext) {
         final sheetVibe = sheetContext.vibe;
         final onSurface = Theme.of(sheetContext).colorScheme.onSurface;
         final maxSheetHeight = MediaQuery.of(sheetContext).size.height * 0.9;
@@ -713,76 +968,114 @@ class _ProfilePageState extends State<ProfilePage> {
                         ),
                       ),
                       const ThemeModeSegment(),
-                      SwitchListTile(
-                        secondary: Icon(Icons.lock_outline,
-                            color: sheetVibe.mutedText),
-                        title: Text(
-                          "Gizli Hesap",
-                          style: TextStyle(color: onSurface),
-                        ),
-                        subtitle: Text(
-                          "Gönderilerin başkalarına görünmez",
-                          style: TextStyle(
-                              color: sheetVibe.mutedText, fontSize: 12),
-                        ),
-                        value: hesapGizli,
-                        activeColor: Colors.redAccent,
-                        onChanged: (value) async {
-                          sheetSetState(() => hesapGizli = value);
-                          await hesapGizliliginiDegistir(value);
-                        },
-                      ),
-                      ListTile(
-                        leading: seviye != null
-                            ? MascotLottieView(
-                                seviye: seviye,
-                                width: 24,
-                                height: 24,
-                                fit: BoxFit.contain,
-                                tamEkranAc: false,
-                              )
-                            : Icon(Icons.smart_toy, color: sheetVibe.mutedText),
-                        title: Text(
-                          "Maskot İsmini Değiştir",
-                          style: TextStyle(color: onSurface),
-                        ),
+                      maestroButton(
+                        label: MaestroSemantics.arkadaslaraOner,
                         onTap: () {
                           Navigator.pop(sheetContext);
-                          mascotIsminiDegistir(mascotIsim);
+                          unawaited(arkadaslaraOner(context));
                         },
+                        child: ListTile(
+                          leading: Icon(Icons.person_add_alt_1_outlined,
+                              color: sheetVibe.mutedText),
+                          title: Text(
+                            "Arkadaşlarına öner",
+                            style: TextStyle(color: onSurface),
+                          ),
+                          subtitle: Text(
+                            "WhatsApp, SMS veya başka bir yerden davet et",
+                            style: TextStyle(
+                                color: sheetVibe.mutedText, fontSize: 12),
+                          ),
+                          onTap: () {
+                            Navigator.pop(sheetContext);
+                            unawaited(arkadaslaraOner(context));
+                          },
+                        ),
                       ),
+                      if (YasHesapKontrol.maybeOf(context)?.cocukHesabi !=
+                          true)
+                        SwitchListTile(
+                          secondary: Icon(Icons.lock_outline,
+                              color: sheetVibe.mutedText),
+                          title: Text(
+                            "Gizli Hesap",
+                            style: TextStyle(color: onSurface),
+                          ),
+                          subtitle: Text(
+                            "Profilin ve gönderilerin yalnızca onaylı takipçilerine görünür",
+                            style: TextStyle(
+                                color: sheetVibe.mutedText, fontSize: 12),
+                          ),
+                          value: hesapGizli,
+                          activeColor: Colors.redAccent,
+                          onChanged: (value) async {
+                            sheetSetState(() => hesapGizli = value);
+                            await hesapGizliliginiDegistir(value);
+                          },
+                        ),
+                      if (YasHesapKontrol.maybeOf(context)?.cocukHesabi ==
+                          true)
+                        ListTile(
+                          leading: Icon(Icons.family_restroom,
+                              color: sheetVibe.mutedText),
+                          title: Text(
+                            "Ebeveyn kontrolleri",
+                            style: TextStyle(color: onSurface),
+                          ),
+                          subtitle: Text(
+                            "Günlük süre ve PIN",
+                            style: TextStyle(
+                                color: sheetVibe.mutedText, fontSize: 12),
+                          ),
+                          onTap: () {
+                            Navigator.pop(sheetContext);
+                            unawaited(ebeveynAyarPaneliniAc(context));
+                          },
+                        ),
+                      if (seviye != null && seviye >= 5)
+                        Semantics(
+                          label: "Vibel İsmini Değiştir",
+                          button: true,
+                          child: ListTile(
+                            leading: MascotLottieView(
+                              seviye: seviye,
+                              renk: renk,
+                              width: 24,
+                              height: 24,
+                              fit: BoxFit.contain,
+                              tamEkranAc: false,
+                            ),
+                            title: Text(
+                              "Vibel İsmini Değiştir",
+                              style: TextStyle(color: onSurface),
+                            ),
+                            onTap: () {
+                              Navigator.pop(sheetContext);
+                              mascotIsminiDegistir(mascotIsim);
+                            },
+                          ),
+                        ),
                       if (isModerator) ...[
                         ListTile(
                           leading: Icon(Icons.admin_panel_settings,
                               color: sheetVibe.mutedText),
                           title: Text(
-                            "Moderasyon Paneli",
+                            "Moderatör Konsolu",
                             style: TextStyle(color: onSurface),
+                          ),
+                          subtitle: Text(
+                            "Şikayetler, destek, hesap silme",
+                            style: TextStyle(
+                              color: sheetVibe.mutedText,
+                              fontSize: 12,
+                            ),
                           ),
                           onTap: () {
                             Navigator.pop(sheetContext);
-                            Navigator.push(
+                            tekSeferPush(
                               context,
                               MaterialPageRoute(
-                                builder: (_) => const _ModerasyonPanelPage(),
-                              ),
-                            );
-                          },
-                        ),
-                        ListTile(
-                          leading: Icon(Icons.inbox_outlined,
-                              color: sheetVibe.mutedText),
-                          title: Text(
-                            "Destek Talepleri",
-                            style: TextStyle(color: onSurface),
-                          ),
-                          onTap: () {
-                            Navigator.pop(sheetContext);
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) =>
-                                    const DestekTalepleriPanelPage(),
+                                builder: (_) => const ModeratorKonsolPage(),
                               ),
                             );
                           },
@@ -848,6 +1141,23 @@ class _ProfilePageState extends State<ProfilePage> {
                           },
                         ),
                       ListTile(
+                        leading: Icon(Icons.description_outlined,
+                            color: sheetVibe.mutedText),
+                        title: Text(
+                          "Kullanım Koşulları",
+                          style: TextStyle(color: onSurface),
+                        ),
+                        onTap: () {
+                          Navigator.pop(sheetContext);
+                          tekSeferPush(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const TermsOfUsePage(),
+                            ),
+                          );
+                        },
+                      ),
+                      ListTile(
                         leading: Icon(Icons.privacy_tip_outlined,
                             color: sheetVibe.mutedText),
                         title: Text(
@@ -856,7 +1166,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         ),
                         onTap: () {
                           Navigator.pop(sheetContext);
-                          Navigator.push(
+                          tekSeferPush(
                             context,
                             MaterialPageRoute(
                               builder: (_) => const PrivacyPolicyPage(),
@@ -873,10 +1183,22 @@ class _ProfilePageState extends State<ProfilePage> {
                         ),
                         onTap: () {
                           Navigator.pop(sheetContext);
-                          Navigator.push(
+                          yasalLinkiAc(context, VibeLegal.kvkkPolicyUrl);
+                        },
+                      ),
+                      ListTile(
+                        leading: Icon(Icons.child_care_outlined,
+                            color: sheetVibe.mutedText),
+                        title: Text(
+                          "Çocuk Güvenliği",
+                          style: TextStyle(color: onSurface),
+                        ),
+                        onTap: () {
+                          Navigator.pop(sheetContext);
+                          tekSeferPush(
                             context,
                             MaterialPageRoute(
-                              builder: (_) => const KvkkPage(),
+                              builder: (_) => const CocukGuvenligiPage(),
                             ),
                           );
                         },
@@ -890,7 +1212,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         ),
                         onTap: () {
                           Navigator.pop(sheetContext);
-                          Navigator.push(
+                          tekSeferPush(
                             context,
                             MaterialPageRoute(
                               builder: (_) => const HelpFaqPage(),
@@ -898,7 +1220,8 @@ class _ProfilePageState extends State<ProfilePage> {
                           );
                         },
                       ),
-                      ListTile(
+                      if (isModerator)
+                        ListTile(
                         leading: Icon(Icons.new_releases_outlined,
                             color: sheetVibe.mutedText),
                         title: Text(
@@ -907,7 +1230,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         ),
                         onTap: () {
                           Navigator.pop(sheetContext);
-                          Navigator.push(
+                          tekSeferPush(
                             context,
                             MaterialPageRoute(
                               builder: (_) => const ChangelogPage(),
@@ -924,7 +1247,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         ),
                         onTap: () {
                           Navigator.pop(sheetContext);
-                          Navigator.push(
+                          tekSeferPush(
                             context,
                             MaterialPageRoute(
                               builder: (_) => const ContactPage(),
@@ -944,17 +1267,24 @@ class _ProfilePageState extends State<ProfilePage> {
                           hesapSilPaneliniAc();
                         },
                       ),
-                      ListTile(
-                        leading:
-                            const Icon(Icons.logout, color: Colors.redAccent),
-                        title: const Text(
-                          "Çıkış Yap",
-                          style: TextStyle(color: Colors.redAccent),
-                        ),
+                      maestroButton(
+                        label: MaestroSemantics.cikisYap,
                         onTap: () {
                           Navigator.pop(sheetContext);
                           cikisYap();
                         },
+                        child: ListTile(
+                          leading: const Icon(Icons.logout,
+                              color: Colors.redAccent),
+                          title: const Text(
+                            "Çıkış Yap",
+                            style: TextStyle(color: Colors.redAccent),
+                          ),
+                          onTap: () {
+                            Navigator.pop(sheetContext);
+                            cikisYap();
+                          },
+                        ),
                       ),
                     ],
                   ),
@@ -963,7 +1293,8 @@ class _ProfilePageState extends State<ProfilePage> {
             );
           },
         );
-      },
+        }),
+      ),
     );
   }
 
@@ -973,15 +1304,20 @@ class _ProfilePageState extends State<ProfilePage> {
     final user = FirebaseAuth.instance.currentUser;
 
     if (user == null) {
-      return const Center(
-        child: Text(
-          "Kullanıcı bulunamadı.",
-          style: TextStyle(color: Colors.white),
+      return _profilSayfaKabugu(
+        context,
+        const Center(
+          child: Text(
+            "Kullanıcı bulunamadı.",
+            style: TextStyle(color: Colors.white),
+          ),
         ),
       );
     }
 
-    return SafeArea(
+    return _profilSayfaKabugu(
+      context,
+      SafeArea(
       child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
         stream: FirebaseFirestore.instance
             .collection("users")
@@ -992,96 +1328,175 @@ class _ProfilePageState extends State<ProfilePage> {
 
           final adSoyad = data?["adSoyad"] ?? "Vibe Kullanıcısı";
           final kullaniciAdi = data?["kullaniciAdi"] ?? "kullanici";
-          final email = data?["email"] ?? user.email ?? ""; // e-posta
-          final photoUrl = data?["photoUrl"] ??
-              user.photoURL ??
-              ""; // profil fotoğraf url'si
+          final email = user.email ?? ""; // Auth; public profilde e-posta tutulmaz
           final avatarKey = data?["avatarKey"]?.toString() ?? "";
-          final puan = _intDeger(data?["puan"], 0);
+          final firestorePhoto = (data?["photoUrl"] ?? "").toString();
+          final photoUrl = vibeAvatarByKey(avatarKey) != null
+              ? ""
+              : (firestorePhoto.isNotEmpty
+                  ? firestorePhoto
+                  : (user.photoURL ?? ""));
 
           final mascotData = data?["robot"];
           final mascotDurum = MascotServis.tryParse(mascotData);
-          final mascotIsim = mascotDurum?.isim ?? 'Mini Vibe';
+          final mascotIsim = mascotDurum?.isim ?? MascotServis.varsayilanIsim;
           final seviye = mascotDurum?.seviye;
           final hesapGizli = data?["hesapGizli"] == true;
           final isModerator = data?["isModerator"] == true;
+          final masaustu = webMasaustuMu(context);
+          final vibe = context.vibe;
+          final onSurface = Theme.of(context).colorScheme.onSurface;
+
+          final aracCubugu = Row(
+            children: [
+              Text(
+                "Profil",
+                style: TextStyle(
+                  color: onSurface,
+                  fontSize: masaustu ? 28 : 26,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const Spacer(),
+              maestroButton(
+                label: MaestroSemantics.liderlikTablosu,
+                onTap: () {
+                  tekSeferPush(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const LeaderboardPage(),
+                    ),
+                  );
+                },
+                child: IconButton(
+                  onPressed: () {
+                    tekSeferPush(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const LeaderboardPage(),
+                      ),
+                    );
+                  },
+                  icon: Icon(Icons.emoji_events_outlined,
+                      color: vibe.mutedText),
+                  tooltip: "Liderlik tablosu",
+                ),
+              ),
+              Semantics(
+                label: MaestroSemantics.ayarlar,
+                button: true,
+                onTap: () => ayarlarPaneliniAc(
+                  mascotIsim,
+                  hesapGizli,
+                  seviye,
+                  isModerator,
+                  renk: mascotDurum?.renk ?? RetyRenk.varsayilan,
+                ),
+                child: ExcludeSemantics(
+                  child: IconButton(
+                    onPressed: () => ayarlarPaneliniAc(
+                      mascotIsim,
+                      hesapGizli,
+                      seviye,
+                      isModerator,
+                      renk: mascotDurum?.renk ?? RetyRenk.varsayilan,
+                    ),
+                    icon: Icon(Icons.settings, color: vibe.mutedText),
+                  ),
+                ),
+              ),
+              maestroButton(
+                label: MaestroSemantics.cikisYap,
+                onTap: cikisYap,
+                child: IconButton(
+                  onPressed: cikisYap,
+                  tooltip: MaestroSemantics.cikisYap,
+                  icon: Icon(Icons.logout, color: vibe.mutedText),
+                ),
+              ),
+            ],
+          );
+
+          final profilKarti = _profilKarti(
+            sayacVerisi: data,
+            userId: user.uid,
+            adSoyad: adSoyad,
+            kullaniciAdi: kullaniciAdi,
+            email: email,
+            photoUrl: photoUrl,
+            avatarKey: avatarKey,
+            onDuzenle: () => profiliDuzenle(
+              adSoyad: adSoyad,
+              kullaniciAdi: kullaniciAdi,
+              email: email,
+              avatarKey: avatarKey,
+            ),
+          );
+
+          final mascotBolumu = mascotDurum != null
+              ? _mascotKarti(mascotDurum)
+              : _mascotKartiYukleniyor();
+
+          if (masaustu) {
+            return SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.fromLTRB(28, 28, 28, 36),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          vibe.gradientStart.withOpacity(0.85),
+                          vibe.gradientEnd.withOpacity(0.55),
+                          Colors.transparent,
+                        ],
+                      ),
+                    ),
+                    child: aracCubugu,
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                    child: Column(
+                      children: [
+                        Transform.translate(
+                          offset: const Offset(0, -18),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(flex: 11, child: profilKarti),
+                              const SizedBox(width: 18),
+                              Expanded(flex: 9, child: mascotBolumu),
+                            ],
+                          ),
+                        ),
+                        _sekmeSecici(user.uid),
+                        const SizedBox(height: 12),
+                        seciliSekme == 0
+                            ? _kendiGonderilerBolumu(user.uid)
+                            : _begenilenGonderilerBolumu(user.uid),
+                        const SizedBox(height: 24),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }
 
           return SingleChildScrollView(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
             child: Column(
               children: [
                 const SizedBox(height: 38),
-                Row(
-                  children: [
-                    Text(
-                      "Profil",
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurface,
-                        fontSize: 26,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const Spacer(),
-                    IconButton(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const LeaderboardPage(),
-                          ),
-                        );
-                      },
-                      icon: Icon(Icons.emoji_events_outlined,
-                          color: context.vibe.mutedText),
-                      tooltip: "Liderlik tablosu",
-                    ),
-                    Semantics(
-                      label: MaestroSemantics.ayarlar,
-                      button: true,
-                      onTap: () => ayarlarPaneliniAc(
-                        mascotIsim,
-                        hesapGizli,
-                        seviye,
-                        isModerator,
-                      ),
-                      child: ExcludeSemantics(
-                        child: IconButton(
-                          onPressed: () => ayarlarPaneliniAc(
-                            mascotIsim,
-                            hesapGizli,
-                            seviye,
-                            isModerator,
-                          ),
-                          icon: Icon(Icons.settings,
-                              color: context.vibe.mutedText),
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: cikisYap,
-                      icon: Icon(Icons.logout, color: context.vibe.mutedText),
-                    ),
-                  ],
-                ),
+                aracCubugu,
                 const SizedBox(height: 12),
-                _profilKarti(
-                  userId: user.uid,
-                  adSoyad: adSoyad,
-                  kullaniciAdi: kullaniciAdi,
-                  email: email,
-                  photoUrl: photoUrl,
-                  avatarKey: avatarKey,
-                  onDuzenle: () => profiliDuzenle(
-                    adSoyad: adSoyad,
-                    kullaniciAdi: kullaniciAdi,
-                    email: email,
-                    avatarKey: avatarKey,
-                  ),
-                ),
+                profilKarti,
                 const SizedBox(height: 18),
-                mascotDurum != null
-                    ? _mascotKarti(mascotDurum, puan)
-                    : _mascotKartiYukleniyor(),
+                mascotBolumu,
                 const SizedBox(height: 18),
                 _sekmeSecici(user.uid),
                 const SizedBox(height: 12),
@@ -1094,7 +1509,20 @@ class _ProfilePageState extends State<ProfilePage> {
           );
         },
       ),
+    ),
     );
+  }
+
+  // InkWell web'de iç içe Navigator overlay'inde dış Scaffold Material'ını
+  // kaçırabiliyor; şeffaf Material her zaman verilir. Rota olarak açılınca
+  // ayrıca kendi iskeleti de eklenir.
+  Widget _profilSayfaKabugu(BuildContext context, Widget icerik) {
+    final govde = Material(
+      type: MaterialType.transparency,
+      child: icerik,
+    );
+    if (Scaffold.maybeOf(context) != null) return govde;
+    return VibeGradientScaffold(body: govde);
   }
 
   // Profil bilgi kartı
@@ -1106,48 +1534,86 @@ class _ProfilePageState extends State<ProfilePage> {
     required String photoUrl,
     required String avatarKey,
     required VoidCallback onDuzenle,
+    Map<String, dynamic>? sayacVerisi,
   }) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(18),
-      decoration: _kartDekorasyonu(),
+      decoration: context.vibe.kahramanKart(),
       child: Column(
         children: [
           Row(
             children: [
-              _avatar(
-                photoUrl,
-                avatarKey: avatarKey,
-                fallbackText: kullaniciAdi,
-                radius: 34,
-                iconSize: 34,
+              GestureDetector(
+                onTap: onDuzenle,
+                child: _avatar(
+                  photoUrl,
+                  userId: userId,
+                  avatarKey: avatarKey,
+                  fallbackText: kullaniciAdi,
+                  radius: 34,
+                  iconSize: 34,
+                ),
               ),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      "@$kullaniciAdi",
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurface,
-                        fontSize: 19,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            "@$kullaniciAdi",
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.onSurface,
+                              fontSize: 19,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        IsimYanRozet(uid: userId, boy: 26),
+                      ],
+                    ),
+                    RozetSayacSatiri(
+                      data: sayacVerisi,
+                      seviye: sayacVerisi == null
+                          ? 1
+                          : (MascotServis.tryParse(sayacVerisi['robot'])
+                                  ?.seviye ??
+                              1),
                     ),
                     Text(adSoyad,
                         style: TextStyle(color: context.vibe.mutedText)),
-                    Text(
-                      email,
-                      style: TextStyle(
-                          color: context.vibe.faintText, fontSize: 12),
-                    ),
+                    if (webMasaustuMu(context))
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          email,
+                          maxLines: 1,
+                          style: TextStyle(
+                              color: context.vibe.faintText, fontSize: 12),
+                        ),
+                      )
+                    else
+                      Text(
+                        email,
+                        style: TextStyle(
+                            color: context.vibe.faintText, fontSize: 12),
+                      ),
                   ],
                 ),
               ),
-              IconButton(
-                onPressed: onDuzenle,
-                icon: Icon(Icons.edit, color: context.vibe.mutedText, size: 20),
+              Semantics(
+                label: MaestroSemantics.profilDuzenle,
+                button: true,
+                child: IconButton(
+                  onPressed: onDuzenle,
+                  icon:
+                      Icon(Icons.edit, color: context.vibe.mutedText, size: 20),
+                ),
               ),
             ],
           ),
@@ -1163,12 +1629,13 @@ class _ProfilePageState extends State<ProfilePage> {
                       .count()
                       .get(),
                   builder: (context, countSnap) {
-                    final sayi = countSnap.data?.count ?? 0;
+                    final sayi = _sayacDegeri("takipci_$userId", countSnap);
                     return _miniSayacKutusu(
                       "Takipçi",
                       sayi,
+                      erisimEtiketi: MaestroSemantics.takipciSayaci,
                       onTap: () {
-                        Navigator.push(
+                        tekSeferPush(
                           context,
                           MaterialPageRoute(
                             builder: (_) => FollowListPage(
@@ -1193,12 +1660,13 @@ class _ProfilePageState extends State<ProfilePage> {
                       .count()
                       .get(),
                   builder: (context, countSnap) {
-                    final sayi = countSnap.data?.count ?? 0;
+                    final sayi = _sayacDegeri("takip_$userId", countSnap);
                     return _miniSayacKutusu(
                       "Takip Edilen",
                       sayi,
+                      erisimEtiketi: MaestroSemantics.takipEdilenSayaci,
                       onTap: () {
-                        Navigator.push(
+                        tekSeferPush(
                           context,
                           MaterialPageRoute(
                             builder: (_) => FollowListPage(
@@ -1215,13 +1683,70 @@ class _ProfilePageState extends State<ProfilePage> {
               ),
             ],
           ),
+          const SizedBox(height: 12),
+          _arkadaslikBaglariButonu(),
         ],
       ),
     );
   }
 
+  void _arkadaslikBaglariniAc() {
+    tekSeferPush(
+      context,
+      MaterialPageRoute(
+        builder: (_) => RetyBaglarPage(
+          onKullaniciAc: (uid) {
+            profiliAc(context, uid);
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _arkadaslikBaglariButonu() {
+    return maestroButton(
+      label: MaestroSemantics.arkadaslikBaglari,
+      onTap: _arkadaslikBaglariniAc,
+      child: SizedBox(
+        width: double.infinity,
+        child: ElevatedButton.icon(
+          onPressed: _arkadaslikBaglariniAc,
+          icon: Image.asset(
+            RetyBagRozeti.assetYolu,
+            width: 26,
+            height: 26,
+            fit: BoxFit.contain,
+          ),
+          label: const Text(
+            'Arkadaşlık bağları',
+            maxLines: 2,
+            textAlign: TextAlign.center,
+          ),
+          style: _butonStili(),
+        ),
+      ),
+    );
+  }
+
   // Mini sayaç kutusu
-  Widget _miniSayacKutusu(String baslik, int sayi, {VoidCallback? onTap}) {
+  // Profil açılışında sayaçlar «0» diye yanıp sönmesin: son bilinen değer.
+  static final Map<String, int> _sayacOnbellek = {};
+
+  int? _sayacDegeri(String anahtar, AsyncSnapshot<AggregateQuerySnapshot> snap) {
+    final sayi = snap.data?.count;
+    if (sayi != null) {
+      _sayacOnbellek[anahtar] = sayi;
+      return sayi;
+    }
+    return _sayacOnbellek[anahtar];
+  }
+
+  Widget _miniSayacKutusu(
+    String baslik,
+    int? sayi, {
+    VoidCallback? onTap,
+    String? erisimEtiketi,
+  }) {
     final kutu = Container(
       padding: const EdgeInsets.symmetric(vertical: 10),
       decoration: BoxDecoration(
@@ -1232,11 +1757,11 @@ class _ProfilePageState extends State<ProfilePage> {
       child: Column(
         children: [
           Text(
-            "$sayi",
+            sayi == null ? "–" : "$sayi",
             style: TextStyle(
               color: Theme.of(context).colorScheme.onSurface,
               fontWeight: FontWeight.bold,
-              fontSize: 17,
+              fontSize: 16,
             ),
           ),
           const SizedBox(height: 2),
@@ -1249,10 +1774,21 @@ class _ProfilePageState extends State<ProfilePage> {
     );
 
     if (onTap == null) return kutu;
-    return InkWell(
-      onTap: onTap,
+    final tiklanabilir = Material(
+      color: Colors.transparent,
       borderRadius: BorderRadius.circular(16),
-      child: kutu,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: kutu,
+      ),
+    );
+    if (erisimEtiketi == null) return tiklanabilir;
+    return Semantics(
+      label: erisimEtiketi,
+      button: true,
+      onTap: onTap,
+      child: tiklanabilir,
     );
   }
 
@@ -1263,22 +1799,20 @@ class _ProfilePageState extends State<ProfilePage> {
       padding: const EdgeInsets.all(18),
       decoration: _kartDekorasyonu(),
       alignment: Alignment.center,
-      child: const CircularProgressIndicator(
-        color: VibeAppTheme.accent,
-        strokeWidth: 2,
-      ),
+      child: const VibeYukleniyor(renk: VibeAppTheme.accent),
     );
   }
 
   // Maskot durum kartı
-  Widget _mascotKarti(MascotDurum mascot, int kullanilabilirPuan) {
+  Widget _mascotKarti(MascotDurum mascot) {
     final odaAcik = MascotServis.odaAcik(mascot.seviye);
-    final mesaj = MascotServis.ruhHaliMesaji(mascot);
-
-    return InkWell(
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(22),
+      child: InkWell(
       onTap: odaAcik
           ? () {
-              Navigator.push(
+              tekSeferPush(
                 context,
                 MaterialPageRoute(builder: (_) => const MascotPage()),
               );
@@ -1288,7 +1822,7 @@ class _ProfilePageState extends State<ProfilePage> {
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.all(18),
-        decoration: _kartDekorasyonu(),
+        decoration: context.vibe.kahramanKart(),
         child: Column(
           children: [
             Row(
@@ -1299,17 +1833,16 @@ class _ProfilePageState extends State<ProfilePage> {
                   strokeWidth: 3.5,
                   innerPadding: 3.5,
                   borderRadius: 22,
-                  backgroundFill: Colors.white10,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(18),
-                    child: MascotLottieView(
-                      seviye: mascot.seviye,
-                      gorselDurum: mascot.gorselDurum,
-                      width: 86,
-                      height: 86,
-                      fit: BoxFit.contain,
-                      tamEkranAc: false,
-                    ),
+                  child: MascotLottieView(
+                    seviye: mascot.seviye,
+                    gorselDurum: mascot.gorselDurum,
+                    renk: mascot.renk,
+                    width: 86,
+                    height: 86,
+                    fit: BoxFit.contain,
+                    tamEkranAc: false,
+                    renkSecilebilir:
+                        mascot.seviye >= MascotServis.odaAcilisSeviyesi,
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -1330,21 +1863,27 @@ class _ProfilePageState extends State<ProfilePage> {
                         style: TextStyle(color: context.vibe.mutedText),
                       ),
                       const SizedBox(height: 6),
-                      if (odaAcik)
-                        Text(
-                          mascot.uyuyor
-                              ? '${mascot.isim} dinleniyor — uyandırmak için odaya gir'
-                              : mesaj,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: mascot.uyuyor
-                                ? Colors.amberAccent
-                                : VibeAppTheme.accent,
-                            fontSize: 12,
-                            fontStyle: FontStyle.italic,
-                          ),
-                        ),
+                      mascot.uyuyor
+                          ? Text(
+                              '${mascot.isim} dinleniyor — uyandırmak için odaya gir',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.amberAccent,
+                                fontSize: 12,
+                                fontStyle: FontStyle.italic,
+                              ),
+                            )
+                          : MascotRuhHaliMetni(
+                              mascot: mascot,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: VibeAppTheme.accent,
+                                fontSize: 12,
+                                fontStyle: FontStyle.italic,
+                              ),
+                            ),
                     ],
                   ),
                 ),
@@ -1359,13 +1898,9 @@ class _ProfilePageState extends State<ProfilePage> {
                   padding: const EdgeInsets.only(bottom: 8),
                   child: Row(
                     children: [
-                      Text(
-                        'Vil: ${mascot.vil}',
-                        style: const TextStyle(
-                          color: Colors.lightBlueAccent,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
+                      Semantics(
+                        label: MaestroSemantics.vilBakiyesi(mascot.vil),
+                        child: VilRozeti(miktar: mascot.vil),
                       ),
                     ],
                   ),
@@ -1376,6 +1911,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   deger: mascot.tokluk,
                   renk: Colors.orangeAccent,
                   compact: true,
+                  sayiGoster: false,
                 ),
               if (MascotServis.enerjiAktif(mascot.seviye))
                 MascotDurumBari(
@@ -1383,85 +1919,49 @@ class _ProfilePageState extends State<ProfilePage> {
                   deger: mascot.enerji,
                   renk: Colors.amber,
                   compact: true,
+                  sayiGoster: false,
                 ),
               if (MascotServis.mutlulukAktif(mascot.seviye))
                 MascotDurumBari(
                   etiket: 'Mutluluk',
                   deger: mascot.mutluluk,
-                  renk: Colors.pinkAccent,
+                  renk: Colors.redAccent,
                   compact: true,
                 ),
-            ] else
-              Text(
-                '1–5 Yumurta: etkileşimle XP. '
-                '6+ Bebek: vil kazan, yemek al (+15 XP). '
-                '11+ Çocuk: enerji/uyku. '
-                '21+ Yetişkin: mutluluk.',
-                style: TextStyle(
-                  color: context.vibe.mutedText,
-                  fontSize: 12,
-                ),
-              ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Text(
-                  "Gelişim: ${mascot.gelisimPuani} / ${mascot.gerekliGelisim}",
-                  style: TextStyle(color: context.vibe.mutedText, fontSize: 13),
-                ),
-                const Spacer(),
-                Text(
-                  "Puan: $kullanilabilirPuan",
-                  style: const TextStyle(
-                    color: Colors.redAccent,
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
+            ],
+            const SizedBox(height: 14),
+            if (odaAcik)
+              maestroButton(
+                label: MaestroSemantics.maskotOdasi,
+                onTap: () {
+                  tekSeferPush(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const MascotPage(),
+                    ),
+                  );
+                },
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      tekSeferPush(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const MascotPage(),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.auto_awesome, size: 18),
+                    label: Text('${mascot.isim} odası'),
+                    style: _butonStili(),
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            SizedBox(
-              width: double.infinity,
-              child: odaAcik
-                  ? Semantics(
-                      label: MaestroSemantics.maskotOdasi,
-                      button: true,
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) => const MascotPage()),
-                        );
-                      },
-                      child: ExcludeSemantics(
-                        child: ElevatedButton.icon(
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (_) => const MascotPage()),
-                            );
-                          },
-                          icon: const Icon(Icons.auto_awesome),
-                          label: Text('${mascot.isim} odası'),
-                          style: _butonStili(),
-                        ),
-                      ),
-                    )
-                  : Text(
-                      '1–5 Yumurta: etkileşimle XP kazan. '
-                      '6. seviyede vil cüzdanı ve maskot odası açılır.',
-                      style: TextStyle(
-                        color: context.vibe.mutedText,
-                        fontSize: 13,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-            ),
+              ),
           ],
         ),
       ),
+    ),
     );
   }
 
@@ -1542,31 +2042,49 @@ class _ProfilePageState extends State<ProfilePage> {
               ),
             )
           : Column(
-              children: gorunenDocs.map((doc) {
-                final post = doc.data();
-                return _ProfilPostCard(
-                  key: ValueKey(doc.id),
-                  postId: doc.id,
-                  postOwnerId: userId,
-                  userId: userId,
-                  kullaniciAdi: post["kullaniciAdi"] ?? "Vibe Kullanıcısı",
-                  metin: post["metin"] ?? "",
-                  mentionUidleri: SosyalServis.bahsetmeUidHaritasiParse(
-                    post["mentionUidleri"],
-                  ),
-                  photoUrl: post["photoUrl"] ?? "",
-                  avatarKey: post["avatarKey"] ?? "",
-                  baslangicBegeniSayisi: _intDeger(post["begeniSayisi"], 0),
-                  baslangicYorumSayisi: _intDeger(post["yorumSayisi"], 0),
-                  silmeButonuGoster: true,
-                  onSil: () => gonderiSil(doc.id),
-                  createdAt: post["createdAt"],
-                  alintiSnapshot: AlintiGonderiSnapshot.haritadan(
-                    post["alintiSnapshot"],
-                    postId: post["alintiPostId"]?.toString(),
-                  ),
-                );
-              }).toList(),
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _gonderiBolumBasligi(),
+                const SizedBox(height: 12),
+                _gonderiGorunumu == ProfilGonderiGorunumu.liste
+                    ? Column(
+                        children: gorunenDocs.map((doc) {
+                          final post = doc.data();
+                          return _ProfilPostCard(
+                            key: ValueKey(doc.id),
+                            postId: doc.id,
+                            postOwnerId: userId,
+                            userId: userId,
+                            kullaniciAdi:
+                                post["kullaniciAdi"] ?? "Vibe Kullanıcısı",
+                            metin: post["metin"] ?? "",
+                            mentionUidleri:
+                                SosyalServis.bahsetmeUidHaritasiParse(
+                              post["mentionUidleri"],
+                            ),
+                            photoUrl: post["photoUrl"] ?? "",
+                            avatarKey: post["avatarKey"] ?? "",
+                            baslangicBegeniSayisi:
+                                _intDeger(post["begeniSayisi"], 0),
+                            baslangicYorumSayisi:
+                                _intDeger(post["yorumSayisi"], 0),
+                            silmeButonuGoster: true,
+                            onSil: () => gonderiSil(doc.id),
+                            createdAt: post["createdAt"],
+                            alintiSnapshot: AlintiGonderiSnapshot.haritadan(
+                              post["alintiSnapshot"],
+                              postId: post["alintiPostId"]?.toString(),
+                              icAlintiDahilEt: false,
+                            ),
+                          );
+                        }).toList(),
+                      )
+                    : _profilIzgarasi(
+                        docs: gorunenDocs,
+                        currentUserId: userId,
+                        postOwnerId: userId,
+                      ),
+              ],
             ),
     );
   }
@@ -1583,6 +2101,11 @@ class _ProfilePageState extends State<ProfilePage> {
             .limit(50)
             .snapshots(),
         builder: (context, likedSnap) {
+          if (!_begeniTemizligiYapildi) {
+            _begeniTemizligiYapildi = true;
+            unawaited(SosyalServis.gecersizBegeniKayitlariniTemizle(userId));
+          }
+
           if (likedSnap.hasError) {
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 18),
@@ -1596,7 +2119,8 @@ class _ProfilePageState extends State<ProfilePage> {
             );
           }
 
-          if (likedSnap.connectionState == ConnectionState.waiting) {
+          if (likedSnap.connectionState == ConnectionState.waiting &&
+              !likedSnap.hasData) {
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 18),
               child: Text(
@@ -1623,33 +2147,132 @@ class _ProfilePageState extends State<ProfilePage> {
             );
           }
 
-          return Column(
-            children: likedDocs.map((liked) {
-              final post = _begenilenPostVerisi(liked);
-              if (post["raporNedeniyleGizli"] == true) {
-                return const SizedBox.shrink();
-              }
+          _begenilenPostlariGetir(likedDocs);
+          final gorunenLikedDocs = likedDocs
+              .where((liked) =>
+                  _begenilenPostVerisi(liked)["raporNedeniyleGizli"] != true)
+              .toList();
 
-              return _ProfilPostCard(
-                key: ValueKey(liked.id),
-                postId: liked.id,
-                postOwnerId: post["userId"] ?? "",
-                userId: userId,
-                kullaniciAdi: post["kullaniciAdi"] ?? "Vibe Kullanıcısı",
-                metin: post["metin"] ?? "",
-                mentionUidleri: const {},
-                photoUrl: post["photoUrl"] ?? "",
-                avatarKey: post["avatarKey"] ?? "",
-                baslangicBegeniSayisi: _intDeger(post["begeniSayisi"], 0),
-                baslangicYorumSayisi: _intDeger(post["yorumSayisi"], 0),
-                baslangicBegenildi: true,
-                silmeButonuGoster: false,
-                createdAt: post["createdAt"],
-              );
-            }).toList(),
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _gonderiBolumBasligi(),
+              const SizedBox(height: 12),
+              _gonderiGorunumu == ProfilGonderiGorunumu.liste
+                  ? Column(
+                      children: gorunenLikedDocs.map((liked) {
+                        final post = _begenilenPostVerisi(liked);
+                        return _ProfilPostCard(
+                          key: ValueKey(liked.id),
+                          postId: liked.id,
+                          postOwnerId: post["userId"] ?? "",
+                          userId: userId,
+                          kullaniciAdi:
+                              post["kullaniciAdi"] ?? "Vibe Kullanıcısı",
+                          metin: post["metin"] ?? "",
+                          mentionUidleri:
+                              SosyalServis.bahsetmeUidHaritasiParse(
+                            post["mentionUidleri"],
+                          ),
+                          alintiSnapshot: AlintiGonderiSnapshot.haritadan(
+                            post["alintiSnapshot"],
+                            postId: post["alintiPostId"]?.toString(),
+                            icAlintiDahilEt: false,
+                          ),
+                          photoUrl: post["photoUrl"] ?? "",
+                          avatarKey: post["avatarKey"] ?? "",
+                          baslangicBegeniSayisi:
+                              _intDeger(post["begeniSayisi"], 0),
+                          baslangicYorumSayisi:
+                              _intDeger(post["yorumSayisi"], 0),
+                          baslangicBegenildi: true,
+                          silmeButonuGoster: false,
+                          erisilemezseGizle: true,
+                          createdAt: post["createdAt"],
+                        );
+                      }).toList(),
+                    )
+                  : _profilIzgarasi(
+                      docs: gorunenLikedDocs,
+                      currentUserId: userId,
+                      postOwnerId: null,
+                      begeniBilgisiDokumandan: true,
+                    ),
+            ],
           );
         },
       ),
+    );
+  }
+
+  Widget _gonderiBolumBasligi() {
+    return Row(
+      children: [
+        Text(
+          _gonderiGorunumu == ProfilGonderiGorunumu.liste
+              ? 'Liste görünümü'
+              : 'Izgara görünümü',
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurface,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const Spacer(),
+        ProfilGorunumAnahtari(
+          gorunum: _gonderiGorunumu,
+          onChanged: (gorunum) => setState(() => _gonderiGorunumu = gorunum),
+        ),
+      ],
+    );
+  }
+
+  Widget _profilIzgarasi({
+    required List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+    required String currentUserId,
+    required String? postOwnerId,
+    bool begeniBilgisiDokumandan = false,
+  }) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final sutunSayisi =
+            (webMasaustuMu(context) || constraints.maxWidth >= 760) ? 3 : 2;
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: docs.length,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: sutunSayisi,
+            crossAxisSpacing: 10,
+            mainAxisSpacing: 10,
+            mainAxisExtent: 190,
+          ),
+          itemBuilder: (context, index) {
+            final doc = docs[index];
+            final post = begeniBilgisiDokumandan
+                ? _begenilenPostVerisi(doc)
+                : doc.data();
+            final silinebilir =
+                !begeniBilgisiDokumandan && postOwnerId == currentUserId;
+            return ProfilGonderiIzgaraKarti(
+              key: ValueKey('grid_${doc.id}'),
+              postId: doc.id,
+              currentUserId: currentUserId,
+              kullaniciAdi:
+                  (post["kullaniciAdi"] ?? "Vibe Kullanıcısı").toString(),
+              createdAt: post["createdAt"],
+              metin: (post["metin"] ?? "").toString(),
+              begeniSayisi: _intDeger(post["begeniSayisi"], 0),
+              yorumSayisi: _intDeger(post["yorumSayisi"], 0),
+              alintiSnapshot: AlintiGonderiSnapshot.haritadan(
+                post["alintiSnapshot"],
+                postId: post["alintiPostId"]?.toString(),
+                icAlintiDahilEt: false,
+              ),
+              onSil: silinebilir ? () => gonderiSil(doc.id) : null,
+            );
+          },
+        );
+      },
     );
   }
 
@@ -1658,7 +2281,7 @@ class _ProfilePageState extends State<ProfilePage> {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(14),
-      decoration: _kartDekorasyonu(),
+      decoration: context.vibe.satirKart(),
       child: child,
     );
   }
@@ -1666,6 +2289,7 @@ class _ProfilePageState extends State<ProfilePage> {
   // Profil avatar widget'ı
   Widget _avatar(
     String photoUrl, {
+    required String userId,
     required String avatarKey,
     required String fallbackText,
     required double radius,
@@ -1673,6 +2297,8 @@ class _ProfilePageState extends State<ProfilePage> {
   }) {
     return vibeAvatar(
       radius: radius,
+      userId: userId,
+      liderTaciGoster: true,
       photoUrl: photoUrl,
       avatarKey: avatarKey,
       fallbackText: fallbackText,
@@ -1694,7 +2320,8 @@ class _ProfilePageState extends State<ProfilePage> {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(28),
       ),
-      padding: const EdgeInsets.symmetric(vertical: 13),
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+      textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
     );
   }
 }
@@ -1713,6 +2340,7 @@ class _ProfilPostCard extends StatefulWidget {
   final int baslangicYorumSayisi; // başlangıç yorum sayısı
   final bool? baslangicBegenildi;
   final bool silmeButonuGoster; // silme butonu gösterilsin mi
+  final bool erisilemezseGizle;
   final VoidCallback? onSil; // silme geri çağrısı
   final dynamic createdAt; // oluşturulma zamanı
   final AlintiGonderiSnapshot? alintiSnapshot;
@@ -1731,6 +2359,7 @@ class _ProfilPostCard extends StatefulWidget {
     required this.baslangicYorumSayisi,
     this.baslangicBegenildi,
     required this.silmeButonuGoster,
+    this.erisilemezseGizle = false,
     this.onSil,
     required this.createdAt,
     this.alintiSnapshot,
@@ -1744,6 +2373,45 @@ class _ProfilPostCard extends StatefulWidget {
 class _ProfilPostCardState extends State<_ProfilPostCard> {
   late int yorumSayisi; // yorum sayısı
   late PostBegeniDurumuYonetici _begeni;
+  bool _erisilemez = false;
+  // Beğendiklerim kaydı yalnız postId/sahip tutar; metin ve sahip bilgisi gönderiden gelir.
+  Map<String, dynamic>? _gonderi;
+
+  String get _kullaniciAdi {
+    final w = widget.kullaniciAdi;
+    if (w.isNotEmpty && w != 'Vibe Kullanıcısı') return w;
+    final g = _gonderi?['kullaniciAdi']?.toString() ?? '';
+    return g.isNotEmpty ? g : w;
+  }
+
+  String get _metin => widget.metin.isNotEmpty
+      ? widget.metin
+      : (_gonderi?['metin']?.toString() ?? '');
+
+  String get _photoUrl => widget.photoUrl.isNotEmpty
+      ? widget.photoUrl
+      : (_gonderi?['photoUrl']?.toString() ?? '');
+
+  String get _avatarKey => widget.avatarKey.isNotEmpty
+      ? widget.avatarKey
+      : (_gonderi?['avatarKey']?.toString() ?? '');
+
+  Map<String, String> get _mentionUidleri => widget.mentionUidleri.isNotEmpty
+      ? widget.mentionUidleri
+      : SosyalServis.bahsetmeUidHaritasiParse(_gonderi?['mentionUidleri']);
+
+  dynamic get _createdAt => _gonderi?['createdAt'] ?? widget.createdAt;
+
+  AlintiGonderiSnapshot? get _alintiSnapshot {
+    if (widget.alintiSnapshot != null) return widget.alintiSnapshot;
+    final g = _gonderi;
+    if (g == null) return null;
+    return AlintiGonderiSnapshot.haritadan(
+      g['alintiSnapshot'],
+      postId: g['alintiPostId']?.toString(),
+      icAlintiDahilEt: false,
+    );
+  }
 
   void _begeniYoneticiOlustur() {
     _begeni = PostBegeniDurumuYonetici(
@@ -1771,17 +2439,37 @@ class _ProfilPostCardState extends State<_ProfilPostCard> {
   }
 
   Future<void> _eksikSayaclariDoldur() async {
-    if (widget.baslangicBegeniSayisi > 0 && widget.baslangicYorumSayisi > 0) {
+    final ozetEksik = widget.metin.isEmpty && widget.alintiSnapshot == null;
+    if (!ozetEksik &&
+        widget.baslangicBegeniSayisi > 0 &&
+        widget.baslangicYorumSayisi > 0) {
       return;
     }
     try {
-      final snap = await FirebaseFirestore.instance
-          .collection('posts')
-          .doc(widget.postId)
+      final snap = await SosyalCore.gonderiRef(widget.postId)
           .get();
-      if (!snap.exists || !mounted) return;
+      if (!mounted) return;
+      if (!snap.exists) {
+        if (widget.erisilemezseGizle) {
+          setState(() => _erisilemez = true);
+          unawaited(
+            SosyalServis.erisilemeyenBegeniKaydiniSil(
+              uid: widget.userId,
+              postId: widget.postId,
+            ),
+          );
+        }
+        return;
+      }
       final data = snap.data() ?? {};
       setState(() {
+        if (ozetEksik) {
+          _gonderi = data;
+          if (widget.erisilemezseGizle &&
+              data['raporNedeniyleGizli'] == true) {
+            _erisilemez = true;
+          }
+        }
         if (widget.baslangicBegeniSayisi == 0) {
           _begeni.guncelle(
             yeniBaslangicBegeni: _intDeger(data['begeniSayisi'], 0),
@@ -1791,6 +2479,18 @@ class _ProfilPostCardState extends State<_ProfilPostCard> {
           yorumSayisi = _intDeger(data['yorumSayisi'], 0);
         }
       });
+    } on FirebaseException catch (e) {
+      if (widget.erisilemezseGizle && e.code == 'permission-denied') {
+        if (mounted) setState(() => _erisilemez = true);
+        unawaited(
+          SosyalServis.erisilemeyenBegeniKaydiniSil(
+            uid: widget.userId,
+            postId: widget.postId,
+          ),
+        );
+        return;
+      }
+      debugPrint('begendiklerim sayac senkron ($widget.postId): $e');
     } catch (e) {
       debugPrint('begendiklerim sayac senkron ($widget.postId): $e');
     }
@@ -1811,6 +2511,10 @@ class _ProfilPostCardState extends State<_ProfilPostCard> {
         oldWidget.userId != widget.userId ||
         oldWidget.postOwnerId != widget.postOwnerId) {
       _begeniYoneticiOlustur();
+    }
+
+    if (oldWidget.baslangicBegenildi != widget.baslangicBegenildi) {
+      _begeni.begeniDurumunuUygula(widget.baslangicBegenildi);
     }
 
     if (oldWidget.baslangicBegeniSayisi != widget.baslangicBegeniSayisi) {
@@ -1844,13 +2548,18 @@ class _ProfilPostCardState extends State<_ProfilPostCard> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
       ),
       builder: (context) {
-        return _ProfilYorumPaneli(
+        return YorumPaneli(
           postId: widget.postId,
           postOwnerId: widget.postOwnerId,
           userId: widget.userId,
           onYorumEklendi: () {
             setState(() {
               yorumSayisi += 1;
+            });
+          },
+          onYorumSilindi: () {
+            setState(() {
+              if (yorumSayisi > 0) yorumSayisi -= 1;
             });
           },
         );
@@ -1862,9 +2571,10 @@ class _ProfilPostCardState extends State<_ProfilPostCard> {
   Widget _postAvatar() {
     return vibeAvatar(
       radius: 20,
-      photoUrl: widget.photoUrl,
-      avatarKey: widget.avatarKey,
-      fallbackText: widget.kullaniciAdi,
+      userId: widget.postOwnerId,
+      photoUrl: _photoUrl,
+      avatarKey: _avatarKey,
+      fallbackText: _kullaniciAdi,
       emojiSize: 18,
       fallbackIconSize: 20,
     );
@@ -1873,6 +2583,8 @@ class _ProfilPostCardState extends State<_ProfilPostCard> {
   // Arayüzü oluştur
   @override
   Widget build(BuildContext context) {
+    if (_erisilemez) return const SizedBox.shrink();
+
     final vibe = context.vibe;
     final theme = Theme.of(context);
 
@@ -1884,24 +2596,38 @@ class _ProfilPostCardState extends State<_ProfilPostCard> {
         children: [
           ListTile(
             leading: _postAvatar(),
-            title: Text(
-              widget.kullaniciAdi,
-              style: TextStyle(
-                color: theme.colorScheme.onSurface,
-                fontWeight: FontWeight.bold,
-              ),
+            title: Row(
+              children: [
+                Flexible(
+                  child: Text(
+                    _kullaniciAdi,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: theme.colorScheme.onSurface,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                IsimYanRozet(uid: widget.postOwnerId),
+              ],
             ),
             trailing: widget.silmeButonuGoster
-                ? IconButton(
-                    onPressed: widget.onSil,
-                    icon: const Icon(
-                      Icons.delete_outline,
-                      color: Colors.redAccent,
+                ? Semantics(
+                    container: true,
+                    button: true,
+                    label: MaestroSemantics.gonderiyiSil,
+                    child: IconButton(
+                      tooltip: MaestroSemantics.gonderiyiSil,
+                      onPressed: widget.onSil,
+                      icon: const Icon(
+                        Icons.delete_outline,
+                        color: Colors.redAccent,
+                      ),
                     ),
                   )
                 : null,
             subtitle: Text(
-              tarihSaatYaz(widget.createdAt),
+              tarihSaatYaz(_createdAt),
               style: TextStyle(color: context.vibe.faintText, fontSize: 12),
             ),
           ),
@@ -1910,20 +2636,20 @@ class _ProfilPostCardState extends State<_ProfilPostCard> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (widget.metin.isNotEmpty)
+                if (_metin.isNotEmpty)
                   HashtagMetin(
-                    metin: widget.metin,
-                    mentionUidleri: widget.mentionUidleri,
+                    metin: _metin,
+                    mentionUidleri: _mentionUidleri,
                     style: TextStyle(
                       color: theme.colorScheme.onSurface,
                       fontWeight: FontWeight.w500,
                     ),
                     onHashtagTap: (tag) => etiketSayfasinaGit(context, tag),
                   ),
-                if (widget.alintiSnapshot != null) ...[
-                  if (widget.metin.isNotEmpty) const SizedBox(height: 10),
+                if (_alintiSnapshot != null) ...[
+                  if (_metin.isNotEmpty) const SizedBox(height: 10),
                   AlintiGonderiOnizleme(
-                    snapshot: widget.alintiSnapshot!,
+                    snapshot: _alintiSnapshot!,
                     currentUserId: widget.userId,
                     compact: true,
                   ),
@@ -1940,25 +2666,35 @@ class _ProfilPostCardState extends State<_ProfilPostCard> {
                   onTap: begeniyiDegistir,
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 10),
-                    child: Row(
-                      children: [
-                        Icon(
-                          _begeni.begenildi
-                              ? Icons.favorite
-                              : Icons.favorite_border,
-                          color: Colors.redAccent,
-                          size: 26,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          "${_begeni.begeniSayisi}",
-                          style: TextStyle(
-                            color: context.vibe.mutedText,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
+                      horizontal: 8,
+                      vertical: 10,
+                    ),
+                    child: Icon(
+                      _begeni.begenildi ? VibeIkon.begeni : VibeIkon.begeniBos,
+                      color: VibeAppTheme.accent,
+                      size: 26,
+                    ),
+                  ),
+                ),
+                InkWell(
+                  borderRadius: BorderRadius.circular(28),
+                  onTap: widget.userId == widget.postOwnerId
+                      ? () => begenenlerPaneliniAc(
+                            context,
+                            postId: widget.postId,
+                          )
+                      : begeniyiDegistir,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 10,
+                    ),
+                    child: Text(
+                      "${_begeni.begeniSayisi}",
+                      style: TextStyle(
+                        color: context.vibe.mutedText,
+                        fontSize: 14,
+                      ),
                     ),
                   ),
                 ),
@@ -1972,7 +2708,7 @@ class _ProfilPostCardState extends State<_ProfilPostCard> {
                     child: Row(
                       children: [
                         Icon(
-                          Icons.chat_bubble_outline,
+                          VibeIkon.yorum,
                           color: context.vibe.mutedText,
                           size: 24,
                         ),
@@ -1997,216 +2733,6 @@ class _ProfilPostCardState extends State<_ProfilPostCard> {
   }
 }
 
-// Gönderi yorum paneli (alt sayfa)
-class _ProfilYorumPaneli extends StatefulWidget {
-  final String postId; // gönderi kimliği
-  final String postOwnerId; // gönderi sahibi uid
-  final String userId; // oturum açmış kullanıcı uid
-  final VoidCallback onYorumEklendi; // yorum eklendi geri çağrısı
-
-  const _ProfilYorumPaneli({
-    required this.postId,
-    required this.postOwnerId,
-    required this.userId,
-    required this.onYorumEklendi,
-  });
-
-  @override
-  State<_ProfilYorumPaneli> createState() => _ProfilYorumPaneliState();
-}
-
-// Yorum paneli durumu
-class _ProfilYorumPaneliState extends State<_ProfilYorumPaneli> {
-  final TextEditingController yorumController = TextEditingController();
-  bool isLoading = false; // yükleme durumu
-
-  // Abonelik ve kontrolcüleri temizle
-  @override
-  void dispose() {
-    yorumController.dispose();
-    super.dispose();
-  }
-
-  // Yorum ekle
-  Future<void> yorumEkle() async {
-    final metin = yorumController.text.trim();
-
-    if (metin.isEmpty) return;
-
-    setState(() => isLoading = true);
-
-    // hata yakalamalı blok
-    try {
-      await SosyalServis.yorumEkle(
-        postId: widget.postId,
-        postOwnerId: widget.postOwnerId,
-        currentUserId: widget.userId,
-        metin: metin,
-      );
-
-      yorumController.clear();
-      widget.onYorumEklendi();
-
-      if (mounted && widget.userId != widget.postOwnerId) {
-        puanAnimasyonuGoster(context, 3);
-      }
-      // hata yakala
-    } catch (e) {
-      if (mounted) {
-        vibeSnackbarGoster(
-          context,
-          internetAwareErrorMessage(
-            error: e,
-            fallback: "Yorum eklenemedi.",
-          ),
-        );
-      }
-      // temizlik
-    } finally {
-      if (mounted) setState(() => isLoading = false);
-    }
-  }
-
-  // Arayüzü oluştur
-  @override
-  Widget build(BuildContext context) {
-    final altBosluk = MediaQuery.of(context).viewInsets.bottom;
-    final vibe = context.vibe;
-    final theme = Theme.of(context);
-    final onSurface = theme.colorScheme.onSurface;
-
-    return Padding(
-      padding: EdgeInsets.only(bottom: altBosluk),
-      child: SizedBox(
-        height: MediaQuery.of(context).size.height * 0.72,
-        child: Column(
-          children: [
-            const SizedBox(height: 10),
-            Container(
-              width: 42,
-              height: 5,
-              decoration: BoxDecoration(
-                color: vibe.faintText,
-                borderRadius: BorderRadius.circular(20),
-              ),
-            ),
-            const SizedBox(height: 14),
-            Text(
-              "Yorumlar",
-              style: TextStyle(
-                color: onSurface,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            Divider(color: theme.dividerColor),
-            Expanded(
-              child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                stream: FirebaseFirestore.instance
-                    .collection("posts")
-                    .doc(widget.postId)
-                    .collection("comments")
-                    .orderBy("createdAt", descending: false)
-                    .snapshots(),
-                builder: (context, snapshot) {
-                  final comments = snapshot.data?.docs ?? [];
-
-                  if (comments.isEmpty) {
-                    return Center(
-                      child: Text(
-                        "Henüz yorum yok.",
-                        style: TextStyle(color: onSurface),
-                      ),
-                    );
-                  }
-
-                  return ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: comments.length,
-                    itemBuilder: (context, index) {
-                      final yorum = comments[index].data();
-                      if (yorum["raporNedeniyleGizli"] == true) {
-                        return const SizedBox.shrink();
-                      }
-
-                      return ListTile(
-                        leading: vibeAvatar(
-                          radius: 18,
-                          photoUrl: "",
-                          avatarKey: "",
-                          fallbackText: yorum["kullaniciAdi"]?.toString() ??
-                              "Vibe Kullanıcısı",
-                          emojiSize: 16,
-                          fallbackIconSize: 18,
-                        ),
-                        title: Text(
-                          yorum["kullaniciAdi"] ?? "Vibe Kullanıcısı",
-                          style: TextStyle(
-                            color: onSurface,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              yorum["metin"] ?? "",
-                              style: TextStyle(
-                                color: onSurface,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            const SizedBox(height: 3),
-                            Text(
-                              tarihSaatYaz(yorum["createdAt"]),
-                              style: TextStyle(
-                                  color: vibe.faintText, fontSize: 11),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  );
-                },
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: yorumController,
-                      style: TextStyle(color: onSurface),
-                      decoration: InputDecoration(
-                        hintText: "Yorum yaz...",
-                        hintStyle: TextStyle(color: vibe.mutedText),
-                        filled: true,
-                        fillColor: vibe.inputFill,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(26),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  IconButton(
-                    onPressed: isLoading ? null : yorumEkle,
-                    icon: isLoading
-                        ? CircularProgressIndicator(color: onSurface)
-                        : const Icon(Icons.send, color: VibeAppTheme.accent),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 // Hesap silme onay diyaloğu
 class _HesapSilDialog extends StatefulWidget {
   const _HesapSilDialog();
@@ -2218,21 +2744,80 @@ class _HesapSilDialog extends StatefulWidget {
 // Hesap silme diyaloğu durumu
 class _HesapSilDialogState extends State<_HesapSilDialog> {
   final _sifreController = TextEditingController();
-  bool _gizli = true; // şifre gizli mi
-  bool _siliniyor = false; // hesap siliniyor mu
-  String? _hataMesaji; // hata mesajı
+  final _digerController = TextEditingController();
+  final _sorunController = TextEditingController();
+  bool _gizli = true;
+  bool _siliniyor = false;
+  String? _hataMesaji;
+  bool _sosyalOnaylandi = false;
+  int _adim = 0;
+  String? _neden;
 
-  // Abonelik ve kontrolcüleri temizle
+  bool get _sifreGerekli {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return false;
+    if (_sosyalHesabi) return _sosyalOnaylandi;
+    return auth_eposta.epostaSifreKullanicisiMi(user);
+  }
+
+  bool get _sosyalHesabi {
+    final user = FirebaseAuth.instance.currentUser;
+    return user != null && SosyalOAuth.oauthMu(user);
+  }
+
+  bool get _appleHesabi {
+    final user = FirebaseAuth.instance.currentUser;
+    return user != null && SosyalOAuth.appleMu(user);
+  }
+
+  String get _sosyalSaglayiciAdi => _appleHesabi ? 'Apple' : 'Google';
+
   @override
   void dispose() {
     _sifreController.dispose();
+    _digerController.dispose();
+    _sorunController.dispose();
     super.dispose();
   }
 
-  // Şifre doğrulayıp hesabı sil
+  Future<void> _nedenDevam() async {
+    if (_neden == null) {
+      setState(() => _hataMesaji = 'Bir neden seç.');
+      return;
+    }
+    if (_neden == 'Diğer...' && _digerController.text.trim().isEmpty) {
+      setState(() => _hataMesaji = 'Diğer nedeni yaz.');
+      return;
+    }
+    setState(() {
+      _hataMesaji = null;
+      _adim = 1;
+    });
+  }
+
+  Future<void> _sorunAdiminaDevam({required bool atla}) async {
+    if (atla) _sorunController.clear();
+    setState(() => _siliniyor = true);
+    try {
+      await HesapSilServis.silmeGeriBildirimiKaydet(
+        neden: _neden ?? '',
+        digerMetin: _neden == 'Diğer...' ? _digerController.text : '',
+        sorunMetin: _sorunController.text,
+      );
+    } catch (e) {
+      debugPrint('Silme geri bildirimi kaydedilemedi: $e');
+    }
+    if (!mounted) return;
+    setState(() {
+      _siliniyor = false;
+      _hataMesaji = null;
+      _adim = 2;
+    });
+  }
+
   Future<void> _hesabiSil() async {
     final sifre = _sifreController.text.trim();
-    if (sifre.isEmpty) {
+    if (_sifreGerekli && sifre.isEmpty) {
       setState(() => _hataMesaji = "Şifre boş olamaz.");
       return;
     }
@@ -2242,91 +2827,239 @@ class _HesapSilDialogState extends State<_HesapSilDialog> {
       _hataMesaji = null;
     });
 
-    // hata yakalamalı blok
     try {
-      await HesapSilServis.hesabiSil(sifre);
+      if (_sosyalHesabi && !_sosyalOnaylandi) {
+        if (_appleHesabi) {
+          await AppleGirisServis.yenidenDogrula();
+        } else {
+          await GoogleGirisServis.yenidenDogrula();
+        }
+        if (!mounted) return;
+        setState(() {
+          _siliniyor = false;
+          _sosyalOnaylandi = true;
+        });
+        return;
+      }
+      await HesapSilServis.hesabiSil(
+        sifre: _sifreController.text.trim(),
+        googleOnayiYapildi: !_appleHesabi && _sosyalOnaylandi,
+        appleOnayiYapildi: _appleHesabi && _sosyalOnaylandi,
+      );
       if (!mounted) return;
       Navigator.of(context).pop();
-      // hata yakala
     } catch (e) {
       if (!mounted) return;
+      if (e is FirebaseAuthException &&
+          (e.code == 'canceled' || e.code == 'sign_in_canceled')) {
+        setState(() => _siliniyor = false);
+        return;
+      }
+      String mesaj = '';
+      if (e is FirebaseAuthException) {
+        if (_sifreGerekli &&
+            (e.code == 'wrong-password' || e.code == 'invalid-credential')) {
+          mesaj = 'Şifre hatalı.';
+        } else {
+          mesaj = _appleHesabi
+              ? AppleGirisServis.hataMesaji(e)
+              : GoogleGirisServis.hataMesaji(e);
+        }
+      }
       setState(() {
         _siliniyor = false;
-        _hataMesaji = internetAwareErrorMessage(
-          error: e,
-          fallback: "Hesap silinemedi.",
-        );
+        _hataMesaji = mesaj.isNotEmpty
+            ? mesaj
+            : internetAwareErrorMessage(
+                error: e,
+                fallback: "Hesap silinemedi.",
+              );
       });
     }
   }
 
-  // Arayüzü oluştur
   @override
   Widget build(BuildContext context) {
     final vibe = context.vibe;
     final onSurface = Theme.of(context).colorScheme.onSurface;
+    final googleOnayi = _sosyalHesabi && !_sosyalOnaylandi;
+
+    String baslik;
+    if (_adim == 0) {
+      baslik = 'Neden ayrılıyorsun?';
+    } else if (_adim == 1) {
+      baslik = 'Bir sorun var mı?';
+    } else {
+      baslik = 'Hesabı Sil';
+    }
 
     return AlertDialog(
       backgroundColor: vibe.dialogBackground,
-      title: Text("Hesabı Sil", style: TextStyle(color: onSurface)),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            "Bu işlem geri alınamaz. Gönderilerin, yorumların, beğenilerin, mesajların, bildirimlerin ve profil bilgilerin kalıcı olarak silinir.",
-            style: TextStyle(color: vibe.mutedText, fontSize: 13),
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _sifreController,
-            obscureText: _gizli,
-            enabled: !_siliniyor,
-            style: TextStyle(color: onSurface),
-            decoration: InputDecoration(
-              hintText: "Şifreni gir",
-              hintStyle: TextStyle(color: vibe.faintText),
-              filled: true,
-              fillColor: vibe.inputFill,
-              suffixIcon: IconButton(
-                icon: Icon(
-                  _gizli ? Icons.visibility_off : Icons.visibility,
-                  color: vibe.mutedText,
-                ),
-                onPressed:
-                    _siliniyor ? null : () => setState(() => _gizli = !_gizli),
-              ),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide.none,
-              ),
+      title: Text(baslik, style: TextStyle(color: onSurface)),
+      content: SizedBox(
+        width: 420,
+        child: SingleChildScrollView(
+          child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (_adim == 0) ...[
+                  Text(
+                    'Hesabını silmeden önce bir neden seç.',
+                    style: TextStyle(color: vibe.mutedText, fontSize: 13),
+                  ),
+                  const SizedBox(height: 8),
+                  for (final neden in HesapSilServis.silmeNedenleri)
+                    RadioListTile<String>(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      value: neden,
+                      groupValue: _neden,
+                      onChanged: _siliniyor
+                          ? null
+                          : (v) => setState(() {
+                                _neden = v;
+                                _hataMesaji = null;
+                              }),
+                      title: Text(
+                        neden,
+                        style: TextStyle(color: onSurface, fontSize: 14),
+                      ),
+                    ),
+                  if (_neden == 'Diğer...') ...[
+                    const SizedBox(height: 4),
+                    TextField(
+                      controller: _digerController,
+                      maxLines: 3,
+                      maxLength: 400,
+                      enabled: !_siliniyor,
+                      style: TextStyle(color: onSurface),
+                      decoration: InputDecoration(
+                        hintText: 'Nedenini yaz...',
+                        hintStyle: TextStyle(color: vibe.faintText),
+                        filled: true,
+                        fillColor: vibe.inputFill,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+                  ],
+                ] else if (_adim == 1) ...[
+                  Text(
+                    'Uygulamada belirtmek istediğin bir sorun varsa yazabilirsin. İstersen atla.',
+                    style: TextStyle(color: vibe.mutedText, fontSize: 13),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _sorunController,
+                    maxLines: 5,
+                    maxLength: 1000,
+                    enabled: !_siliniyor,
+                    style: TextStyle(color: onSurface),
+                    decoration: InputDecoration(
+                      hintText: 'Sorununu yaz (isteğe bağlı)',
+                      hintStyle: TextStyle(color: vibe.faintText),
+                      filled: true,
+                      fillColor: vibe.inputFill,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                ] else ...[
+                  Text(
+                    googleOnayi
+                        ? 'Bu işlem geri alınamaz. Önce $_sosyalSaglayiciAdi hesabınla onayla, sonra şifreni girmen istenecek.'
+                        : _sosyalHesabi
+                            ? '$_sosyalSaglayiciAdi onayın alındı. Silmek için şifreni gir.'
+                            : 'Bu işlem geri alınamaz. Gönderilerin, yorumların, beğenilerin, mesajların, bildirimlerin ve profil bilgilerin kalıcı olarak silinir.',
+                    style: TextStyle(color: vibe.mutedText, fontSize: 13),
+                  ),
+                  if (_sifreGerekli) ...[
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _sifreController,
+                      obscureText: _gizli,
+                      enabled: !_siliniyor,
+                      style: TextStyle(color: onSurface),
+                      decoration: InputDecoration(
+                        hintText: 'Şifreni gir',
+                        hintStyle: TextStyle(color: vibe.faintText),
+                        filled: true,
+                        fillColor: vibe.inputFill,
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _gizli ? Icons.visibility_off : Icons.visibility,
+                            color: vibe.mutedText,
+                          ),
+                          onPressed: _siliniyor
+                              ? null
+                              : () => setState(() => _gizli = !_gizli),
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+                if (_hataMesaji != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    _hataMesaji!,
+                    style: const TextStyle(
+                      color: Colors.redAccent,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ],
             ),
-          ),
-          if (_hataMesaji != null) ...[
-            const SizedBox(height: 12),
-            Text(
-              _hataMesaji!,
-              style: const TextStyle(color: Colors.redAccent, fontSize: 12),
-            ),
-          ],
-        ],
+        ),
       ),
       actions: [
         TextButton(
           onPressed: _siliniyor ? null : () => Navigator.pop(context),
-          child: const Text("Vazgeç"),
+          child: const Text('Vazgeç'),
         ),
+        if (_adim == 1)
+          TextButton(
+            onPressed: _siliniyor
+                ? null
+                : () => _sorunAdiminaDevam(atla: true),
+            child: const Text('Atla'),
+          ),
         TextButton(
-          onPressed: _siliniyor ? null : _hesabiSil,
+          onPressed: _siliniyor
+              ? null
+              : () {
+                  if (_adim == 0) {
+                    _nedenDevam();
+                  } else if (_adim == 1) {
+                    _sorunAdiminaDevam(atla: false);
+                  } else {
+                    _hesabiSil();
+                  }
+                },
           child: _siliniyor
               ? const SizedBox(
                   width: 18,
                   height: 18,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Text(
-                  "Hesabı Sil",
-                  style: TextStyle(color: Colors.redAccent),
+              : Text(
+                  _adim < 2
+                      ? 'Devam'
+                      : (googleOnayi
+                          ? '$_sosyalSaglayiciAdi ile onayla'
+                          : 'Hesabı Sil'),
+                  style: TextStyle(
+                    color: _adim == 2 ? Colors.redAccent : null,
+                  ),
                 ),
         ),
       ],
@@ -2551,13 +3284,13 @@ class _MascotIsimDialogState extends State<_MascotIsimDialog> {
 
     return AlertDialog(
       backgroundColor: vibe.dialogBackground,
-      title: Text("Maskot İsmi", style: TextStyle(color: onSurface)),
+      title: Text("Vibel İsmi", style: TextStyle(color: onSurface)),
       content: TextField(
         controller: controller,
         maxLength: 20,
         style: TextStyle(color: onSurface),
         decoration: InputDecoration(
-          hintText: "Maskotuna isim ver",
+          hintText: "Vibel'ine isim ver",
           hintStyle: TextStyle(color: vibe.faintText),
         ),
       ),
@@ -2662,6 +3395,16 @@ class _ProfilDuzenleDialogState extends State<_ProfilDuzenleDialog> {
                 ),
               ),
             ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                "Birini seç, sonra Kaydet'e bas.",
+                style: TextStyle(
+                  color: vibe.mutedText,
+                  fontSize: 12,
+                ),
+              ),
+            ),
             const SizedBox(height: 10),
             Wrap(
               spacing: 10,
@@ -2689,6 +3432,7 @@ class _ProfilDuzenleDialogState extends State<_ProfilDuzenleDialog> {
                     child: vibeAvatar(
                       radius: 20,
                       avatarKey: option.key,
+                      liderTaciGoster: false,
                       emojiSize: 18,
                     ),
                   ),
@@ -2740,454 +3484,6 @@ class _ProfilDuzenleDialogState extends State<_ProfilDuzenleDialog> {
           hintText: hint,
           hintStyle: TextStyle(color: vibe.faintText),
         ),
-      ),
-    );
-  }
-}
-
-// Moderatör rapor inceleme sayfası
-class _ModerasyonPanelPage extends StatefulWidget {
-  const _ModerasyonPanelPage();
-
-  @override
-  State<_ModerasyonPanelPage> createState() => _ModerasyonPanelPageState();
-}
-
-// Moderasyon paneli durumu
-class _ModerasyonPanelPageState extends State<_ModerasyonPanelPage> {
-  String _turFiltresi = 'tumu';
-  String _durumFiltresi = 'tumu';
-
-  static const _turEtiketleri = <String, String>{
-    'post': 'Gönderi',
-    'comment': 'Yorum',
-    'user': 'Hesap',
-  };
-
-  static const _durumEtiketleri = <String, String>{
-    'pending': 'Bekliyor',
-    'reviewed': 'İncelendi',
-    'action_taken': 'İşlem uygulandı',
-    'rejected': 'Reddedildi',
-  };
-
-  String _turMetni(String tur) => _turEtiketleri[tur] ?? tur;
-
-  String _durumMetni(String durum) => _durumEtiketleri[durum] ?? durum;
-
-  Color _durumRengi(String durum) {
-    switch (durum) {
-      case 'pending':
-        return Colors.orangeAccent;
-      case 'action_taken':
-        return Colors.greenAccent;
-      case 'rejected':
-        return Colors.redAccent;
-      default:
-        return Colors.blueAccent;
-    }
-  }
-
-  bool _filtreyeUyuyor(Map<String, dynamic> data) {
-    final tur = (data['type'] ?? '').toString();
-    final durum = (data['status'] ?? 'pending').toString();
-    if (_turFiltresi != 'tumu' && tur != _turFiltresi) return false;
-    if (_durumFiltresi != 'tumu' && durum != _durumFiltresi) return false;
-    return true;
-  }
-
-  Widget _filtreChip({
-    required String deger,
-    required String etiket,
-    required String secili,
-    required ValueChanged<String> sec,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: FilterChip(
-        label: Text(etiket),
-        selected: secili == deger,
-        onSelected: (_) => sec(deger),
-      ),
-    );
-  }
-
-  // Rapor durumunu güncelle
-  Future<void> _raporDurumuGuncelle(
-    QueryDocumentSnapshot<Map<String, dynamic>> raporDoc,
-    String durum,
-  ) async {
-    // hata yakalamalı blok
-    try {
-      await raporDoc.reference.update({
-        "status": durum,
-        "reviewedAt": FieldValue.serverTimestamp(),
-        "reviewedBy": FirebaseAuth.instance.currentUser?.uid ?? "",
-      });
-      if (!mounted) return;
-      vibeSnackbarGoster(
-        context,
-        "Rapor durumu güncellendi.",
-        tip: VibeMesajTipi.basari,
-      );
-      // hata yakala
-    } catch (e) {
-      if (!mounted) return;
-      vibeSnackbarGoster(
-        context,
-        internetAwareErrorMessage(
-          error: e,
-          fallback: "İşlem başarısız.",
-        ),
-      );
-    }
-  }
-
-  // Rapor için içerik gizle
-  Future<void> _islemUygula(
-    QueryDocumentSnapshot<Map<String, dynamic>> raporDoc,
-  ) async {
-    final data = raporDoc.data();
-    final type = (data["type"] ?? "").toString();
-
-    // hata yakalamalı blok
-    try {
-      if (type == "post") {
-        final postId = (data["postId"] ?? "").toString();
-        if (postId.isNotEmpty) {
-          await FirebaseFirestore.instance
-              .collection("posts")
-              .doc(postId)
-              .update({
-            "raporNedeniyleGizli": true,
-            "raporGuncellenmeTarihi": FieldValue.serverTimestamp(),
-          });
-        }
-      } else if (type == "comment") {
-        final postId = (data["postId"] ?? "").toString();
-        final commentId = (data["commentId"] ?? "").toString();
-        if (postId.isNotEmpty && commentId.isNotEmpty) {
-          await FirebaseFirestore.instance
-              .collection("posts")
-              .doc(postId)
-              .collection("comments")
-              .doc(commentId)
-              .update({
-            "raporNedeniyleGizli": true,
-            "raporGuncellenmeTarihi": FieldValue.serverTimestamp(),
-          });
-        }
-      } else if (type == "user") {
-        final targetUid = (data["targetUid"] ?? "").toString();
-        if (targetUid.isNotEmpty) {
-          await FirebaseFirestore.instance
-              .collection("users")
-              .doc(targetUid)
-              .update({
-            "raporNedeniyleGizli": true,
-            "raporGuncellenmeTarihi": FieldValue.serverTimestamp(),
-          });
-        }
-      }
-
-      await _raporDurumuGuncelle(raporDoc, "action_taken");
-      // hata yakala
-    } catch (e) {
-      if (!mounted) return;
-      vibeSnackbarGoster(
-        context,
-        internetAwareErrorMessage(
-          error: e,
-          fallback: "Aksiyon uygulanamadı.",
-        ),
-      );
-    }
-  }
-
-  // Arayüzü oluştur
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final vibe = context.vibe;
-
-    return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(
-        title: const Text("Moderasyon Paneli"),
-      ),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-            child: Text(
-              'Tür',
-              style: TextStyle(color: vibe.mutedText, fontSize: 12),
-            ),
-          ),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.fromLTRB(12, 6, 12, 4),
-            child: Row(
-              children: [
-                _filtreChip(
-                  deger: 'tumu',
-                  etiket: 'Tümü',
-                  secili: _turFiltresi,
-                  sec: (v) => setState(() => _turFiltresi = v),
-                ),
-                _filtreChip(
-                  deger: 'post',
-                  etiket: 'Gönderi',
-                  secili: _turFiltresi,
-                  sec: (v) => setState(() => _turFiltresi = v),
-                ),
-                _filtreChip(
-                  deger: 'comment',
-                  etiket: 'Yorum',
-                  secili: _turFiltresi,
-                  sec: (v) => setState(() => _turFiltresi = v),
-                ),
-                _filtreChip(
-                  deger: 'user',
-                  etiket: 'Hesap',
-                  secili: _turFiltresi,
-                  sec: (v) => setState(() => _turFiltresi = v),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
-            child: Text(
-              'Durum',
-              style: TextStyle(color: vibe.mutedText, fontSize: 12),
-            ),
-          ),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.fromLTRB(12, 6, 12, 4),
-            child: Row(
-              children: [
-                _filtreChip(
-                  deger: 'tumu',
-                  etiket: 'Tümü',
-                  secili: _durumFiltresi,
-                  sec: (v) => setState(() => _durumFiltresi = v),
-                ),
-                _filtreChip(
-                  deger: 'pending',
-                  etiket: 'Bekleyen',
-                  secili: _durumFiltresi,
-                  sec: (v) => setState(() => _durumFiltresi = v),
-                ),
-                _filtreChip(
-                  deger: 'reviewed',
-                  etiket: 'İncelenen',
-                  secili: _durumFiltresi,
-                  sec: (v) => setState(() => _durumFiltresi = v),
-                ),
-                _filtreChip(
-                  deger: 'action_taken',
-                  etiket: 'İşlem uygulanan',
-                  secili: _durumFiltresi,
-                  sec: (v) => setState(() => _durumFiltresi = v),
-                ),
-                _filtreChip(
-                  deger: 'rejected',
-                  etiket: 'Reddedilen',
-                  secili: _durumFiltresi,
-                  sec: (v) => setState(() => _durumFiltresi = v),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: FirebaseFirestore.instance
-                  .collection("reports")
-                  .orderBy("createdAt", descending: true)
-                  .limit(200)
-                  .snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return Center(
-                    child: CircularProgressIndicator(
-                      color: theme.colorScheme.primary,
-                    ),
-                  );
-                }
-
-                if (snapshot.hasError) {
-                  return Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Text(
-                        internetAwareErrorMessage(
-                          error: snapshot.error!,
-                          fallback: "Raporlar yüklenemedi.",
-                        ),
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: vibe.mutedText),
-                      ),
-                    ),
-                  );
-                }
-
-                final docs = (snapshot.data?.docs ?? [])
-                    .where((doc) => _filtreyeUyuyor(doc.data()))
-                    .toList();
-
-                if (docs.isEmpty) {
-                  return Center(
-                    child: Text(
-                      "Bu filtrede rapor bulunamadı.",
-                      style: TextStyle(color: vibe.mutedText),
-                    ),
-                  );
-                }
-
-                return ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(12, 6, 12, 20),
-                  itemCount: docs.length,
-                  itemBuilder: (context, index) {
-                    final doc = docs[index];
-                    final data = doc.data();
-                    final type = (data["type"] ?? "").toString();
-                    final status = (data["status"] ?? "pending").toString();
-                    final reason = (data["reason"] ?? "").toString();
-                    final details = (data["details"] ?? "").toString();
-                    final targetUid = (data["targetUid"] ?? "").toString();
-                    final postId = (data["postId"] ?? "").toString();
-                    final commentId = (data["commentId"] ?? "").toString();
-                    final reporterUid = (data["reporterUid"] ?? "").toString();
-
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 10),
-                      decoration: vibe.cardDecoration(radius: 16),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: vibe.inputFill,
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: Text(
-                                    _turMetni(type).toUpperCase(),
-                                    style: TextStyle(
-                                      color: theme.colorScheme.onSurface,
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 11,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  _durumMetni(status),
-                                  style: TextStyle(
-                                    color: _durumRengi(status),
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                const Spacer(),
-                                Text(
-                                  tarihSaatYaz(data["createdAt"]),
-                                  style: TextStyle(
-                                    color: vibe.faintText,
-                                    fontSize: 11,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              "Sebep: $reason",
-                              style: TextStyle(
-                                color: theme.colorScheme.onSurface,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            if (details.isNotEmpty) ...[
-                              const SizedBox(height: 4),
-                              Text(
-                                details,
-                                style: TextStyle(color: vibe.mutedText),
-                              ),
-                            ],
-                            const SizedBox(height: 8),
-                            Text(
-                              "Raporlayan: $reporterUid",
-                              style: TextStyle(
-                                  color: vibe.faintText, fontSize: 12),
-                            ),
-                            if (targetUid.isNotEmpty)
-                              Text(
-                                "Hedef UID: $targetUid",
-                                style: TextStyle(
-                                    color: vibe.faintText, fontSize: 12),
-                              ),
-                            if (postId.isNotEmpty)
-                              Text(
-                                "Post ID: $postId",
-                                style: TextStyle(
-                                    color: vibe.faintText, fontSize: 12),
-                              ),
-                            if (commentId.isNotEmpty)
-                              Text(
-                                "Yorum ID: $commentId",
-                                style: TextStyle(
-                                    color: vibe.faintText, fontSize: 12),
-                              ),
-                            const SizedBox(height: 10),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: [
-                                if (status != "reviewed")
-                                  OutlinedButton(
-                                    onPressed: () =>
-                                        _raporDurumuGuncelle(doc, "reviewed"),
-                                    child: const Text("İncelendi"),
-                                  ),
-                                if (status != "rejected")
-                                  OutlinedButton(
-                                    onPressed: () =>
-                                        _raporDurumuGuncelle(doc, "rejected"),
-                                    child: const Text("Reddet"),
-                                  ),
-                                if (status != "action_taken")
-                                  ElevatedButton(
-                                    onPressed: () => _islemUygula(doc),
-                                    child: const Text("İşlem Uygula"),
-                                  ),
-                                if (status != "pending")
-                                  TextButton(
-                                    onPressed: () =>
-                                        _raporDurumuGuncelle(doc, "pending"),
-                                    child: const Text("Beklemeye al"),
-                                  ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-        ],
       ),
     );
   }

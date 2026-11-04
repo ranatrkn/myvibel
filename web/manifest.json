@@ -1,11 +1,12 @@
 {
-    "name": "vibe_life",
-    "short_name": "vibe_life",
-    "start_url": ".",
+    "name": "MyVibel",
+    "short_name": "MyVibel",
+    "id": "/app/",
+    "start_url": "./",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#1A002E",
+    "theme_color": "#1A002E",
+    "description": "MyVibel: sosyal paylaşım ve Vibel karakteri.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

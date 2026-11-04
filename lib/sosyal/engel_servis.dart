@@ -2,9 +2,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
-import 'package:vibe_life/sosyal/begeni_yorum_servis.dart';
-import 'package:vibe_life/sosyal/etiket_servis.dart';
-import 'package:vibe_life/sosyal/sosyal_core.dart';
+import 'package:myvibel/sosyal/begeni_yorum_servis.dart';
+import 'package:myvibel/sosyal/etiket_servis.dart';
+import 'package:myvibel/sosyal/sosyal_core.dart';
 
 // Engel, şikayet ve profil gizlilik servisi
 class EngelServis {
@@ -113,17 +113,32 @@ class EngelServis {
         throw "Bu kullanıcı adı zaten alınmış.";
       }
 
+      DocumentSnapshot<Map<String, dynamic>>? eskiSnap;
+      if (eskiKullaniciAdiKucuk.isNotEmpty) {
+        eskiSnap = await tx.get(eskiRef);
+      }
+
+      final authEmail =
+          FirebaseAuth.instance.currentUser?.email?.trim().toLowerCase() ?? '';
+      final eskiEmail = eskiSnap?.data()?['email']?.toString().trim() ?? '';
+      final email = authEmail.isNotEmpty
+          ? authEmail
+          : (eskiEmail.contains('@') ? eskiEmail.toLowerCase() : '');
+      if (email.isEmpty || !email.contains('@')) {
+        throw "Kullanıcı adı güncellenemedi. E-posta bilgisi eksik; yeniden giriş yap.";
+      }
+
       tx.set(yeniRef, {
         "uid": uid,
         "kullaniciAdi": yeniKullaniciAdi,
+        "email": email,
         "createdAt": FieldValue.serverTimestamp(),
       });
 
-      if (eskiKullaniciAdiKucuk.isNotEmpty) {
-        final eskiSnap = await tx.get(eskiRef);
-        if (eskiSnap.exists && eskiSnap.data()?["uid"] == uid) {
-          tx.delete(eskiRef); // Eski kaydı kaldır
-        }
+      if (eskiSnap != null &&
+          eskiSnap.exists &&
+          eskiSnap.data()?["uid"] == uid) {
+        tx.delete(eskiRef);
       }
     });
   }
@@ -149,18 +164,21 @@ class EngelServis {
       return {"engelledim": false, "beniEngelledi": false};
     }
 
-    final benimBlocked = await SosyalCore.db
+    final benimRef = SosyalCore.db
         .collection("users")
         .doc(current.uid)
         .collection("blocked")
         .doc(hedefUid)
         .get();
-    final beniBlocked = await SosyalCore.db
+    final beniRef = SosyalCore.db
         .collection("users")
         .doc(current.uid)
         .collection("blockedBy")
         .doc(hedefUid)
         .get();
+    final cift = await Future.wait([benimRef, beniRef]);
+    final benimBlocked = cift[0];
+    final beniBlocked = cift[1];
 
     return {
       "engelledim": benimBlocked.exists,
@@ -174,6 +192,7 @@ class EngelServis {
         .collection("users")
         .doc(uid)
         .collection("blocked")
+        .limit(200)
         .get();
     return snap.docs.map((d) => d.id).toSet();
   }
@@ -185,6 +204,7 @@ class EngelServis {
         .collection("users")
         .doc(uid)
         .collection("blockedBy")
+        .limit(200)
         .get();
     return snap.docs.map((d) => d.id).toSet();
   }

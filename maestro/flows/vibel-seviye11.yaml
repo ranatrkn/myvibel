@@ -1,0 +1,73 @@
+appId: com.myvibel.app
+---
+# 6+ seviyede gönderi vil verir. Yemek 15 vil harcar, 15 gelişim kazandırır.
+# Tokluk dolunca yemek butonu kapanır; o tur atlanır.
+- launchApp:
+    stopApp: false
+- extendedWaitUntil:
+    visible: "Takip Edilen|Vibel odası|Yemek \\(15 vil\\)"
+    timeout: 30000
+
+- repeat:
+    times: 12
+    commands:
+      - runFlow:
+          when:
+            notVisible: "Seviye 11"
+          commands:
+            - tapOn:
+                text: "Yemek \\(15 vil\\)"
+                optional: true
+            - tapOn:
+                text: "Tekrar gösterme"
+                optional: true
+            - tapOn:
+                text: "Tamam"
+                optional: true
+            - tapOn:
+                text: "Alt menü Yeni gönderi"
+                optional: true
+            - runFlow:
+                when:
+                  visible: "Paylaş"
+                commands:
+                  - tapOn: "Gönderi metni"
+                  - inputText: "Vibel gelisim turu"
+                  - hideKeyboard
+                  - tapOn: "Paylaş"
+                  - extendedWaitUntil:
+                      visible: "Takip Edilen|Gönderi paylaşıldı.|Çok hızlı.*"
+                      timeout: 20000
+                  - runFlow:
+                      when:
+                        visible: "Çok hızlı.*"
+                      commands:
+                        - waitForAnimationToEnd:
+                            timeout: 8000
+                        - tapOn: "Paylaş"
+                  - waitForAnimationToEnd:
+                      timeout: 7000
+            - tapOn:
+                text: "Alt menü Profil"
+                optional: true
+            - tapOn:
+                text: "Vibel odası"
+                optional: true
+            - extendedWaitUntil:
+                visible: "Yemek \\(15 vil\\)|Seviye 11|Tokluk"
+                timeout: 15000
+            - tapOn:
+                text: "Yemek \\(15 vil\\)"
+                optional: true
+            - tapOn:
+                text: "Tekrar gösterme"
+                optional: true
+            - tapOn:
+                text: "Tamam"
+                optional: true
+            - waitForAnimationToEnd:
+                timeout: 4000
+            - back
+            - tapOn:
+                text: "Alt menü Ana"
+                optional: true

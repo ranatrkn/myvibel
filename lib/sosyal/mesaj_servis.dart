@@ -1,11 +1,13 @@
 // Özel mesajlaşma, sohbet yönetimi ve gönderi iletme
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
-import 'package:vibe_life/icerik_filtre_servis.dart';
-import 'package:vibe_life/sosyal/bildirim_servis.dart';
-import 'package:vibe_life/sosyal/etiket_servis.dart';
-import 'package:vibe_life/sosyal/sosyal_core.dart';
+import 'package:myvibel/icerik_filtre_servis.dart';
+import 'package:myvibel/sosyal/bildirim_servis.dart';
+import 'package:myvibel/sosyal/etiket_servis.dart';
+import 'package:myvibel/sosyal/sosyal_core.dart';
 
 // Sohbet ve mesaj işlemleri servisi
 class MesajServis {
@@ -98,19 +100,20 @@ class MesajServis {
     final lastMessageAt = chat["lastMessageAt"];
     if (lastMessageAt is! Timestamp) return false;
 
+    int? gorulmeMs;
     final rawSeen = chat["lastSeenBy"];
     if (rawSeen is Map) {
       final mySeen = rawSeen[uid];
       if (mySeen is Timestamp) {
-        return lastMessageAt.millisecondsSinceEpoch >
-            mySeen.millisecondsSinceEpoch; // Son mesaj görülmeden sonra
+        gorulmeMs = mySeen.millisecondsSinceEpoch;
       }
     }
-
-    if (localReadAtMs != null) {
-      return lastMessageAt.millisecondsSinceEpoch > localReadAtMs;
+    if (localReadAtMs != null &&
+        (gorulmeMs == null || localReadAtMs > gorulmeMs)) {
+      gorulmeMs = localReadAtMs;
     }
-    return true; // Görülme kaydı yoksa okunmamış
+    if (gorulmeMs == null) return true;
+    return lastMessageAt.millisecondsSinceEpoch > gorulmeMs;
   }
 
   // İki kullanıcı için benzersiz sohbet id
@@ -129,17 +132,31 @@ class MesajServis {
       throw "Bu kullanıcı ile mesajlaşamazsın.";
     }
 
+    final benimDoc =
+        await SosyalCore.db.collection("users").doc(current.uid).get();
+    final hedefDoc =
+        await SosyalCore.db.collection("users").doc(hedefUid).get();
+    if (benimDoc.data()?["cocukHesabi"] == true ||
+        hedefDoc.data()?["cocukHesabi"] == true) {
+      throw "Sohbet açılamadı.";
+    }
+
     final chatId = sohbetIdUret(current.uid, hedefUid);
     final chatRef = SosyalCore.db.collection("chats").doc(chatId);
     final participants = [current.uid, hedefUid]..sort();
-    // Rules tarafında yeni doküman okuma iznine takılmamak için
-    // transaction/get yerine doğrudan merge set kullanıyoruz.
+    try {
+      final mevcut = await chatRef.get();
+      if (mevcut.exists) {
+        final parcalar = mevcut.data()?["participants"];
+        if (parcalar is List && parcalar.contains(current.uid)) {
+          return chatId;
+        }
+      }
+    } catch (_) {
+      // Belge yokken okuma reddedilirse oluşturmayı dene.
+    }
     await chatRef.set(
-      {
-        // Sadece participants yazılır; mevcut sohbet açılırken
-        // update kuralına takılmamak için diğer alanlar dokunulmaz.
-        "participants": participants,
-      },
+      {"participants": participants},
       SetOptions(merge: true),
     );
     return chatId;
@@ -147,12 +164,43 @@ class MesajServis {
 
   // Kullanıcının sohbet listesi akışı (mesajlar sayfası)
   static Stream<QuerySnapshot<Map<String, dynamic>>> sohbetlerim(String uid) {
-    return SosyalCore.db
-        .collection("chats")
-        .where("participants", arrayContains: uid)
-        .orderBy("lastMessageAt", descending: true)
-        .limit(30)
-        .snapshots();
+    late StreamController<QuerySnapshot<Map<String, dynamic>>> controller;
+    StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? subscription;
+    var yedekSorgu = false;
+
+    void dinlemeyeBasla() {
+      subscription?.cancel();
+      final sorgu = yedekSorgu
+          ? SosyalCore.db
+              .collection("chats")
+              .where("participants", arrayContains: uid)
+              .limit(50)
+          : SosyalCore.db
+              .collection("chats")
+              .where("participants", arrayContains: uid)
+              .orderBy("lastMessageAt", descending: true)
+              .limit(30);
+
+      subscription = sorgu.snapshots().listen(
+        controller.add,
+        onError: (Object error, StackTrace stack) {
+          if (!yedekSorgu) {
+            debugPrint("sohbetlerim indexed query failed: $error");
+            yedekSorgu = true;
+            dinlemeyeBasla();
+            return;
+          }
+          controller.addError(error, stack);
+        },
+        cancelOnError: false,
+      );
+    }
+
+    controller = StreamController<QuerySnapshot<Map<String, dynamic>>>(
+      onListen: dinlemeyeBasla,
+      onCancel: () => subscription?.cancel(),
+    );
+    return controller.stream;
   }
 
   // Feed üst barı için tek seferlik son sohbetler
@@ -182,7 +230,8 @@ class MesajServis {
         .collection("chats")
         .doc(chatId)
         .collection("messages")
-        .orderBy("createdAt", descending: false)
+        .orderBy("createdAt", descending: true)
+        .limit(80)
         .snapshots();
   }
 
@@ -207,37 +256,51 @@ class MesajServis {
       IcerikFiltreServis.uygunsuzsaAt(temizMetin);
     }
 
+    final bahsetmeler = mesajTipi == "text"
+        ? EtiketServis.bahsetmeleriAyikla(temizMetin)
+        : <String>[];
+    final mentionUidleri = bahsetmeler.isEmpty
+        ? <String, String>{}
+        : await EtiketServis.bahsetmeUidleriniCoz(temizMetin);
+
     final chatRef = SosyalCore.db.collection("chats").doc(chatId);
     final msgRef = chatRef.collection("messages").doc();
     final ozetMetin =
         mesajTipi == "post_forward" ? "Bir gönderi iletti" : temizMetin;
-    final mentionUidleri = mesajTipi == "text"
-        ? await EtiketServis.bahsetmeUidleriniCoz(temizMetin)
-        : <String, String>{};
 
-    await SosyalCore.db.runTransaction((tx) async {
-      tx.set(msgRef, {
-        "senderUid": current.uid,
-        "receiverUid": hedefUid,
-        "metin": temizMetin,
-        "mesajTipi": mesajTipi,
-        "postId": postId,
-        "bahsetmeler":
-            mesajTipi == "text" ? EtiketServis.bahsetmeleriAyikla(temizMetin) : <String>[],
-        "mentionUidleri": mentionUidleri,
-        "createdAt": FieldValue.serverTimestamp(),
+    Future<void> yaz() {
+      return SosyalCore.db.runTransaction((tx) async {
+        tx.set(msgRef, {
+          "senderUid": current.uid,
+          "receiverUid": hedefUid,
+          "metin": temizMetin,
+          "mesajTipi": mesajTipi,
+          "postId": postId,
+          "bahsetmeler": bahsetmeler,
+          "mentionUidleri": mentionUidleri,
+          "createdAt": FieldValue.serverTimestamp(),
+        });
+        tx.set(
+          chatRef,
+          {
+            "updatedAt": FieldValue.serverTimestamp(),
+            "lastMessage": ozetMetin,
+            "lastMessageAt": FieldValue.serverTimestamp(),
+            "lastSenderUid": current.uid,
+          },
+          SetOptions(merge: true),
+        );
       });
-      tx.set(
-        chatRef,
-        {
-          "updatedAt": FieldValue.serverTimestamp(),
-          "lastMessage": ozetMetin,
-          "lastMessageAt": FieldValue.serverTimestamp(),
-          "lastSenderUid": current.uid,
-        },
-        SetOptions(merge: true),
-      );
-    });
+    }
+
+    try {
+      await yaz();
+    } on FirebaseException catch (e) {
+      if (e.code != 'permission-denied') rethrow;
+      await current.reload();
+      await current.getIdToken(true);
+      await yaz();
+    }
 
     if (mentionUidleri.isNotEmpty) {
       await EtiketServis.bahsetmeBildirimleriGonder(

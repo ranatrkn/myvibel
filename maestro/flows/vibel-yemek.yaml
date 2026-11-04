@@ -1,0 +1,17 @@
+appId: com.myvibel.app
+---
+- repeat:
+    times: 5
+    commands:
+      - tapOn: "Yemek \\(15 vil\\)"
+      - tapOn:
+          text: "Tekrar gösterme"
+          optional: true
+      - tapOn:
+          text: "Tamam"
+          optional: true
+      - extendedWaitUntil:
+          visible: "Lezzetli.*|Tokluk zaten dolu.*|Vil bakiyesi.*"
+          timeout: 15000
+      - waitForAnimationToEnd:
+          timeout: 1500

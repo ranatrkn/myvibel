@@ -2,12 +2,13 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:vibe_life/alinti_gonderi.dart';
-import 'package:vibe_life/app_theme.dart';
-import 'package:vibe_life/error_messages.dart';
-import 'package:vibe_life/feed_page.dart';
-import 'package:vibe_life/sosyal_servis.dart';
-import 'package:vibe_life/widgets/vibe_gradient_scaffold.dart';
+import 'package:myvibel/alinti_gonderi.dart';
+import 'package:myvibel/app_theme.dart';
+import 'package:myvibel/error_messages.dart';
+import 'package:myvibel/feed_page.dart';
+import 'package:myvibel/sosyal_servis.dart';
+import 'package:myvibel/widgets/vibe_gradient_scaffold.dart';
+import 'package:myvibel/widgets/vibe_yukleniyor.dart';
 
 // Hashtag gönderi listesi sayfası
 class EtiketSayfasi extends StatefulWidget {
@@ -51,17 +52,18 @@ class _EtiketSayfasiState extends State<EtiketSayfasi> {
     }
 
     setState(() {
-      _yukleniyor = true;
+      _yukleniyor = _gonderiler.isEmpty;
       _hataMesaji = null;
     });
 
     try {
-      final engelledigim =
-          await SosyalServis.engellenenKullanicilariGetir(user.uid);
-      final beniEngelleyen =
-          await SosyalServis.beniEngelleyenKullanicilariGetir(user.uid);
-      _engelIdleri = {...engelledigim, ...beniEngelleyen};
-      _takipEdilenIdler = await SosyalServis.takipEdilenIdleriGetir(user.uid);
+      final sonuclar = await Future.wait([
+        SosyalServis.engellenenKullanicilariGetir(user.uid),
+        SosyalServis.beniEngelleyenKullanicilariGetir(user.uid),
+        SosyalServis.takipEdilenIdleriGetir(user.uid),
+      ]);
+      _engelIdleri = {...sonuclar[0], ...sonuclar[1]};
+      _takipEdilenIdler = sonuclar[2];
 
       final docs = await SosyalServis.hashtagGonderileriniGetir(
         widget.etiket,
@@ -99,7 +101,7 @@ class _EtiketSayfasiState extends State<EtiketSayfasi> {
       ),
       body: _yukleniyor
           ? Center(
-              child: CircularProgressIndicator(color: theme.colorScheme.primary),
+              child: VibeYukleniyor(renk: theme.colorScheme.primary),
             )
           : _hataMesaji != null
               ? Center(
@@ -164,6 +166,7 @@ class _EtiketSayfasiState extends State<EtiketSayfasi> {
                             alintiSnapshot: AlintiGonderiSnapshot.haritadan(
                               post["alintiSnapshot"],
                               postId: post["alintiPostId"]?.toString(),
+                              icAlintiDahilEt: false,
                             ),
                           );
                         },

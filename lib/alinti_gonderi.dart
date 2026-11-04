@@ -37,8 +37,9 @@ class AlintiGonderiSnapshot {
 
   factory AlintiGonderiSnapshot.gonderiden(
     String postId,
-    Map<String, dynamic> post,
-  ) {
+    Map<String, dynamic> post, {
+    bool icAlintiDahilEt = true,
+  }) {
     final icHam = post['alintiSnapshot'];
     final icId = post['alintiPostId']?.toString();
     return AlintiGonderiSnapshot(
@@ -50,8 +51,12 @@ class AlintiGonderiSnapshot {
       avatarKey: (post['avatarKey'] ?? '').toString(),
       createdAt: post['createdAt'],
       mevcut: true,
-      icAlinti: icHam != null
-          ? AlintiGonderiSnapshot.haritadan(icHam, postId: icId)
+      icAlinti: icAlintiDahilEt && icHam != null
+          ? AlintiGonderiSnapshot.haritadan(
+              icHam,
+              postId: icId,
+              icAlintiDahilEt: false,
+            )
           : null,
     );
   }
@@ -59,6 +64,7 @@ class AlintiGonderiSnapshot {
   static AlintiGonderiSnapshot? haritadan(
     dynamic raw, {
     String? postId,
+    bool icAlintiDahilEt = true,
   }) {
     if (raw is! Map) return null;
     final map = Map<String, dynamic>.from(raw);
@@ -77,8 +83,8 @@ class AlintiGonderiSnapshot {
       avatarKey: (map['avatarKey'] ?? '').toString(),
       createdAt: map['createdAt'],
       mevcut: map['mevcut'] != false,
-      icAlinti: icHam != null
-          ? AlintiGonderiSnapshot.haritadan(icHam)
+      icAlinti: icAlintiDahilEt && icHam != null
+          ? AlintiGonderiSnapshot.haritadan(icHam, icAlintiDahilEt: false)
           : null,
     );
   }

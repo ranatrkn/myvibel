@@ -1,0 +1,115 @@
+appId: com.myvibel.app
+---
+# Vil: gönderi +10, başkasının gönderisine beğeni +2 / yorum +3, takip +5.
+- pressKey: Home
+- openLink: myvibel://app
+- tapOn:
+    text: "Atla"
+    optional: true
+- tapOn:
+    text: "Tamam"
+    optional: true
+- tapOn:
+    text: "Alt menü Ana"
+    optional: true
+- extendedWaitUntil:
+    visible: "Takip Edilen"
+    timeout: 60000
+
+# --- Önceki vil ---
+- tapOn: "Alt menü Profil"
+- extendedWaitUntil:
+    visible: "Beğendiklerim"
+    timeout: 25000
+- takeScreenshot: vil-tum-once
+- copyTextFrom:
+    text: "Vil:.*"
+    optional: true
+
+# --- Gönderi (+10, kendi) ---
+- tapOn: "Alt menü Yeni gönderi"
+- runFlow: flows/yeni-gonderi-hazir.yaml
+- tapOn: "Gönderi metni"
+- inputText: "VilQA tum 0237"
+- hideKeyboard
+- waitForAnimationToEnd:
+    timeout: 7000
+- tapOn: "Paylaş|Alıntıyı paylaş"
+- waitForAnimationToEnd:
+    timeout: 5000
+- runFlow:
+    when:
+      visible: "Çok hızlı paylaşım.*"
+    commands:
+      - waitForAnimationToEnd:
+          timeout: 8000
+      - tapOn: "Paylaş|Alıntıyı paylaş"
+      - waitForAnimationToEnd:
+          timeout: 5000
+- tapOn: "Alt menü Profil"
+- extendedWaitUntil:
+    visible: "Beğendiklerim"
+    timeout: 25000
+- tapOn: "Gönderilerim.*"
+- scrollUntilVisible:
+    element: "VilQA tum 0237"
+    direction: DOWN
+    timeout: 15000
+- assertVisible: "VilQA tum 0237"
+- scrollUntilVisible:
+    element: "Vil bakiyesi.*|Vil:.*"
+    direction: UP
+    timeout: 8000
+    optional: true
+- takeScreenshot: vil-gonderi-sonra
+
+# --- Akışta başkasının gönderisi: beğeni +2, yorum +3 ---
+- tapOn: "Alt menü Ana"
+- extendedWaitUntil:
+    visible: "Takip Edilen|Akış"
+    timeout: 25000
+- tapOn: "Akış"
+- waitForAnimationToEnd:
+    timeout: 3000
+- tapOn:
+    text: "Gönderiyi beğen"
+    index: 0
+- waitForAnimationToEnd:
+    timeout: 2500
+- tapOn:
+    text: "Yorumları aç"
+    index: 0
+- runFlow:
+    when:
+      visible: "Yorumlar.*|Yorum yaz.*"
+    commands:
+      - tapOn: "Yorum yaz..."
+      - inputText: "VilQA yorum 0237"
+      - hideKeyboard
+      - tapOn: "Yorum gönder"
+      - waitForAnimationToEnd:
+          timeout: 4000
+      - back
+
+# --- Keşfet: takip +5 ---
+- tapOn: "Alt menü Keşfet"
+- extendedWaitUntil:
+    visible: "Liderlik|Önerilen Kullanıcılar|Kullanıcı veya etiket ara"
+    timeout: 25000
+- tapOn:
+    text: "Takip Et"
+    index: 0
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# --- Son vil ---
+- tapOn: "Alt menü Profil"
+- extendedWaitUntil:
+    visible: "Beğendiklerim"
+    timeout: 25000
+- takeScreenshot: vil-tum-sonra
+- copyTextFrom:
+    text: "Vil:.*"
+    optional: true
+- assertVisible: "Vil:.*|Beğendiklerim"

@@ -1,0 +1,22 @@
+---
+description: Tasarım değişiklikleri yalnızca masaüstü web; mobil app/web dokunulmaz
+alwaysApply: true
+---
+
+# Masaüstü web tasarım kapsamı
+
+Kullanıcı bundan sonra verdiği **tasarım** isteklerini yalnızca **bilgisayar (masaüstü) web sitesi** için ister.
+
+## Uygula
+
+- Hedef: geniş ekran / masaüstü web layout (ör. `kIsWeb` + geniş `MediaQuery`, hosting landing, desktop shell).
+- Mevcut mobil uygulama (Android/iOS) UI’ına dokunma.
+- Mobil web (dar ekran / telefon tarayıcı) layout’una dokunma; telefon görünümü aynı kalsın.
+
+## Yapma
+
+- Paylaşılan widget’larda mobil davranışı değiştirme.
+- «Hepsi için» varsayımıyla ortak tema/layout’u bozma.
+- Kullanıcı açıkça mobil de isterse ancak o zaman mobil/app’e dokun.
+
+Emin değilsen: yalnızca masaüstü breakpoint / desktop web yolunu değiştir.

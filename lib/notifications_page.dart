@@ -1,20 +1,29 @@
 // Sosyal bildirimler: beğeni, yorum, takip, bahsetme ve takip isteği aksiyonları
+import 'package:myvibel/tek_sefer_navigasyon.dart';
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:vibe_life/app_theme.dart';
-import 'package:vibe_life/error_messages.dart';
-import 'package:vibe_life/feed_page.dart';
-import 'package:vibe_life/messages_page.dart';
-import 'package:vibe_life/sosyal_servis.dart';
-import 'package:vibe_life/utils/tarih_saat.dart';
-import 'package:vibe_life/user_profile_page.dart';
-import 'package:vibe_life/vibe_snackbar.dart';
-import 'package:vibe_life/widgets/vibe_gradient_scaffold.dart';
+import 'package:myvibel/app_theme.dart';
+import 'package:myvibel/widgets/vibe_yukleniyor.dart';
+import 'package:myvibel/error_messages.dart';
+import 'package:myvibel/maestro_semantics.dart';
+import 'package:myvibel/messages_page.dart';
+import 'package:myvibel/sosyal/sosyal_core.dart';
+import 'package:myvibel/sosyal_servis.dart';
+import 'package:myvibel/utils/tarih_saat.dart';
+import 'package:myvibel/vibe_snackbar.dart';
+import 'package:myvibel/widgets/vibe_ikonlar.dart';
+import 'package:myvibel/widgets/web_shell.dart';
+import 'package:myvibel/yas_hesap_kontrol.dart';
 
 // Bildirimler sayfası
 class NotificationsPage extends StatefulWidget {
-  const NotificationsPage({super.key});
+  const NotificationsPage({super.key, this.aktif = true});
+
+  final bool aktif;
 
   @override
 
@@ -25,6 +34,44 @@ class NotificationsPage extends StatefulWidget {
 class NotificationsPageState extends State<NotificationsPage>
     with WidgetsBindingObserver {
   Set<String> _engelIdleri = {}; // engelli kullanıcı uid kümesi
+  String? _temizlemeKategorisi; // gonderi | takip | bahsetme
+  final Set<String> _kapaliKategoriler = {};
+  final Set<String> _seciliBildirimIdleri = {};
+  final Set<String> _gizliBildirimIdleri = {}; // optimistik silme
+  final Set<String> _silinenGonderenler = {};
+  final Set<String> _gonderenKontrolEdilen = {};
+  final Set<String> _gonderenYukleniyor = {};
+  final Set<String> _bekleyenGonderenKontrol = {};
+  bool _gonderenKontrolPlanlandi = false;
+  QuerySnapshot<Map<String, dynamic>>? _bildirimSnap;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _bildirimAbonelik;
+  Object? _bildirimHatasi;
+  final Map<String, String> _postOzetOnbellek = {};
+  final Set<String> _postOzetIstendi = {};
+  // Masaüstü web: sayfa açılınca okundu yapılanlar; bu ziyaret boyunca vurgulu kalır.
+  final Set<String> _ziyaretteOkunanIdler = {};
+
+  bool _okunduMu(QueryDocumentSnapshot<Map<String, dynamic>> doc) =>
+      doc.data()["okundu"] == true && !_ziyaretteOkunanIdler.contains(doc.id);
+
+  void _gorulenleriOkunduYap(QuerySnapshot<Map<String, dynamic>> snap) {
+    if (!widget.aktif || !webMasaustuMu(context)) return;
+    final yeni = snap.docs.where((d) {
+      final data = d.data();
+      return data["okundu"] != true &&
+          (data["tip"] ?? "") != "message" &&
+          !_ziyaretteOkunanIdler.contains(d.id);
+    }).toList();
+    if (yeni.isEmpty) return;
+    _ziyaretteOkunanIdler.addAll(yeni.map((d) => d.id));
+    final batch = FirebaseFirestore.instance.batch();
+    for (final d in yeni) {
+      batch.update(d.reference, {"okundu": true});
+    }
+    unawaited(batch.commit().catchError((_) {
+      _ziyaretteOkunanIdler.removeAll(yeni.map((d) => d.id));
+    }));
+  }
 
   // Widget ilk yüklendiğinde çalışır
   @override
@@ -32,21 +79,73 @@ class NotificationsPageState extends State<NotificationsPage>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _engelleriYukle();
+    _bildirimDinlemeyiAyarla();
+  }
+
+  @override
+  void didUpdateWidget(covariant NotificationsPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.aktif != widget.aktif) {
+      if (!widget.aktif) {
+        _ziyaretteOkunanIdler.clear();
+      } else if (_bildirimSnap != null) {
+        _gorulenleriOkunduYap(_bildirimSnap!);
+      }
+      _bildirimDinlemeyiAyarla();
+    }
   }
 
   // Abonelik ve kontrolcüleri temizle
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _bildirimAbonelik?.cancel();
     super.dispose();
   }
 
   // Uygulama ön plana gelince engelleri yenile
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
+    if (state == AppLifecycleState.resumed && widget.aktif) {
       _engelleriYukle();
+      _bildirimDinlemeyiAyarla();
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
+      _bildirimAbonelik?.cancel();
+      _bildirimAbonelik = null;
     }
+  }
+
+  void _bildirimDinlemeyiAyarla() {
+    if (!widget.aktif) {
+      _bildirimAbonelik?.cancel();
+      _bildirimAbonelik = null;
+      return;
+    }
+    if (_bildirimAbonelik != null) return;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    _bildirimAbonelik = FirebaseFirestore.instance
+        .collection("users")
+        .doc(uid)
+        .collection("notifications")
+        .orderBy("createdAt", descending: true)
+        .limit(80)
+        .snapshots()
+        .listen(
+      (snap) {
+        if (!mounted) return;
+        _gorulenleriOkunduYap(snap);
+        setState(() {
+          _bildirimSnap = snap;
+          _bildirimHatasi = null;
+        });
+      },
+      onError: (e) {
+        if (!mounted) return;
+        setState(() => _bildirimHatasi = e);
+      },
+    );
   }
 
   // Engelleri yükle
@@ -61,35 +160,114 @@ class NotificationsPageState extends State<NotificationsPage>
     });
   }
 
+  void _gonderenleriDogrulaPlanla(Iterable<String> uids) {
+    _bekleyenGonderenKontrol.addAll(
+      uids.where(
+        (uid) =>
+            uid.isNotEmpty &&
+            !_gonderenKontrolEdilen.contains(uid) &&
+            !_gonderenYukleniyor.contains(uid),
+      ),
+    );
+    if (_gonderenKontrolPlanlandi || _bekleyenGonderenKontrol.isEmpty) return;
+    _gonderenKontrolPlanlandi = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      _gonderenKontrolPlanlandi = false;
+      if (!mounted || _bekleyenGonderenKontrol.isEmpty) return;
+      final batch = _bekleyenGonderenKontrol.toList();
+      _bekleyenGonderenKontrol.clear();
+      await _gonderenleriDogrula(batch);
+    });
+  }
+
+  Future<void> _gonderenleriDogrula(List<String> uids) async {
+    _gonderenYukleniyor.addAll(uids);
+    var degisti = false;
+    for (final uid in uids) {
+      try {
+        final doc = await FirebaseFirestore.instance
+            .collection("users")
+            .doc(uid)
+            .get();
+        if (!doc.exists) {
+          _silinenGonderenler.add(uid);
+          degisti = true;
+        }
+      } catch (_) {}
+      _gonderenKontrolEdilen.add(uid);
+      _gonderenYukleniyor.remove(uid);
+    }
+    if (mounted && degisti) setState(() {});
+  }
+
   // Bildirimi okundu işaretle
   Future<void> _bildirimiOkunduIsaretle(String uid, String bildirimId) async {
     await SosyalServis.bildirimOkunduYap(uid, bildirimId);
   }
 
-  // Bildirim başlığı metni
-  String _bildirimBasligi(Map<String, dynamic> data) {
-    final kullaniciAdi = data["gonderenKullaniciAdi"] ?? "Bir kullanıcı";
-
-    // tip/durum seçimi
+  // Kullanıcı adından sonraki cümle
+  String _bildirimEki(Map<String, dynamic> data) {
     switch (data["tip"]) {
       case "like":
-        return "@$kullaniciAdi gönderini beğendi";
+        return " gönderini beğendi";
       case "comment":
-        return "@$kullaniciAdi gönderine yorum yaptı";
+        return " gönderine yorum yaptı";
+      case "comment_reply":
+        return " yorumuna yanıt verdi";
       case "follow":
-        return "@$kullaniciAdi seni takip etmeye başladı";
+        return " seni takip etmeye başladı";
       case "follow_request":
-        return "@$kullaniciAdi sana takip isteği gönderdi";
+        return " sana takip isteği gönderdi";
       case "follow_accepted":
-        return "@$kullaniciAdi takip isteğini kabul etti";
+        return " takip isteğini kabul etti";
       case "message":
-        return "@$kullaniciAdi sana mesaj gönderdi";
+        return " sana mesaj gönderdi";
       case "mention":
-        return "@$kullaniciAdi senden bahsetti";
+        return " senden bahsetti";
+      case "maskot_yemek":
+        return " Vibel'ine yemek verdi";
       default:
-        final metin = data["metin"] ?? "";
-        return metin.isNotEmpty ? "@$kullaniciAdi $metin" : "@$kullaniciAdi";
+        final metin = (data["metin"] ?? "").toString();
+        return metin.isNotEmpty ? " $metin" : "";
     }
+  }
+
+  bool _gonderiOnizlemeTipi(String tip) {
+    return tip == "like" ||
+        tip == "comment" ||
+        tip == "comment_reply" ||
+        tip == "mention";
+  }
+
+  String _postOnizleme(String postId, String kayitli) {
+    final metin = kayitli.trim();
+    if (metin.isNotEmpty) return metin;
+    return _postOzetOnbellek[postId] ?? "";
+  }
+
+  void _postOzetiGetir(String postId) {
+    if (postId.isEmpty ||
+        _postOzetOnbellek.containsKey(postId) ||
+        _postOzetIstendi.contains(postId)) {
+      return;
+    }
+    _postOzetIstendi.add(postId);
+    unawaited(() async {
+      try {
+        final snap =
+            await SosyalCore.gonderiRef(postId).get();
+        final ham = (snap.data()?["metin"] ?? "")
+            .toString()
+            .trim()
+            .replaceAll(RegExp(r"\s+"), " ");
+        final ozet = ham.length > 60 ? "${ham.substring(0, 60)}..." : ham;
+        if (!mounted) return;
+        setState(() => _postOzetOnbellek[postId] = ozet);
+      } catch (_) {
+        if (!mounted) return;
+        setState(() => _postOzetOnbellek[postId] = "");
+      }
+    }());
   }
 
   // Bildirim tipine göre ikon
@@ -97,33 +275,37 @@ class NotificationsPageState extends State<NotificationsPage>
     // tip/durum seçimi
     switch (tip) {
       case "like":
-        return Icons.favorite;
+        return VibeIkon.begeni;
       case "comment":
-        return Icons.chat_bubble_outline;
+      case "comment_reply":
+        return VibeIkon.yorum;
       case "follow":
       case "follow_accepted":
-        return Icons.person_add_alt_1;
+        return VibeIkon.takip;
       case "follow_request":
-        return Icons.person_add;
+        return VibeIkon.takip;
       case "message":
-        return Icons.mail_outline;
+        return VibeIkon.mail;
       case "mention":
-        return Icons.alternate_email;
+        return VibeIkon.bahset;
+      case "maskot_yemek":
+        return VibeIkon.yemek;
       default:
-        return Icons.notifications_none;
+        return VibeIkon.bildirim;
     }
   }
 
   // Gönderi bildirimi mi
   bool _gonderiBildirimiMi(String tip) {
-    return tip == "like" || tip == "comment";
+    return tip == "like" || tip == "comment" || tip == "comment_reply";
   }
 
   // Takip bildirimi mi
   bool _takipBildirimiMi(String tip) {
     return tip == "follow" ||
         tip == "follow_request" ||
-        tip == "follow_accepted";
+        tip == "follow_accepted" ||
+        tip == "maskot_yemek";
   }
 
   // Bahsetme bildirimi mi
@@ -131,38 +313,267 @@ class NotificationsPageState extends State<NotificationsPage>
     return tip == "mention";
   }
 
+  // Kategori temizleme modunu aç/kapat
+  void _temizleModunuDegistir(String kategori) {
+    setState(() {
+      if (_temizlemeKategorisi == kategori) {
+        _temizlemeKategorisi = null;
+        _seciliBildirimIdleri.clear();
+      } else {
+        _kapaliKategoriler.remove(kategori);
+        _temizlemeKategorisi = kategori;
+        _seciliBildirimIdleri.clear();
+      }
+    });
+  }
+
+  void _kategoriAcKapa(String kategori) {
+    setState(() {
+      if (_kapaliKategoriler.contains(kategori)) {
+        _kapaliKategoriler.remove(kategori);
+      } else {
+        _kapaliKategoriler.add(kategori);
+        if (_temizlemeKategorisi == kategori) {
+          _temizlemeKategorisi = null;
+          _seciliBildirimIdleri.clear();
+        }
+      }
+    });
+  }
+
+  // Kategorideki tüm bildirimleri seç / kaldır
+  void _kategoriTumunuSec(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+    bool sec,
+  ) {
+    setState(() {
+      if (sec) {
+        _seciliBildirimIdleri.addAll(docs.map((d) => d.id));
+      } else {
+        for (final doc in docs) {
+          _seciliBildirimIdleri.remove(doc.id);
+        }
+      }
+    });
+  }
+
+  bool? _kategoriSecimDurumu(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
+    if (docs.isEmpty) return false;
+    final secili =
+        docs.where((d) => _seciliBildirimIdleri.contains(d.id)).length;
+    if (secili == 0) return false;
+    if (secili == docs.length) return true;
+    return null;
+  }
+
+  void _bildirimSeciminiDegistir(String bildirimId, bool sec) {
+    setState(() {
+      if (sec) {
+        _seciliBildirimIdleri.add(bildirimId);
+      } else {
+        _seciliBildirimIdleri.remove(bildirimId);
+      }
+    });
+  }
+
+  void _bildirimleriAnindaGizle(Iterable<String> bildirimIdleri) {
+    setState(() => _gizliBildirimIdleri.addAll(bildirimIdleri));
+  }
+
+  void _bildirimGizlemeyiGeriAl(Iterable<String> bildirimIdleri) {
+    setState(() => _gizliBildirimIdleri.removeAll(bildirimIdleri));
+  }
+
+  Future<void> _bildirimSilArkaPlan(String uid, String bildirimId) async {
+    _bildirimleriAnindaGizle([bildirimId]);
+    try {
+      await SosyalServis.bildirimSil(uid, bildirimId);
+    } catch (e) {
+      if (!mounted) return;
+      _bildirimGizlemeyiGeriAl([bildirimId]);
+      _mesajGoster(
+        internetAwareErrorMessage(
+          error: e,
+          fallback: 'Bildirim silinemedi.',
+        ),
+      );
+    }
+  }
+
+  Future<void> _secilenleriSil(String uid) async {
+    if (_seciliBildirimIdleri.isEmpty) return;
+
+    final silinecek = Set<String>.from(_seciliBildirimIdleri);
+    setState(() {
+      _gizliBildirimIdleri.addAll(silinecek);
+      _seciliBildirimIdleri.clear();
+      _temizlemeKategorisi = null;
+    });
+
+    unawaited(_topluSilmeArkaPlan(uid, silinecek));
+  }
+
+  Future<void> _topluSilmeArkaPlan(String uid, Set<String> silinecek) async {
+    try {
+      await SosyalServis.bildirimleriSil(uid, silinecek);
+    } catch (e) {
+      if (!mounted) return;
+      _bildirimGizlemeyiGeriAl(silinecek);
+      _mesajGoster(
+        internetAwareErrorMessage(
+          error: e,
+          fallback: 'Bildirimler silinemedi.',
+        ),
+      );
+    }
+  }
+
   // Bildirim bölüm başlığı
   Widget _bolumBasligi({
     required BuildContext context,
+    required String kategori,
     required String baslik,
     required String aciklama,
     required bool ilkBolum,
+    required bool acik,
+    required List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+    required String uid,
   }) {
     final theme = Theme.of(context);
     final vibe = context.vibe;
+    final temizlemeModu = _temizlemeKategorisi == kategori;
+    final kategoriSecili = docs
+        .where((d) => _seciliBildirimIdleri.contains(d.id))
+        .length;
+    final okunmamis = docs.where((d) => !_okunduMu(d)).length;
 
     return Padding(
-      padding: EdgeInsets.fromLTRB(4, ilkBolum ? 4 : 22, 4, 10),
+      padding: EdgeInsets.fromLTRB(4, ilkBolum ? 4 : 22, 4, acik ? 10 : 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            baslik,
-            style: TextStyle(
-              color: theme.colorScheme.onSurface,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () => _kategoriAcKapa(kategori),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 6,
+                        horizontal: 2,
+                      ),
+                      child: Row(
+                        children: [
+                          AnimatedRotation(
+                            turns: acik ? 0.25 : 0,
+                            duration: const Duration(milliseconds: 200),
+                            curve: Curves.easeOutCubic,
+                            child: Icon(
+                              Icons.chevron_right_rounded,
+                              color: vibe.mutedText,
+                            ),
+                          ),
+                          const SizedBox(width: 2),
+                          Flexible(
+                            child: Text(
+                              baslik,
+                              style: TextStyle(
+                                color: theme.colorScheme.onSurface,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            '${docs.length}',
+                            style: TextStyle(
+                              color: vibe.mutedText,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          if (okunmamis > 0) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 7,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.primary,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                '$okunmamis',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              if (temizlemeModu) ...[
+                SizedBox(
+                  height: 28,
+                  width: 28,
+                  child: Checkbox(
+                    value: _kategoriSecimDurumu(docs),
+                    tristate: true,
+                    activeColor: theme.colorScheme.primary,
+                    onChanged: (_) {
+                      final hepsiSecili = _kategoriSecimDurumu(docs) == true;
+                      _kategoriTumunuSec(docs, !hepsiSecili);
+                    },
+                  ),
+                ),
+                if (kategoriSecili > 0)
+                  TextButton(
+                    onPressed: () => _secilenleriSil(uid),
+                    child: Text('Sil ($kategoriSecili)'),
+                  ),
+              ],
+              TextButton(
+                onPressed: () => _temizleModunuDegistir(kategori),
+                child: Text(temizlemeModu ? 'İptal' : 'Temizle'),
+              ),
+            ],
           ),
-          const SizedBox(height: 4),
-          Text(
-            aciklama,
-            style: TextStyle(
-              color: vibe.mutedText,
-              fontSize: 13,
-              height: 1.3,
+          if (acik) ...[
+            const SizedBox(height: 4),
+            Text(
+              aciklama,
+              style: TextStyle(
+                color: vibe.mutedText,
+                fontSize: 13,
+                height: 1.3,
+              ),
             ),
-          ),
+            if (temizlemeModu)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  'Silmek istediklerini seç. Tümünü seçmek için kutucuğa dokun.',
+                  style: TextStyle(
+                    color: theme.colorScheme.primary,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+          ],
         ],
       ),
     );
@@ -173,30 +584,45 @@ class NotificationsPageState extends State<NotificationsPage>
     required BuildContext context,
     required User user,
     required QueryDocumentSnapshot<Map<String, dynamic>> doc,
+    required bool secimModu,
+    required bool secili,
+    required ValueChanged<bool> onSecimDegisti,
   }) {
     final theme = Theme.of(context);
     final vibe = context.vibe;
     final data = doc.data();
     final tip = data["tip"] ?? "";
-    final okundu = data["okundu"] == true;
+    final okundu = _okunduMu(doc);
     final gonderenUid = data["gonderenUid"] ?? "";
     final postId = data["postId"]?.toString() ?? "";
     final chatId = data["chatId"]?.toString() ?? "";
     final postMetin = data["postMetin"]?.toString() ?? "";
+    final yorumMetin = data["yorumMetin"]?.toString().trim() ?? "";
+    final gonderiOnizleme = _postOnizleme(postId, postMetin);
+    if (!secimModu &&
+        _gonderiOnizlemeTipi(tip) &&
+        postMetin.trim().isEmpty &&
+        postId.isNotEmpty) {
+      _postOzetiGetir(postId);
+    }
 
-    return Container(
+    final kartIcerigi = Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: okundu
-            ? vibe.cardColor
-            : theme.colorScheme.primary.withOpacity(
-                vibe.isDark ? 0.12 : 0.08,
-              ),
+        color: secimModu && secili
+            ? theme.colorScheme.primary.withOpacity(vibe.isDark ? 0.18 : 0.12)
+            : okundu
+                ? vibe.cardColor
+                : theme.colorScheme.primary.withOpacity(
+                    vibe.isDark ? 0.12 : 0.08,
+                  ),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: okundu
-              ? vibe.cardBorder
-              : theme.colorScheme.primary.withOpacity(0.55),
+          color: secimModu && secili
+              ? theme.colorScheme.primary
+              : okundu
+                  ? vibe.cardBorder
+                  : theme.colorScheme.primary.withOpacity(0.55),
         ),
         boxShadow: vibe.isDark
             ? [
@@ -222,138 +648,184 @@ class NotificationsPageState extends State<NotificationsPage>
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                InkWell(
-                  borderRadius: BorderRadius.circular(14),
-                  onTap: () => _profilAc(
-                    gonderenUid: gonderenUid,
-                    uid: user.uid,
-                    bildirimId: doc.id,
+                if (secimModu)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 4, top: 6),
+                    child: Checkbox(
+                      value: secili,
+                      activeColor: theme.colorScheme.primary,
+                      onChanged: (v) => onSecimDegisti(v == true),
+                    ),
                   ),
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(8, 8, 10, 8),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(
-                          _bildirimIkonu(tip),
-                          color: theme.colorScheme.primary,
-                        ),
-                        const SizedBox(width: 10),
-                        SizedBox(
-                          width: MediaQuery.of(context).size.width - 150,
-                          child: Text(
-                            _bildirimBasligi(data),
-                            style: TextStyle(
-                              color: theme.colorScheme.onSurface,
-                              fontWeight:
-                                  okundu ? FontWeight.normal : FontWeight.bold,
-                              fontSize: 14,
+                Expanded(
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(14),
+                    onTap: secimModu ? () => onSecimDegisti(!secili) : null,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(8, 8, 10, 8),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            _bildirimIkonu(tip),
+                            color: theme.colorScheme.primary,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _BildirimBaslik(
+                              ad: (data["gonderenKullaniciAdi"] ??
+                                      "Bir kullanıcı")
+                                  .toString(),
+                              ek: _bildirimEki(data),
+                              kalin: !okundu,
+                              yaziRengi: theme.colorScheme.onSurface,
+                              adRengi: theme.colorScheme.primary,
+                              onAd: secimModu || gonderenUid.isEmpty
+                                  ? null
+                                  : () => _profilAc(
+                                        gonderenUid: gonderenUid,
+                                        uid: user.uid,
+                                        bildirimId: doc.id,
+                                      ),
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
-                const Spacer(),
-                if (tip == "like" || tip == "comment" || tip == "mention")
+                if (!secimModu &&
+                    (tip == "like" || tip == "comment" || tip == "mention"))
                   IconButton(
                     icon: Icon(
                       Icons.delete_outline,
                       color: vibe.mutedText,
                       size: 20,
                     ),
-                    onPressed: () async {
-                      await SosyalServis.bildirimSil(
-                        user.uid,
-                        doc.id,
-                      );
-                    },
+                    onPressed: () =>
+                        unawaited(_bildirimSilArkaPlan(user.uid, doc.id)),
                   ),
               ],
             ),
           ),
           InkWell(
             borderRadius: BorderRadius.circular(16),
-            onTap: tip == "mention"
-                ? () {
-                    if (postId.isNotEmpty) {
-                      _gonderiDetayinaGit(
-                        postId: postId,
-                        currentUserId: user.uid,
-                        uid: user.uid,
-                        bildirimId: doc.id,
-                      );
-                    } else if (chatId.isNotEmpty) {
-                      _sohbeteGit(
-                        chatId: chatId,
-                        gonderenUid: gonderenUid,
-                        uid: user.uid,
-                        bildirimId: doc.id,
-                      );
-                    } else {
-                      _profilAc(
-                        gonderenUid: gonderenUid,
-                        uid: user.uid,
-                        bildirimId: doc.id,
-                      );
-                    }
-                  }
-                : (tip == "like" || tip == "comment")
-                    ? () => _gonderiDetayinaGit(
-                          postId: postId,
-                          currentUserId: user.uid,
-                          uid: user.uid,
-                          bildirimId: doc.id,
-                        )
-                    : tip == "message"
-                        ? () => _sohbeteGit(
-                              chatId: chatId,
-                              gonderenUid: gonderenUid,
+            onTap: secimModu
+                ? () => onSecimDegisti(!secili)
+                : tip == "mention"
+                    ? () {
+                        if (postId.isNotEmpty) {
+                          _gonderiDetayinaGit(
+                            postId: postId,
+                            currentUserId: user.uid,
+                            uid: user.uid,
+                            bildirimId: doc.id,
+                          );
+                        } else if (chatId.isNotEmpty) {
+                          _sohbeteGit(
+                            chatId: chatId,
+                            gonderenUid: gonderenUid,
+                            uid: user.uid,
+                            bildirimId: doc.id,
+                          );
+                        } else {
+                          _profilAc(
+                            gonderenUid: gonderenUid,
+                            uid: user.uid,
+                            bildirimId: doc.id,
+                          );
+                        }
+                      }
+                    : (tip == "like" ||
+                            tip == "comment" ||
+                            tip == "comment_reply")
+                        ? () => _gonderiDetayinaGit(
+                              postId: postId,
+                              currentUserId: user.uid,
                               uid: user.uid,
                               bildirimId: doc.id,
                             )
-                        : (tip == "follow" ||
-                                tip == "follow_accepted" ||
-                                tip == "follow_request")
-                            ? () => _profilAc(
+                        : tip == "message"
+                            ? () {
+                                if (YasHesapKontrol.maybeOf(context)
+                                        ?.mesajAcik ==
+                                    false) {
+                                  return;
+                                }
+                                _sohbeteGit(
+                                  chatId: chatId,
                                   gonderenUid: gonderenUid,
                                   uid: user.uid,
                                   bildirimId: doc.id,
-                                )
-                            : null,
+                                );
+                              }
+                            : (tip == "follow" ||
+                                    tip == "follow_accepted" ||
+                                    tip == "follow_request" ||
+                                    tip == "maskot_yemek")
+                                ? () => _profilAc(
+                                      gonderenUid: gonderenUid,
+                                      uid: user.uid,
+                                      bildirimId: doc.id,
+                                    )
+                                : null,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(18, 4, 18, 12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (postMetin.isNotEmpty &&
-                      (tip == "like" ||
-                          tip == "comment" ||
-                          tip == "mention" ||
-                          tip == "message"))
+                  if ((tip == "comment" || tip == "comment_reply") &&
+                      yorumMetin.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2, bottom: 2),
+                      child: Text(
+                        '"$yorumMetin"',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: vibe.mutedText,
+                          fontSize: 13,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ),
+                  if (gonderiOnizleme.isNotEmpty && _gonderiOnizlemeTipi(tip))
                     Padding(
                       padding: const EdgeInsets.only(top: 4),
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: vibe.inputFill,
+                      child: Material(
+                        color: vibe.inputFill,
+                        borderRadius: BorderRadius.circular(10),
+                        child: InkWell(
                           borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: vibe.cardBorder),
-                        ),
-                        child: Text(
-                          postMetin,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: theme.colorScheme.onSurface,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
+                          onTap: secimModu || postId.isEmpty
+                              ? null
+                              : () => _gonderiDetayinaGit(
+                                    postId: postId,
+                                    currentUserId: user.uid,
+                                    uid: user.uid,
+                                    bildirimId: doc.id,
+                                  ),
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: vibe.cardBorder),
+                            ),
+                            child: Text(
+                              gonderiOnizleme,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: theme.colorScheme.onSurface,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -370,7 +842,9 @@ class NotificationsPageState extends State<NotificationsPage>
               ),
             ),
           ),
-          if (tip == "follow_request" && gonderenUid.isNotEmpty)
+          if (tip == "follow_request" &&
+              gonderenUid.isNotEmpty &&
+              !secimModu)
             _TakipIstegiAksiyonlari(
               hedefUid: user.uid,
               istekciUid: gonderenUid,
@@ -382,6 +856,8 @@ class NotificationsPageState extends State<NotificationsPage>
         ],
       ),
     );
+
+    return kartIcerigi;
   }
 
   // Bildirimleri bölümlere ayır
@@ -400,18 +876,26 @@ class NotificationsPageState extends State<NotificationsPage>
         .where((d) => _bahsetmeBildirimiMi((d.data()["tip"] ?? "").toString()))
         .toList();
 
-    final bolumler = <({String baslik, String aciklama, List docs})>[
+    final bolumler = <({
+      String kategori,
+      String baslik,
+      String aciklama,
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+    })>[
       (
+        kategori: 'gonderi',
         baslik: "Gönderi",
         aciklama: "Paylaştığın gönderiye yapılan etkileşimler",
         docs: gonderiBildirimleri,
       ),
       (
+        kategori: 'takip',
         baslik: "Takip",
         aciklama: "Takip istekleri ve takip isteği kabul bildirimleri",
         docs: takipBildirimleri,
       ),
       (
+        kategori: 'bahsetme',
         baslik: "Bahsetmeler",
         aciklama: "Senden bahsedilen gönderiler ve yorumlar",
         docs: bahsetmeBildirimleri,
@@ -424,25 +908,67 @@ class NotificationsPageState extends State<NotificationsPage>
     for (final bolum in bolumler) {
       if (bolum.docs.isEmpty) continue;
 
+      final secimModu = _temizlemeKategorisi == bolum.kategori;
+      final acik = !_kapaliKategoriler.contains(bolum.kategori);
+
       ogeler.add(
-        _bolumBasligi(
-          context: context,
-          baslik: bolum.baslik,
-          aciklama: bolum.aciklama,
-          ilkBolum: ilkBolum,
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _bolumBasligi(
+              context: context,
+              kategori: bolum.kategori,
+              baslik: bolum.baslik,
+              aciklama: bolum.aciklama,
+              ilkBolum: ilkBolum,
+              acik: acik,
+              docs: bolum.docs,
+              uid: user.uid,
+            ),
+            ClipRect(
+              child: AnimatedSize(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                alignment: Alignment.topCenter,
+                child: acik
+                    ? LayoutBuilder(
+                        builder: (context, constraints) {
+                          final ikiKolon = webMasaustuMu(context) &&
+                              constraints.maxWidth >= 640;
+                          final kartlar = [
+                            for (final doc in bolum.docs)
+                              _bildirimKarti(
+                                context: context,
+                                user: user,
+                                doc: doc,
+                                secimModu: secimModu,
+                                secili:
+                                    _seciliBildirimIdleri.contains(doc.id),
+                                onSecimDegisti: (sec) =>
+                                    _bildirimSeciminiDegistir(doc.id, sec),
+                              ),
+                          ];
+                          if (!ikiKolon) {
+                            return Column(children: kartlar);
+                          }
+                          final w = (constraints.maxWidth - 12) / 2;
+                          return Wrap(
+                            spacing: 12,
+                            runSpacing: 4,
+                            children: [
+                              for (final kart in kartlar)
+                                SizedBox(width: w, child: kart),
+                            ],
+                          );
+                        },
+                      )
+                    : const SizedBox(width: double.infinity),
+              ),
+            ),
+          ],
         ),
       );
       ilkBolum = false;
-
-      for (final doc in bolum.docs) {
-        ogeler.add(
-          _bildirimKarti(
-            context: context,
-            user: user,
-            doc: doc,
-          ),
-        );
-      }
     }
 
     return ogeler;
@@ -468,18 +994,12 @@ class NotificationsPageState extends State<NotificationsPage>
       _mesajGoster("Bu bildirim için gönderi bulunamadı.");
       return;
     }
-
-    await _bildirimiOkunduIsaretle(uid, bildirimId);
-
+    unawaited(_bildirimiOkunduIsaretle(uid, bildirimId));
     if (!mounted) return;
-    await Navigator.push(
+    await gonderiDetayiniAc(
       context,
-      MaterialPageRoute(
-        builder: (context) => _BildirimPostSayfasi(
-          postId: postId,
-          currentUserId: currentUserId,
-        ),
-      ),
+      postId: postId,
+      currentUserId: currentUserId,
     );
   }
 
@@ -494,6 +1014,8 @@ class NotificationsPageState extends State<NotificationsPage>
       _mesajGoster("Sohbet bulunamadı.");
       return;
     }
+    final bilet = tekSeferGecisAl();
+    if (bilet == null) return;
 
     await _bildirimiOkunduIsaretle(uid, bildirimId);
     final gonderen = await FirebaseFirestore.instance
@@ -502,8 +1024,26 @@ class NotificationsPageState extends State<NotificationsPage>
         .get();
     final data = gonderen.data() ?? {};
 
-    if (!mounted) return;
-    await Navigator.push(
+    if (!mounted) {
+      tekSeferGecisIptal(bilet);
+      return;
+    }
+    final sohbet = WebSohbetKapsayici.maybeOf(context);
+    if (sohbet != null && webMasaustuMu(context)) {
+      sohbet.sohbetiAc(
+        WebSohbetHedef(
+          chatId: chatId,
+          otherUid: gonderenUid,
+          otherDisplayName: (data["adSoyad"] ?? "Vibe Kullanıcısı").toString(),
+          otherUsername: (data["kullaniciAdi"] ?? "kullanici").toString(),
+          otherPhotoUrl: (data["photoUrl"] ?? "").toString(),
+          otherAvatarKey: (data["avatarKey"] ?? "").toString(),
+        ),
+      );
+      tekSeferGecisBirak(bilet);
+      return;
+    }
+    final acilis = Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => ChatPage(
@@ -516,6 +1056,8 @@ class NotificationsPageState extends State<NotificationsPage>
         ),
       ),
     );
+    tekSeferGecisBirak(bilet);
+    await acilis;
   }
 
   // Kullanıcı profiline git
@@ -525,13 +1067,83 @@ class NotificationsPageState extends State<NotificationsPage>
     required String bildirimId,
   }) async {
     if (gonderenUid.isEmpty) return;
-    await _bildirimiOkunduIsaretle(uid, bildirimId);
+    unawaited(_bildirimiOkunduIsaretle(uid, bildirimId));
     if (!mounted) return;
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => UserProfilePage(userId: gonderenUid),
+    await profiliAc(context, gonderenUid);
+  }
+
+  Widget _bildirimListesiGovdesi({
+    required BuildContext context,
+    required User user,
+    required ThemeData theme,
+    required VibeThemeExtension vibe,
+  }) {
+    if (_bildirimHatasi != null && _bildirimSnap == null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            internetAwareErrorMessage(
+              error: _bildirimHatasi ?? "Bildirimler yüklenemedi.",
+              fallback: "Bildirimler yüklenemedi.",
+            ),
+            textAlign: TextAlign.center,
+            style: TextStyle(color: vibe.subtleText),
+          ),
+        ),
+      );
+    }
+
+    if (_bildirimSnap == null) {
+      return Center(
+        child: VibeYukleniyor(renk: theme.colorScheme.primary),
+      );
+    }
+
+    final docs = _bildirimSnap!.docs;
+    final gonderenUids = docs
+        .map((d) => (d.data()["gonderenUid"] ?? "").toString())
+        .where((uid) => uid.isNotEmpty)
+        .toSet();
+    _gonderenleriDogrulaPlanla(gonderenUids);
+
+    final filtreli = docs
+        .where((d) {
+          if (_gizliBildirimIdleri.contains(d.id)) return false;
+          final data = d.data();
+          final tip = (data["tip"] ?? "").toString();
+          if (tip == "message") return false;
+          final gonderenUid = (data["gonderenUid"] ?? "").toString();
+          if (_silinenGonderenler.contains(gonderenUid)) {
+            return false;
+          }
+          return !_engelIdleri.contains(gonderenUid);
+        })
+        .toList();
+
+    if (filtreli.isEmpty) {
+      return Center(
+        child: Text(
+          "Henüz bildirim yok.",
+          style: TextStyle(color: vibe.mutedText),
+        ),
+      );
+    }
+
+    final listeOgeleri = _bildirimListesiOlustur(
+      context: context,
+      user: user,
+      filtreli: filtreli,
+    );
+
+    return ListView(
+      padding: EdgeInsets.fromLTRB(
+        webMasaustuMu(context) ? 24 : 16,
+        8,
+        webMasaustuMu(context) ? 24 : 16,
+        24,
       ),
+      children: listeOgeleri,
     );
   }
 
@@ -558,94 +1170,45 @@ class NotificationsPageState extends State<NotificationsPage>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+            padding: EdgeInsets.fromLTRB(
+              webMasaustuMu(context) ? 28 : 20,
+              12,
+              webMasaustuMu(context) ? 28 : 20,
+              8,
+            ),
             child: Row(
               children: [
                 Expanded(
-                  child: Text(
-                    "Bildirimler",
-                    style: TextStyle(
-                      color: theme.colorScheme.onSurface,
-                      fontSize: 26,
-                      fontWeight: FontWeight.bold,
-                    ),
+            child: Text(
+              "Bildirimler",
+              style: TextStyle(
+                color: theme.colorScheme.onSurface,
+                fontSize: webMasaustuMu(context) ? 30 : 26,
+                fontWeight: FontWeight.bold,
+              ),
                   ),
                 ),
-                TextButton(
-                  onPressed: () => SosyalServis.tumBildirimleriOkunduYap(user.uid),
-                  child: const Text("Tümünü okundu işaretle"),
+                Semantics(
+                  label: MaestroSemantics.tumunuOkundu,
+                  button: true,
+                  child: TextButton(
+                    onPressed: () => SosyalServis.tumBildirimleriOkunduYap(user.uid),
+                    child: const Text("Tümünü okundu işaretle"),
+                  ),
                 ),
               ],
             ),
           ),
           Expanded(
-            child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: FirebaseFirestore.instance
-                  .collection("users")
-                  .doc(user.uid)
-                  .collection("notifications")
-                  .orderBy("createdAt", descending: true)
-                  .limit(80)
-                  .snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return Center(
-                    child: CircularProgressIndicator(
-                      color: theme.colorScheme.primary,
-                    ),
-                  );
-                }
-
-                if (snapshot.hasError) {
-                  return Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Text(
-                        internetAwareErrorMessage(
-                          error: snapshot.error ?? "Bildirimler yüklenemedi.",
-                          fallback: "Bildirimler yüklenemedi.",
-                        ),
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: vibe.subtleText),
-                      ),
-                    ),
-                  );
-                }
-
-                final docs = snapshot.data?.docs ?? [];
-                final filtreli = docs
-                    .where((d) {
-                      final data = d.data();
-                      final tip = (data["tip"] ?? "").toString();
-                      if (tip == "message") return false;
-                      return !_engelIdleri.contains(data["gonderenUid"] ?? "");
-                    })
-                    .toList();
-
-                if (filtreli.isEmpty) {
-                  return Center(
-                    child: Text(
-                      "Henüz bildirim yok.",
-                      style: TextStyle(color: vibe.mutedText),
-                    ),
-                  );
-                }
-
-                final listeOgeleri = _bildirimListesiOlustur(
-                  context: context,
-                  user: user,
-                  filtreli: filtreli,
-                );
-
-                return ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                  children: listeOgeleri,
-                );
-              },
+            child: _bildirimListesiGovdesi(
+              context: context,
+              user: user,
+              theme: theme,
+              vibe: vibe,
             ),
           ),
-        ],
-      ),
+                              ],
+                            ),
     );
   }
 }
@@ -775,32 +1338,32 @@ class _TakipIstegiAksiyonlariState extends State<_TakipIstegiAksiyonlari> {
             child: Text(
               "Bu istek artık geçerli değil. Kabul etmek için karşı tarafın yeniden istek göndermesi gerekir.",
               style: TextStyle(color: vibe.mutedText, fontSize: 12),
-            ),
-          );
-        }
+                                  ),
+                                );
+                              }
 
         return Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-          child: Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: OutlinedButton(
                   onPressed: _islemYapiliyor ? null : _reddet,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: vibe.subtleText,
-                    side: BorderSide(color: vibe.cardBorder),
-                  ),
-                  child: const Text("Reddet"),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: ElevatedButton(
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: vibe.subtleText,
+                                        side: BorderSide(color: vibe.cardBorder),
+                                      ),
+                                      child: const Text("Reddet"),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: ElevatedButton(
                   onPressed: _islemYapiliyor ? null : _kabulEt,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: vibe.primaryButton,
-                    foregroundColor: Colors.white,
-                  ),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: vibe.primaryButton,
+                                        foregroundColor: Colors.white,
+                                      ),
                   child: _islemYapiliyor
                       ? SizedBox(
                           width: 18,
@@ -811,73 +1374,60 @@ class _TakipIstegiAksiyonlariState extends State<_TakipIstegiAksiyonlari> {
                           ),
                         )
                       : const Text("Kabul Et"),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
+                              ),
+                            ),
+                        ],
+                      ),
+                    );
+                  },
+                );
   }
 }
 
-// Bildirimden açılan gönderi detayı
-class _BildirimPostSayfasi extends StatelessWidget {
-  const _BildirimPostSayfasi({
-    required this.postId,
-    required this.currentUserId,
+class _BildirimBaslik extends StatelessWidget {
+  const _BildirimBaslik({
+    required this.ad,
+    required this.ek,
+    required this.kalin,
+    required this.yaziRengi,
+    required this.adRengi,
+    required this.onAd,
   });
 
-  final String postId; // gönderi kimliği
-  final String currentUserId; // giriş yapmış kullanıcı uid
+  final String ad;
+  final String ek;
+  final bool kalin;
+  final Color yaziRengi;
+  final Color adRengi;
+  final VoidCallback? onAd;
 
-  // Dinamik değeri int'e çevir
-  int _intDeger(dynamic value, int varsayilan) {
-    if (value is int) return value;
-    if (value is num) return value.toInt();
-    return varsayilan;
-  }
-
-  // Arayüzü oluştur
   @override
   Widget build(BuildContext context) {
-    return VibeGradientScaffold(
-      appBar: AppBar(title: const Text("Gönderi")),
-      body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-        stream: FirebaseFirestore.instance.collection("posts").doc(postId).snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          final post = snapshot.data?.data();
-          if (post == null) {
-            return const Center(child: Text("Gönderi bulunamadı."));
-          }
-
-          return ListView(
-            padding: const EdgeInsets.only(top: 8, bottom: 20),
-            children: [
-              PostCard(
-                key: ValueKey(postId),
-                postId: postId,
-                postOwnerId: post["userId"] ?? "",
-                kullaniciAdi: post["kullaniciAdi"] ?? "Vibe Kullanıcısı",
-                metin: post["metin"] ?? "",
-                mentionUidleri: SosyalServis.bahsetmeUidHaritasiParse(
-                  post["mentionUidleri"],
-                ),
-                photoUrl: post["photoUrl"] ?? "",
-                avatarKey: post["avatarKey"] ?? "",
-                baslangicBegeniSayisi: _intDeger(post["begeniSayisi"], 0),
-                baslangicYorumSayisi: _intDeger(post["yorumSayisi"], 0),
-                userId: currentUserId,
-                createdAt: post["createdAt"],
-                onKendiProfilineGit: () => Navigator.pop(context),
-              ),
-            ],
-          );
-        },
+    final agirlik = kalin ? FontWeight.bold : FontWeight.normal;
+    final adStili = TextStyle(
+      color: adRengi,
+      fontWeight: FontWeight.w700,
+      fontSize: 14,
+    );
+    return Text.rich(
+      TextSpan(
+        style: TextStyle(
+          color: yaziRengi,
+          fontWeight: agirlik,
+          fontSize: 14,
+        ),
+        children: [
+          WidgetSpan(
+            alignment: PlaceholderAlignment.baseline,
+            baseline: TextBaseline.alphabetic,
+            child: GestureDetector(
+              onTap: onAd,
+              behavior: HitTestBehavior.opaque,
+              child: Text('@$ad', style: adStili),
+            ),
+          ),
+          TextSpan(text: ek),
+        ],
       ),
     );
   }

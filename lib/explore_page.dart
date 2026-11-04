@@ -1,22 +1,30 @@
 // Kullanıcı ve etiket arama/keşfet sayfası.
+import 'package:myvibel/tek_sefer_navigasyon.dart';
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:vibe_life/app_theme.dart';
-import 'package:vibe_life/error_messages.dart';
-import 'package:vibe_life/etiket_navigasyon.dart';
-import 'package:vibe_life/puan_animasyon.dart';
-import 'package:vibe_life/sosyal_servis.dart';
-import 'package:vibe_life/leaderboard_page.dart';
-import 'package:vibe_life/user_profile_page.dart';
-import 'package:vibe_life/vibe_snackbar.dart';
-import 'package:vibe_life/widgets/vibe_avatar.dart';
+import 'package:myvibel/app_theme.dart';
+import 'package:myvibel/widgets/vibe_yukleniyor.dart';
+import 'package:myvibel/error_messages.dart';
+import 'package:myvibel/etiket_navigasyon.dart';
+import 'package:myvibel/puan_animasyon.dart';
+import 'package:myvibel/sosyal_servis.dart';
+import 'package:myvibel/leaderboard_page.dart';
+import 'package:myvibel/maestro_semantics.dart';
+import 'package:myvibel/vibe_snackbar.dart';
+import 'package:myvibel/maskot_servis.dart';
+import 'package:myvibel/widgets/vil_harcama_uyarisi.dart';
+import 'package:myvibel/widgets/vibe_avatar.dart';
+import 'package:myvibel/widgets/web_shell.dart';
+import 'package:myvibel/yas_hesap_kontrol.dart';
 
 // Keşfet ve arama ekranı
 class ExplorePage extends StatefulWidget {
-  const ExplorePage({super.key});
+  const ExplorePage({super.key, this.aktif = true});
+
+  final bool aktif;
 
   @override
   State<ExplorePage> createState() => _ExplorePageState();
@@ -25,17 +33,20 @@ class ExplorePage extends StatefulWidget {
 class _ExplorePageState extends State<ExplorePage> with WidgetsBindingObserver {
   final TextEditingController _aramaController = TextEditingController(); // Arama kutusu
   Timer? _aramaDebounce; // Yazmayı geciktiren zamanlayıcı
+  bool _yuklemeSuruyor = false;
 
   List<Map<String, dynamic>> _tumKullanicilar = []; // Tüm kullanıcı listesi
   List<Map<String, dynamic>> _onerilenKullanicilar = []; // Önerilenler
   final Map<String, TakipDurumu> _takipDurumlari = {}; // Takip durumları
   final Set<String> _takipDurumuYukleniyor = {}; // Yüklenen takip durumları
   bool _yukleniyor = true;
+  bool _veriYuklendi = false;
   String? _hataMesaji;
   Set<String> _engelIdleri = {};
   Set<String> _takipEdilenIdler = {};
   Set<String> _bilinenEtiketler = {}; // Bilinen hashtag'ler
   List<String> _etiketOnerileri = []; // Aktif arama etiket sonuçları
+  List<Map<String, dynamic>> _uzakAramaSonuclari = [];
   bool _etiketlerYukleniyor = false;
   bool _etiketAramasiSuruyor = false;
 
@@ -53,15 +64,72 @@ class _ExplorePageState extends State<ExplorePage> with WidgetsBindingObserver {
     _aramaDebounce = Timer(const Duration(milliseconds: 180), () {
       if (!mounted) return;
       if (_aramaSorgusu.isNotEmpty) {
-        _etiketOnerileriniGuncelle();
+        unawaited(_etiketOnerileriniGuncelle());
+        unawaited(_kullaniciAramasiniGuncelle());
       } else {
-        setState(() => _etiketOnerileri = []);
+        setState(() {
+          _etiketOnerileri = [];
+          _uzakAramaSonuclari = [];
+        });
       }
       setState(() {});
       if (_bilinenEtiketler.isEmpty) {
         _bilinenEtiketleriYenile();
       }
     });
+  }
+
+  Future<void> _kullaniciAramasiniGuncelle() async {
+    final user = FirebaseAuth.instance.currentUser;
+    final sorgu = _aramaSorgusu;
+    if (user == null || sorgu.isEmpty) return;
+    try {
+      final prefix = SosyalServis.aramaMetnindenEtiket(sorgu) ?? sorgu;
+      final uzak = await SosyalServis.kullaniciOnerileri(
+        prefix,
+        haricUid: user.uid,
+        limit: 20,
+      );
+      final birlesik = [...uzak];
+      final idler = birlesik.map((k) => k["uid"]?.toString() ?? "").toSet();
+
+      Future<void> ekleUid(String? uid) async {
+        if (uid == null || uid.isEmpty || uid == user.uid || idler.contains(uid)) {
+          return;
+        }
+        if (_engelIdleri.contains(uid)) return;
+        final snap =
+            await FirebaseFirestore.instance.collection("users").doc(uid).get();
+        if (!snap.exists) return;
+        final data = snap.data() ?? {};
+        idler.add(uid);
+        birlesik.add({
+          "uid": uid,
+          "adSoyad": data["adSoyad"] ?? "Vibe Kullanıcısı",
+          "kullaniciAdi": data["kullaniciAdi"] ?? prefix,
+          "kullaniciAdiKucuk": data["kullaniciAdiKucuk"] ?? "",
+          "photoUrl": data["photoUrl"] ?? "",
+          "avatarKey": data["avatarKey"] ?? "",
+          "aramaSkoru": data["aramaSkoru"] ?? 0,
+        });
+      }
+
+      await ekleUid(await SosyalServis.kullaniciUidGetir(prefix));
+      final exactSnap = await FirebaseFirestore.instance
+          .collection("users")
+          .where("kullaniciAdiKucuk", isEqualTo: prefix.toLowerCase())
+          .limit(5)
+          .get();
+      for (final doc in exactSnap.docs) {
+        await ekleUid(doc.id);
+      }
+
+      if (!mounted || _aramaSorgusu != sorgu) return;
+      setState(() => _uzakAramaSonuclari = birlesik);
+    } catch (_) {
+      if (!mounted || _aramaSorgusu != sorgu) return;
+      setState(() => _uzakAramaSonuclari = []);
+    }
   }
 
   String get _aramaSorgusu => _aramaController.text.trim(); // Aktif arama metni
@@ -73,7 +141,18 @@ class _ExplorePageState extends State<ExplorePage> with WidgetsBindingObserver {
 
   void _aramayiTemizle() {
     _aramaController.clear();
-    setState(() {});
+    setState(() {
+      _etiketOnerileri = [];
+      _uzakAramaSonuclari = [];
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant ExplorePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!oldWidget.aktif && widget.aktif) {
+      _verileriYukle();
+    }
   }
 
   @override
@@ -84,10 +163,10 @@ class _ExplorePageState extends State<ExplorePage> with WidgetsBindingObserver {
     super.dispose();
   }
 
-  // Uygulama ön plana gelince verileri yenile
+  // Uygulama ön plana gelince, sekme görünürse verileri yenile
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
+    if (state == AppLifecycleState.resumed && widget.aktif) {
       _verileriYukle();
     }
   }
@@ -103,69 +182,29 @@ class _ExplorePageState extends State<ExplorePage> with WidgetsBindingObserver {
       return;
     }
 
-    setState(() {
-      _yukleniyor = true;
-      _hataMesaji = null;
-    });
+    if (_yuklemeSuruyor) return;
+    _yuklemeSuruyor = true;
+
+    final ilkYukleme = !_veriYuklendi;
+    if (ilkYukleme) {
+      setState(() {
+        _yukleniyor = true;
+        _hataMesaji = null;
+      });
+    }
 
     try {
       final firestore = FirebaseFirestore.instance;
-      final engelledigim =
-          await SosyalServis.engellenenKullanicilariGetir(user.uid);
-      final beniEngelleyen =
-          await SosyalServis.beniEngelleyenKullanicilariGetir(user.uid);
-      final takipEdilenIdler =
-          await SosyalServis.takipEdilenIdleriGetir(user.uid);
-      _engelIdleri = {...engelledigim, ...beniEngelleyen};
-      _takipEdilenIdler = takipEdilenIdler;
+      final sonuclar = await Future.wait([
+        SosyalServis.engellenenKullanicilariGetir(user.uid),
+        SosyalServis.beniEngelleyenKullanicilariGetir(user.uid),
+        SosyalServis.takipEdilenIdleriGetir(user.uid),
+      ]);
+      _engelIdleri = {...sonuclar[0], ...sonuclar[1]};
+      _takipEdilenIdler = sonuclar[2];
 
-      const kullaniciOnYuklemeLimiti = 120;
-      final kullanicilarSnapshot = await firestore
-          .collection("users")
-          .limit(kullaniciOnYuklemeLimiti)
-          .get();
-
-      final kullanicilar = kullanicilarSnapshot.docs
-          .where((doc) => doc.id != user.uid && !_engelIdleri.contains(doc.id))
-          .map((doc) {
-            final data = doc.data();
-            return {
-              "uid": doc.id,
-              "adSoyad": data["adSoyad"] ?? "Vibe Kullanıcısı",
-              "kullaniciAdi": data["kullaniciAdi"] ?? "kullanici",
-              "kullaniciAdiKucuk": data["kullaniciAdiKucuk"] ?? "",
-              "photoUrl": data["photoUrl"] ?? "",
-              "avatarKey": data["avatarKey"] ?? "",
-              "hesapGizli": data["hesapGizli"] == true,
-              "aramaSkoru": data["aramaSkoru"] ?? 0,
-            };
-          })
-          .toList();
-
-      final onerilenler = List<Map<String, dynamic>>.from(kullanicilar);
-      onerilenler.sort((a, b) {
-        final skorA = _intDeger(a["aramaSkoru"], 0);
-        final skorB = _intDeger(b["aramaSkoru"], 0);
-        final skorKarsilastirma = skorB.compareTo(skorA);
-        if (skorKarsilastirma != 0) return skorKarsilastirma;
-        final adA = (a["adSoyad"] as String).toLowerCase();
-        final adB = (b["adSoyad"] as String).toLowerCase();
-        return adA.compareTo(adB);
-      });
-
-      if (!mounted) return;
-
-      setState(() {
-        _tumKullanicilar = kullanicilar;
-        _onerilenKullanicilar = onerilenler.take(10).toList();
-        _takipDurumlari.clear();
-        _yukleniyor = false;
-      });
-
-      for (final k in _onerilenKullanicilar) {
-        _takipDurumunuYukle(k["uid"] as String);
-      }
-
+      await _kullanicilariYukle(firestore, user.uid);
+      _veriYuklendi = true;
       unawaited(_bilinenEtiketleriYenile());
     } catch (e) {
       if (!mounted) return;
@@ -176,6 +215,64 @@ class _ExplorePageState extends State<ExplorePage> with WidgetsBindingObserver {
           fallback: "Kullanıcılar yüklenemedi.",
         );
       });
+    } finally {
+      _yuklemeSuruyor = false;
+    }
+  }
+
+  Future<void> _kullanicilariYukle(FirebaseFirestore firestore, String uid) async {
+    const kullaniciOnYuklemeLimiti = 120;
+    final kullanicilarSnapshot = await firestore
+        .collection("users")
+        .limit(kullaniciOnYuklemeLimiti)
+        .get();
+    if (!mounted) return;
+    final kullanicilar = kullanicilarSnapshot.docs
+        .where((doc) => doc.id != uid && !_engelIdleri.contains(doc.id))
+        .map((doc) {
+          final data = doc.data();
+          return {
+            "uid": doc.id,
+            "adSoyad": data["adSoyad"] ?? "Vibe Kullanıcısı",
+            "kullaniciAdi": data["kullaniciAdi"] ?? "kullanici",
+            "kullaniciAdiKucuk": data["kullaniciAdiKucuk"] ?? "",
+            "photoUrl": data["photoUrl"] ?? "",
+            "avatarKey": data["avatarKey"] ?? "",
+            "hesapGizli": data["hesapGizli"] == true,
+            "cocukHesabi": data["cocukHesabi"] == true,
+            "aramaSkoru": data["aramaSkoru"] ?? 0,
+          };
+        })
+        .toList();
+
+    final onerilenler = kullanicilar
+        .where((k) =>
+            k["hesapGizli"] != true &&
+            k["cocukHesabi"] != true &&
+            !_takipEdilenIdler.contains(k["uid"]))
+        .toList();
+    onerilenler.sort((a, b) {
+      final skorA = _intDeger(a["aramaSkoru"], 0);
+      final skorB = _intDeger(b["aramaSkoru"], 0);
+      final skorKarsilastirma = skorB.compareTo(skorA);
+      if (skorKarsilastirma != 0) return skorKarsilastirma;
+      final adA = (a["adSoyad"] as String).toLowerCase();
+      final adB = (b["adSoyad"] as String).toLowerCase();
+      return adA.compareTo(adB);
+    });
+
+    setState(() {
+      _tumKullanicilar = kullanicilar;
+      _onerilenKullanicilar =
+          YasHesapKontrol.maybeOf(context)?.kullaniciOnerisiAcik == false
+              ? <Map<String, dynamic>>[]
+              : onerilenler.take(10).toList();
+      _yukleniyor = false;
+      _hataMesaji = null;
+    });
+
+    for (final k in _onerilenKullanicilar) {
+      _takipDurumunuYukle(k["uid"] as String);
     }
   }
 
@@ -195,11 +292,17 @@ class _ExplorePageState extends State<ExplorePage> with WidgetsBindingObserver {
     });
   }
 
-  // Profilden dönünce önbelleği atlayıp takip durumunu yeniler
+  // Profilden dönünce takip durumunu yeniler; eski durum görünür kalır
   Future<void> _takipDurumunuZorlaYukle(String uid) async {
-    _takipDurumlari.remove(uid);
-    _takipDurumuYukleniyor.remove(uid);
-    await _takipDurumunuYukle(uid);
+    if (!_takipDurumlari.containsKey(uid)) {
+      await _takipDurumunuYukle(uid);
+      return;
+    }
+    try {
+      final durum = await SosyalServis.takipDurumuGetir(uid);
+      if (!mounted) return;
+      setState(() => _takipDurumlari[uid] = durum);
+    } catch (_) {}
   }
 
   int _intDeger(dynamic value, int varsayilan) {
@@ -231,7 +334,7 @@ class _ExplorePageState extends State<ExplorePage> with WidgetsBindingObserver {
     final normSorgu = _normalle(
       SosyalServis.aramaMetnindenEtiket(sorgu) ?? sorgu,
     );
-    return _tumKullanicilar.where((kullanici) {
+    final yerel = _tumKullanicilar.where((kullanici) {
       final adSoyad = _normalle((kullanici["adSoyad"] as String));
       final kullaniciAdi = _normalle((kullanici["kullaniciAdi"] as String));
       final kullaniciAdiKucuk =
@@ -240,16 +343,36 @@ class _ExplorePageState extends State<ExplorePage> with WidgetsBindingObserver {
       return adSoyad.contains(normSorgu) ||
           kullaniciAdi.contains(normSorgu) ||
           kullaniciAdiKucuk.contains(normSorgu);
-    }).toList()
-      ..sort((a, b) {
-        final skorA = _intDeger(a["aramaSkoru"], 0);
-        final skorB = _intDeger(b["aramaSkoru"], 0);
-        final skorKarsilastirma = skorB.compareTo(skorA);
-        if (skorKarsilastirma != 0) return skorKarsilastirma;
-        final adA = (a["adSoyad"] as String).toLowerCase();
-        final adB = (b["adSoyad"] as String).toLowerCase();
-        return adA.compareTo(adB);
+    }).toList();
+
+    final birlesik = [...yerel];
+    final gorunenIdler = yerel.map((k) => k["uid"] as String).toSet();
+    for (final kullanici in _uzakAramaSonuclari) {
+      final uid = (kullanici["uid"] ?? "").toString();
+      if (uid.isEmpty ||
+          gorunenIdler.contains(uid) ||
+          _engelIdleri.contains(uid)) {
+        continue;
+      }
+      gorunenIdler.add(uid);
+      birlesik.add({
+        ...kullanici,
+        "kullaniciAdiKucuk":
+            (kullanici["kullaniciAdi"] ?? "").toString().toLowerCase(),
+        "aramaSkoru": kullanici["aramaSkoru"] ?? 0,
       });
+    }
+
+    birlesik.sort((a, b) {
+      final skorA = _intDeger(a["aramaSkoru"], 0);
+      final skorB = _intDeger(b["aramaSkoru"], 0);
+      final skorKarsilastirma = skorB.compareTo(skorA);
+      if (skorKarsilastirma != 0) return skorKarsilastirma;
+      final adA = (a["adSoyad"] as String).toLowerCase();
+      final adB = (b["adSoyad"] as String).toLowerCase();
+      return adA.compareTo(adB);
+    });
+    return birlesik;
   }
 
   // Arama metnine uygun etiket önerileri (Firestore ile güncellenir)
@@ -295,12 +418,7 @@ class _ExplorePageState extends State<ExplorePage> with WidgetsBindingObserver {
     if (userId.isEmpty) return;
     if (_engelIdleri.contains(userId)) return;
 
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => UserProfilePage(userId: userId),
-      ),
-    );
+    await profiliAc(context, userId);
     if (!mounted) return;
 
     await _takipDurumunuZorlaYukle(userId);
@@ -322,6 +440,19 @@ class _ExplorePageState extends State<ExplorePage> with WidgetsBindingObserver {
     }
     var durum =
         _takipDurumlari[hedefUid] ?? TakipDurumu.takipEtmiyor;
+    if (durum == TakipDurumu.takipEdiliyor) {
+      final vilHarcanacak =
+          await TakipServis.takipCikisVilHarcanacak(hedefUid);
+      if (vilHarcanacak) {
+        if (!mounted) return;
+        final devam = await VilHarcamaUyarisi.onayla(
+          context: context,
+          islem: VilHarcamaUyarisi.takipCik,
+          maliyet: MascotServis.vilTakipGeriAlMaliyeti,
+        );
+        if (!devam || !mounted) return;
+      }
+    }
 
     final mesaj = await SosyalServis.takipButonunaBas(hedefUid, durum);
     final yeniDurum = await SosyalServis.takipDurumuGetir(hedefUid);
@@ -400,9 +531,14 @@ class _ExplorePageState extends State<ExplorePage> with WidgetsBindingObserver {
                 fillColor: vibe.inputFill,
                 prefixIcon: Icon(Icons.search, color: vibe.mutedText),
                 suffixIcon: _aramaController.text.isNotEmpty
-                    ? IconButton(
-                        onPressed: _aramayiTemizle,
-                        icon: Icon(Icons.close, color: vibe.mutedText),
+                    ? maestroButton(
+                        label: MaestroSemantics.aramayiTemizle,
+                        onTap: _aramayiTemizle,
+                        child: IconButton(
+                          tooltip: MaestroSemantics.aramayiTemizle,
+                          onPressed: _aramayiTemizle,
+                          icon: Icon(Icons.close, color: vibe.mutedText),
+                        ),
                       )
                     : null,
                 border: OutlineInputBorder(
@@ -422,7 +558,13 @@ class _ExplorePageState extends State<ExplorePage> with WidgetsBindingObserver {
               children: [
                 Expanded(
                   child: Text(
-                    _aramaYapiliyor ? "Arama Sonuçları" : "Önerilen Kullanıcılar",
+                    _aramaYapiliyor
+                        ? "Arama Sonuçları"
+                        : (YasHesapKontrol.maybeOf(context)
+                                    ?.kullaniciOnerisiAcik ==
+                                false
+                            ? "Keşfet"
+                            : "Önerilen Kullanıcılar"),
                     style: TextStyle(
                       color: theme.colorScheme.onSurface,
                       fontWeight: FontWeight.bold,
@@ -436,7 +578,7 @@ class _ExplorePageState extends State<ExplorePage> with WidgetsBindingObserver {
                     button: true,
                     child: TextButton.icon(
                       onPressed: () {
-                        Navigator.push(
+                        tekSeferPush(
                           context,
                           MaterialPageRoute(
                             builder: (_) => const LeaderboardPage(),
@@ -472,7 +614,7 @@ class _ExplorePageState extends State<ExplorePage> with WidgetsBindingObserver {
   }) {
     if (_yukleniyor) {
       return Center(
-        child: CircularProgressIndicator(color: theme.colorScheme.primary),
+        child: VibeYukleniyor(renk: theme.colorScheme.primary),
       );
     }
 
@@ -498,7 +640,8 @@ class _ExplorePageState extends State<ExplorePage> with WidgetsBindingObserver {
         child: Text(
           _aramaYapiliyor
               ? "Eşleşen etiket veya kullanıcı bulunamadı."
-              : "Gösterilecek kullanıcı yok.",
+              : "Şimdilik önerilecek yeni kullanıcı yok.\nArama ile kişi bulabilirsin.",
+          textAlign: TextAlign.center,
           style: TextStyle(color: vibe.mutedText),
         ),
       );
@@ -529,25 +672,68 @@ class _ExplorePageState extends State<ExplorePage> with WidgetsBindingObserver {
           if (gorunenKullanicilar.isNotEmpty) ...[
             if (_aramaYapiliyor)
               _bolumBasligi(theme, vibe, "Kullanıcılar"),
-            ...gorunenKullanicilar.map((kullanici) {
-              final uid = kullanici["uid"] as String;
-              if (!_takipDurumlari.containsKey(uid)) {
-                _takipDurumunuYukle(uid);
-              }
-              final durum =
-                  _takipDurumlari[uid] ?? TakipDurumu.takipEtmiyor;
-              final durumYukleniyor = _takipDurumuYukleniyor.contains(uid);
-              return _KullaniciSatiri(
-                adSoyad: kullanici["adSoyad"] as String,
-                kullaniciAdi: kullanici["kullaniciAdi"] as String,
-                photoUrl: kullanici["photoUrl"] as String,
-                avatarKey: (kullanici["avatarKey"] ?? "").toString(),
-                takipDurumu: durum,
-                durumYukleniyor: durumYukleniyor,
-                onProfileTap: () => _kullaniciProfilineGit(uid),
-                onFollowTap: () => _takipButonunaBas(uid),
-              );
-            }),
+            if (webMasaustuMu(context))
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final sutun = constraints.maxWidth >= 900 ? 3 : 2;
+                    const gap = 10.0;
+                    final kartGenislik =
+                        (constraints.maxWidth - gap * (sutun - 1)) / sutun;
+                    return Wrap(
+                      spacing: gap,
+                      runSpacing: gap,
+                      children: gorunenKullanicilar.map((kullanici) {
+                        final uid = kullanici["uid"] as String;
+                        if (!_takipDurumlari.containsKey(uid)) {
+                          _takipDurumunuYukle(uid);
+                        }
+                        final durum =
+                            _takipDurumlari[uid] ?? TakipDurumu.takipEtmiyor;
+                        final durumYukleniyor =
+                            _takipDurumuYukleniyor.contains(uid);
+                        return SizedBox(
+                          width: kartGenislik,
+                          child: _KullaniciSatiri(
+                            userId: uid,
+                            adSoyad: kullanici["adSoyad"] as String,
+                            kullaniciAdi: kullanici["kullaniciAdi"] as String,
+                            photoUrl: kullanici["photoUrl"] as String,
+                            avatarKey:
+                                (kullanici["avatarKey"] ?? "").toString(),
+                            takipDurumu: durum,
+                            durumYukleniyor: durumYukleniyor,
+                            onProfileTap: () => _kullaniciProfilineGit(uid),
+                            onFollowTap: () => _takipButonunaBas(uid),
+                          ),
+                        );
+                      }).toList(),
+                    );
+                  },
+                ),
+              )
+            else
+              ...gorunenKullanicilar.map((kullanici) {
+                final uid = kullanici["uid"] as String;
+                if (!_takipDurumlari.containsKey(uid)) {
+                  _takipDurumunuYukle(uid);
+                }
+                final durum =
+                    _takipDurumlari[uid] ?? TakipDurumu.takipEtmiyor;
+                final durumYukleniyor = _takipDurumuYukleniyor.contains(uid);
+                return _KullaniciSatiri(
+                  userId: uid,
+                  adSoyad: kullanici["adSoyad"] as String,
+                  kullaniciAdi: kullanici["kullaniciAdi"] as String,
+                  photoUrl: kullanici["photoUrl"] as String,
+                  avatarKey: (kullanici["avatarKey"] ?? "").toString(),
+                  takipDurumu: durum,
+                  durumYukleniyor: durumYukleniyor,
+                  onProfileTap: () => _kullaniciProfilineGit(uid),
+                  onFollowTap: () => _takipButonunaBas(uid),
+                );
+              }),
           ],
         ],
       ),
@@ -591,7 +777,7 @@ class _EtiketOneriSatiri extends StatelessWidget {
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 15, vertical: 4),
-      decoration: vibe.cardDecoration(radius: 14),
+      decoration: vibe.satirKart(radius: 14),
       child: ListTile(
         onTap: onTap,
         leading: CircleAvatar(
@@ -624,6 +810,7 @@ class _EtiketOneriSatiri extends StatelessWidget {
 
 // Kullanıcı arama sonucu satırı
 class _KullaniciSatiri extends StatelessWidget {
+  final String userId;
   final String adSoyad;
   final String kullaniciAdi;
   final String photoUrl;
@@ -634,6 +821,7 @@ class _KullaniciSatiri extends StatelessWidget {
   final VoidCallback onFollowTap;
 
   const _KullaniciSatiri({
+    required this.userId,
     required this.adSoyad,
     required this.kullaniciAdi,
     required this.photoUrl,
@@ -651,13 +839,18 @@ class _KullaniciSatiri extends StatelessWidget {
     final theme = Theme.of(context);
     final vibe = context.vibe;
 
-    return Container(
+    return Semantics(
+      label: 'Kullanıcı @$kullaniciAdi',
+      button: true,
+      child: Container(
       margin: const EdgeInsets.symmetric(horizontal: 15, vertical: 6),
-      decoration: vibe.cardDecoration(),
+      decoration: vibe.satirKart(),
       child: ListTile(
         onTap: onProfileTap,
         leading: vibeAvatar(
           radius: 20,
+          userId: userId,
+          liderTaciGoster: true,
           photoUrl: photoUrl,
           avatarKey: avatarKey,
           fallbackText: kullaniciAdi,
@@ -709,6 +902,7 @@ class _KullaniciSatiri extends StatelessWidget {
                 ),
               ),
       ),
+    ),
     );
   }
 }

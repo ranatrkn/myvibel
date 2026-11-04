@@ -1,12 +1,14 @@
 // E-posta doğrulama bekleme ekranı (Firebase doğrulama linki).
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:vibe_life/app_theme.dart';
-import 'package:vibe_life/auth_eposta.dart';
-import 'package:vibe_life/error_messages.dart';
-import 'package:vibe_life/kayit_servis.dart';
-import 'package:vibe_life/vibe_snackbar.dart';
-import 'package:vibe_life/widgets/vibe_gradient_scaffold.dart';
+import 'package:myvibel/app_theme.dart';
+import 'package:myvibel/auth_eposta.dart';
+import 'package:myvibel/error_messages.dart';
+import 'package:myvibel/kayit_servis.dart';
+import 'package:myvibel/vibe_snackbar.dart';
+import 'package:myvibel/yasal_icerik.dart';
+import 'package:myvibel/widgets/vibe_gradient_scaffold.dart';
+import 'package:myvibel/widgets/vibe_marka_baslik.dart';
 
 class EmailDogrulamaPage extends StatefulWidget {
   final VoidCallback onDogrulandi;
@@ -75,7 +77,8 @@ class _EmailDogrulamaPageState extends State<EmailDogrulamaPage> {
           return;
         }
         if (!mounted) return;
-        _mesajGoster('E-posta doğrulandı. Hoş geldin!', tip: VibeMesajTipi.basari);
+        _mesajGoster('E-posta doğrulandı. Hoş geldin!',
+            tip: VibeMesajTipi.basari);
         widget.onDogrulandi();
       } else {
         _mesajGoster(
@@ -104,6 +107,10 @@ class _EmailDogrulamaPageState extends State<EmailDogrulamaPage> {
     try {
       await epostaDogrulamaMailiGonder(user);
       if (!mounted) return;
+      if (FirebaseAuth.instance.currentUser?.emailVerified == true) {
+        await _dogrulamayiKontrolEt();
+        return;
+      }
       setState(() {
         _gonderimDurumu =
             'Son gönderim: başarılı (${DateTime.now().hour.toString().padLeft(2, '0')}:${DateTime.now().minute.toString().padLeft(2, '0')})';
@@ -131,9 +138,57 @@ class _EmailDogrulamaPageState extends State<EmailDogrulamaPage> {
     }
   }
 
+  Future<String?> _iptalSifresiSor() async {
+    final kontrol = TextEditingController();
+    final sonuc = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Kaydı iptal et'),
+        content: TextField(
+          controller: kontrol,
+          obscureText: true,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'Kayıt şifren',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Vazgeç'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, kontrol.text),
+            child: const Text('Hesabı sil'),
+          ),
+        ],
+      ),
+    );
+    kontrol.dispose();
+    return sonuc;
+  }
+
   Future<void> _cikisYap() async {
     try {
       await KayitServis.bekleyenKayitIptal();
+    } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
+      if (e.code != 'requires-recent-login') {
+        _mesajGoster(epostaDegistirmeHataMesaji(e));
+        return;
+      }
+      final sifre = await _iptalSifresiSor();
+      if (!mounted || sifre == null || sifre.isEmpty) return;
+      try {
+        await KayitServis.bekleyenKayitIptal(mevcutSifre: sifre);
+      } on FirebaseAuthException catch (e2) {
+        if (!mounted) return;
+        _mesajGoster(
+          e2.code == 'wrong-password' || e2.code == 'invalid-credential'
+              ? 'Şifre hatalı. Hesap silinmedi.'
+              : epostaDegistirmeHataMesaji(e2),
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       _mesajGoster(
@@ -151,117 +206,109 @@ class _EmailDogrulamaPageState extends State<EmailDogrulamaPage> {
     final theme = Theme.of(context);
     final email = _user?.email ?? '';
 
-    return VibeGradientScaffold(
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 28),
-          child: Column(
-            children: [
-              const SizedBox(height: 48),
-              Icon(
-                Icons.mark_email_unread_outlined,
-                size: 72,
-                color: theme.colorScheme.primary,
-              ),
-              const SizedBox(height: 24),
-              Text(
-                "E-postanı doğrula",
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: vibe.titleOnGradient,
-                  fontSize: 26,
-                  fontWeight: FontWeight.bold,
+    return AuthEkranYaziOlcegi(
+      child: VibeGradientScaffold(
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 28),
+            child: Column(
+              children: [
+                const SizedBox(height: 28),
+                const VibeMarkaBaslik(
+                  ikonBoyut: 72,
+                  yaziBoyut: 28,
+                  altYazi: 'E-postanı doğrula',
                 ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                "$email adresine doğrulama linki gönderdik.\n\n"
-                "Gmail kullanıyorsan Promosyonlar ve Spam klasörüne de bak. "
-                "Gönderen: noreply@vibe-life-app.firebaseapp.com\n\n"
-                "VibeLife profilin, e-postanı onaylayıp «Doğruladım, kontrol et» "
-                "dedikten sonra oluşur.\n\n"
-                "Mail gelmediyse «Doğrulama e-postasını tekrar gönder» butonunu kullan.",
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: vibe.mutedText,
-                  fontSize: 15,
-                  height: 1.45,
-                ),
-              ),
-              if (_gonderimDurumu != null) ...[
-                const SizedBox(height: 12),
+                const SizedBox(height: 20),
                 Text(
-                  _gonderimDurumu!,
+                  "$email adresine doğrulama linki gönderdik.\n\n"
+                  "Gmail kullanıyorsan Promosyonlar ve Spam klasörüne de bak. "
+                  "Gönderen: destek@myvibel.com\n\n"
+                  "${YasalIcerik.uygulamaAdi} profilin, e-postanı onaylayıp «Doğruladım, kontrol et» "
+                  "dedikten sonra oluşur.\n\n"
+                  "Mail gelmediyse «Doğrulama e-postasını tekrar gönder» butonunu kullan.",
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: vibe.mutedText,
-                    fontSize: 13,
-                    fontStyle: FontStyle.italic,
+                    fontSize: 15,
+                    height: 1.45,
                   ),
                 ),
-              ],
-              const SizedBox(height: 32),
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton(
-                  onPressed: _kontrolSuruyor ? null : _dogrulamayiKontrolEt,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: vibe.primaryButton,
-                    foregroundColor: Colors.white,
-                    shape: const StadiumBorder(),
+                if (_gonderimDurumu != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    _gonderimDurumu!,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: vibe.mutedText,
+                      fontSize: 13,
+                      fontStyle: FontStyle.italic,
+                    ),
                   ),
-                  child: _kontrolSuruyor
-                      ? const SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
+                ],
+                const SizedBox(height: 32),
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    onPressed: _kontrolSuruyor ? null : _dogrulamayiKontrolEt,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: vibe.primaryButton,
+                      foregroundColor: Colors.white,
+                      shape: const StadiumBorder(),
+                    ),
+                    child: _kontrolSuruyor
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text(
+                            "Doğruladım, kontrol et",
+                            style: TextStyle(fontWeight: FontWeight.bold),
                           ),
-                        )
-                      : const Text(
-                          "Doğruladım, kontrol et",
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                height: 48,
-                child: OutlinedButton(
-                  onPressed: (_gonderimSuruyor || _tekrarGondermeSaniye > 0)
-                      ? null
-                      : _mailiTekrarGonder,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: theme.colorScheme.onSurface,
-                    side: BorderSide(color: vibe.cardBorder),
-                    shape: const StadiumBorder(),
                   ),
-                  child: _gonderimSuruyor
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Text(
-                          _tekrarGondermeSaniye > 0
-                              ? "Tekrar gönder ($_tekrarGondermeSaniye sn)"
-                              : "Doğrulama e-postasını tekrar gönder",
-                        ),
                 ),
-              ),
-              const Spacer(),
-              TextButton(
-                onPressed: _cikisYap,
-                child: Text(
-                  'Kaydı iptal et',
-                  style: TextStyle(color: vibe.mutedText),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: OutlinedButton(
+                    onPressed: (_gonderimSuruyor || _tekrarGondermeSaniye > 0)
+                        ? null
+                        : _mailiTekrarGonder,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: theme.colorScheme.onSurface,
+                      side: BorderSide(color: vibe.cardBorder),
+                      shape: const StadiumBorder(),
+                    ),
+                    child: _gonderimSuruyor
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Text(
+                            _tekrarGondermeSaniye > 0
+                                ? "Tekrar gönder ($_tekrarGondermeSaniye sn)"
+                                : "Doğrulama e-postasını tekrar gönder",
+                          ),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 16),
-            ],
+                const Spacer(),
+                TextButton(
+                  onPressed: _cikisYap,
+                  child: Text(
+                    'Kaydı iptal et',
+                    style: TextStyle(color: vibe.mutedText),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+            ),
           ),
         ),
       ),

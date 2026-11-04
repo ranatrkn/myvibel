@@ -1,0 +1,72 @@
+appId: com.myvibel.app
+---
+- runFlow: ../flows/ana-sayfaya-don.yaml
+- tapOn: "Alt menü Profil"
+- scrollUntilVisible:
+    element: "Ayarlar"
+    direction: UP
+    timeout: 20000
+- tapOn: "Ayarlar"
+- extendedWaitUntil:
+    visible: "Gizli Hesap.*"
+    timeout: 15000
+- tapOn: "Vibel İsmini Değiştir"
+- tapOn:
+    text: "Vazgeç"
+    optional: true
+- tapOn: "Ayarlar"
+- tapOn: "Engellenenler"
+- back
+- tapOn: "Ayarlar"
+- scrollUntilVisible:
+    element: "Kullanım Koşulları"
+    direction: DOWN
+    optional: true
+- tapOn: "Kullanım Koşulları"
+- back
+- tapOn: "Ayarlar"
+- scrollUntilVisible:
+    element: "Gizlilik Politikası"
+    direction: DOWN
+    optional: true
+- tapOn: "Gizlilik Politikası"
+- back
+- tapOn: "Ayarlar"
+- scrollUntilVisible:
+    element: "Yardım / SSS"
+    direction: DOWN
+    optional: true
+- tapOn: "Yardım / SSS"
+- back
+- tapOn: "Ayarlar"
+- scrollUntilVisible:
+    element: "Sürüm Notları"
+    direction: DOWN
+    optional: true
+- runFlow:
+    when:
+      visible: "Sürüm Notları"
+    commands:
+      - tapOn: "Sürüm Notları"
+      - back
+      - tapOn:
+          text: "Ayarlar"
+          optional: true
+- tapOn:
+    text: "Ayarlar"
+    optional: true
+- scrollUntilVisible:
+    element: "Destek ve Geri Bildirim"
+    direction: DOWN
+    optional: true
+- tapOn: "Destek ve Geri Bildirim"
+- back
+- tapOn: "Ayarlar"
+- scrollUntilVisible:
+    element: "Hesabı Sil"
+    direction: DOWN
+    optional: true
+- tapOn: "Hesabı Sil"
+- tapOn:
+    text: "Vazgeç"
+    optional: true

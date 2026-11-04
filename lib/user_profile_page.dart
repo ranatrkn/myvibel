@@ -1,26 +1,41 @@
 // Başka kullanıcının profili: takip, engel, mesaj ve gönderi listesi
+import 'package:myvibel/tek_sefer_navigasyon.dart';
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:vibe_life/alinti_gonderi.dart';
-import 'package:vibe_life/app_theme.dart';
-import 'package:vibe_life/error_messages.dart';
-import 'package:vibe_life/follow_list_page.dart';
-import 'package:vibe_life/messages_page.dart';
-import 'package:vibe_life/puan_animasyon.dart';
-import 'package:vibe_life/sosyal_servis.dart';
-import 'package:vibe_life/etiket_navigasyon.dart';
-import 'package:vibe_life/widgets/alinti_gonderi_onizleme.dart';
-import 'package:vibe_life/widgets/hashtag_metin.dart';
-import 'package:vibe_life/widgets/post_begeni_yardimci.dart';
-import 'package:vibe_life/maskot_servis.dart';
-import 'package:vibe_life/widgets/maskot_durum_bari.dart';
-import 'package:vibe_life/widgets/maskot_gelisim_cercevesi.dart';
-import 'package:vibe_life/widgets/maskot_lottie_view.dart';
-import 'package:vibe_life/widgets/vibe_avatar.dart';
-import 'package:vibe_life/vibe_snackbar.dart';
+import 'package:myvibel/alinti_gonderi.dart';
+import 'package:myvibel/app_theme.dart';
+import 'package:myvibel/widgets/vibe_yukleniyor.dart';
+import 'package:myvibel/error_messages.dart';
+import 'package:myvibel/follow_list_page.dart';
+import 'package:myvibel/messages_page.dart';
+import 'package:myvibel/maestro_semantics.dart';
+import 'package:myvibel/puan_animasyon.dart';
+import 'package:myvibel/sosyal/lider_tac_servis.dart';
+import 'package:myvibel/sosyal_servis.dart';
+import 'package:myvibel/etiket_navigasyon.dart';
+import 'package:myvibel/yas_hesap_kontrol.dart';
+import 'package:myvibel/widgets/alinti_gonderi_onizleme.dart';
+import 'package:myvibel/widgets/hashtag_metin.dart';
+import 'package:myvibel/widgets/isim_yan_rozet.dart';
+import 'package:myvibel/widgets/post_begeni_yardimci.dart';
+import 'package:myvibel/widgets/profil_gonderi_gorunumu.dart';
+import 'package:myvibel/maskot_servis.dart';
+import 'package:myvibel/widgets/mascot_ruh_hali_metni.dart';
+import 'package:myvibel/widgets/maskot_durum_bari.dart';
+import 'package:myvibel/widgets/maskot_gelisim_cercevesi.dart';
+import 'package:myvibel/widgets/maskot_lottie_view.dart';
+import 'package:myvibel/widgets/rety_bag_rozeti.dart';
+import 'package:myvibel/widgets/vil_harcama_uyarisi.dart';
+import 'package:myvibel/widgets/vibe_avatar.dart';
+import 'package:myvibel/widgets/vibe_ikonlar.dart';
+import 'package:myvibel/widgets/vibe_gradient_scaffold.dart';
+import 'package:myvibel/widgets/web_shell.dart';
+import 'package:myvibel/vibe_snackbar.dart';
+import 'package:myvibel/widgets/begenenler_paneli.dart';
+import 'package:myvibel/widgets/yorum_paneli.dart';
 
 // Firestore Timestamp'i okunabilir tarihe çevir
 String _tarihSaatYaz(dynamic value) {
@@ -53,6 +68,21 @@ class _UserProfilePageState extends State<UserProfilePage> {
   bool _engelledim = false; // bu kullanıcıyı engelledim mi
   bool _beniEngelledi = false; // karşı taraf beni engelledi mi
   TakipDurumu _takipDurumu = TakipDurumu.takipEtmiyor; // takip durumu enum'u
+  bool _karsilikliTakip = false;
+  bool _yerelBugunYemek = false;
+  int? _iyimserTokluk;
+  int? _iyimserMutluluk;
+  ProfilGonderiGorunumu _gonderiGorunumu = ProfilGonderiGorunumu.liste;
+  late final Stream<DocumentSnapshot<Map<String, dynamic>>> _kullaniciAkisi =
+      FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.userId)
+          .snapshots();
+  late final Stream<DocumentSnapshot<Map<String, dynamic>>> _kullaniciGovdeAkisi =
+      FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.userId)
+          .snapshots();
 
   // Dinamik değeri int'e çevir
   int _intDeger(dynamic value, int varsayilan) {
@@ -65,6 +95,8 @@ class _UserProfilePageState extends State<UserProfilePage> {
   @override
   void initState() {
     super.initState();
+    unawaited(LiderTacServis.instance.baslat());
+    unawaited(HaftaRozetServis.instance.yenile());
     _takipDurumunuYukle();
     _engelDurumunuYukle();
   }
@@ -81,10 +113,32 @@ class _UserProfilePageState extends State<UserProfilePage> {
 
   // Takip durumunu sunucudan yükle
   Future<void> _takipDurumunuYukle() async {
-    final durum = await SosyalServis.takipDurumuGetir(widget.userId);
+    final currentUid = FirebaseAuth.instance.currentUser?.uid;
+    final sonuc = await Future.wait<Object?>([
+      SosyalServis.takipDurumuGetir(widget.userId),
+      (currentUid != null && currentUid != widget.userId)
+          ? MascotServis.karsilikliTakipVarMi(
+              uid1: currentUid,
+              uid2: widget.userId,
+            ).then((v) => v, onError: (_) => false)
+          : Future<bool>.value(false),
+    ]);
+    final durum = sonuc[0] as TakipDurumu;
+    var karsilikli = sonuc[1] as bool;
+    if (!karsilikli &&
+        currentUid != null &&
+        durum == TakipDurumu.takipEdiliyor) {
+      try {
+        karsilikli = await SosyalServis.takipciMi(
+          izleyiciUid: widget.userId,
+          hedefUid: currentUid,
+        );
+      } catch (_) {}
+    }
     if (!mounted) return;
     setState(() {
       _takipDurumu = durum;
+      _karsilikliTakip = karsilikli;
       _takipYukleniyor = false;
     });
   }
@@ -101,6 +155,20 @@ class _UserProfilePageState extends State<UserProfilePage> {
     }
     if (_takipIslemiSuruyor) return;
 
+    if (_takipDurumu == TakipDurumu.takipEdiliyor) {
+      final vilHarcanacak =
+          await TakipServis.takipCikisVilHarcanacak(widget.userId);
+      if (vilHarcanacak) {
+        if (!mounted) return;
+        final devam = await VilHarcamaUyarisi.onayla(
+          context: context,
+          islem: VilHarcamaUyarisi.takipCik,
+          maliyet: MascotServis.vilTakipGeriAlMaliyeti,
+        );
+        if (!devam || !mounted) return;
+      }
+    }
+
     setState(() => _takipIslemiSuruyor = true);
 
     final mesaj =
@@ -113,6 +181,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
       _takipDurumu = yeniDurum;
       _takipIslemiSuruyor = false;
     });
+    unawaited(_takipDurumunuYukle());
 
     if (mesaj.contains('+5')) {
       puanAnimasyonuGoster(context, 5);
@@ -120,6 +189,59 @@ class _UserProfilePageState extends State<UserProfilePage> {
 
     if (mounted && mesaj.isNotEmpty) {
       vibeSnackbarGoster(context, mesaj, tip: VibeMesajTipi.bilgi);
+    }
+  }
+
+  Future<void> _arkadasYemekVer(MascotDurum mascot) async {
+    if (!_karsilikliTakip || _yerelBugunYemek) return;
+    final devam = await VilHarcamaUyarisi.onayla(
+      context: context,
+      islem: VilHarcamaUyarisi.arkadasYemek,
+      maliyet: MascotServis.arkadasYemekVilMaliyeti,
+      vilHarcanacak: true,
+    );
+    if (!devam || !mounted) return;
+    if (!_karsilikliTakip || _yerelBugunYemek) return;
+    setState(() {
+      _yerelBugunYemek = true;
+      _iyimserTokluk =
+          (mascot.tokluk + MascotServis.yemekToklukArtisi).clamp(0, 100);
+      _iyimserMutluluk = (mascot.mutluluk + 3).clamp(0, 100);
+    });
+    unawaited(_arkadasYemekArkaPlan());
+  }
+
+  Future<void> _arkadasYemekArkaPlan() async {
+    try {
+      final mesaj = await MascotServis.arkadasYemekVer(widget.userId);
+      final current = FirebaseAuth.instance.currentUser;
+      if (current != null) {
+        unawaited(
+          SosyalServis.bildirimEkle(
+            hedefUid: widget.userId,
+            tip: 'maskot_yemek',
+            gonderenUid: current.uid,
+            metin: 'Vibel\'ine yemek verdi',
+          ),
+        );
+      }
+      if (!mounted) return;
+      vibeSnackbarGoster(context, mesaj, tip: VibeMesajTipi.basari);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _yerelBugunYemek = false;
+        _iyimserTokluk = null;
+        _iyimserMutluluk = null;
+      });
+      vibeSnackbarGoster(
+        context,
+        internetAwareErrorMessage(
+          error: e,
+          fallback: 'Yemek verilemedi.',
+        ),
+        tip: VibeMesajTipi.uyari,
+      );
     }
   }
 
@@ -286,8 +408,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
     final theme = Theme.of(context);
     final vibe = context.vibe;
 
-    return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
+    return VibeGradientScaffold(
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -296,13 +417,10 @@ class _UserProfilePageState extends State<UserProfilePage> {
           onPressed: () => Navigator.pop(context),
         ),
         title: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-          stream: FirebaseFirestore.instance
-              .collection('users')
-              .doc(widget.userId)
-              .snapshots(),
+          stream: _kullaniciAkisi,
           builder: (context, snapshot) {
-            final kullaniciAdi =
-                snapshot.data?.data()?['kullaniciAdi'] ?? 'Profil';
+            final kullaniciAdi = snapshot.data?.data()?['kullaniciAdi'];
+            if (kullaniciAdi == null) return const SizedBox.shrink();
             return Text(
               '@$kullaniciAdi',
               style: TextStyle(
@@ -337,17 +455,12 @@ class _UserProfilePageState extends State<UserProfilePage> {
         ],
       ),
       body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-        stream: FirebaseFirestore.instance
-            .collection('users')
-            .doc(widget.userId)
-            .snapshots(),
+        stream: _kullaniciGovdeAkisi,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting &&
               !snapshot.hasData) {
             return Center(
-              child: CircularProgressIndicator(
-                color: theme.colorScheme.primary,
-              ),
+              child: VibeYukleniyor(renk: theme.colorScheme.primary),
             );
           }
 
@@ -366,6 +479,10 @@ class _UserProfilePageState extends State<UserProfilePage> {
           final photoUrl = (data['photoUrl'] ?? '').toString();
           final avatarKey = (data['avatarKey'] ?? '').toString();
           final hesapGizli = data['hesapGizli'] == true;
+          final hedefCocukHesabi = data['cocukHesabi'] == true;
+          final mesajButonuAcik =
+              YasHesapKontrol.maybeOf(context)?.mesajAcik == true &&
+                  !hedefCocukHesabi;
 
           final mascotData = data['robot'];
           final mascotDurum = MascotServis.tryParse(mascotData);
@@ -378,6 +495,8 @@ class _UserProfilePageState extends State<UserProfilePage> {
                 Center(
                   child: vibeAvatar(
                     radius: 48,
+                    userId: widget.userId,
+                    liderTaciGoster: true,
                     photoUrl: photoUrl,
                     avatarKey: avatarKey,
                     fallbackText: kullaniciAdi,
@@ -397,19 +516,31 @@ class _UserProfilePageState extends State<UserProfilePage> {
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      Text(
-                        '@$kullaniciAdi',
-                        style: TextStyle(
-                          color: vibe.mutedText,
-                          fontSize: 14,
-                        ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            '@$kullaniciAdi',
+                            style: TextStyle(
+                              color: vibe.mutedText,
+                              fontSize: 14,
+                            ),
+                          ),
+                          IsimYanRozet(uid: widget.userId),
+                          if (!kendiProfil)
+                            RetyBagProfilRozeti(otherUid: widget.userId),
+                        ],
+                      ),
+                      RozetSayacSatiri(
+                        data: Map<String, dynamic>.from(data),
+                        seviye: mascotDurum?.seviye ?? 1,
                       ),
                     ],
                   ),
                 ),
                 const SizedBox(height: 20),
                 mascotDurum != null
-                    ? _mascotKarti(mascotDurum)
+                    ? _mascotKarti(mascotDurum, kendiProfil: kendiProfil)
                     : _mascotKartiYukleniyor(),
                 const SizedBox(height: 16),
                 Row(
@@ -420,8 +551,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
                         FirebaseFirestore.instance
                             .collection('users')
                             .doc(widget.userId)
-                            .collection('followers')
-                            .snapshots(),
+                            .collection('followers'),
                         onTap: () {
                           if (hesapGizli &&
                               !kendiProfil &&
@@ -433,7 +563,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
                             );
                             return;
                           }
-                          Navigator.push(
+                          tekSeferPush(
                             context,
                             MaterialPageRoute(
                               builder: (_) => FollowListPage(
@@ -453,8 +583,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
                         FirebaseFirestore.instance
                             .collection('users')
                             .doc(widget.userId)
-                            .collection('following')
-                            .snapshots(),
+                            .collection('following'),
                         onTap: () {
                           if (hesapGizli &&
                               !kendiProfil &&
@@ -466,7 +595,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
                             );
                             return;
                           }
-                          Navigator.push(
+                          tekSeferPush(
                             context,
                             MaterialPageRoute(
                               builder: (_) => FollowListPage(
@@ -482,11 +611,16 @@ class _UserProfilePageState extends State<UserProfilePage> {
                   ],
                 ),
                 if (!kendiProfil && !_engelledim && !_beniEngelledi) ...[
+                  if (mesajButonuAcik) ...[
                   const SizedBox(height: 16),
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(
                       onPressed: () async {
+                        final bilet = tekSeferGecisAl();
+                        if (bilet == null) return;
+                        final sohbet = WebSohbetKapsayici.maybeOf(context);
+                        final masaustu = webMasaustuMu(context);
                         final navigator = Navigator.of(context);
 
                         // hata yakalamalı blok
@@ -494,7 +628,24 @@ class _UserProfilePageState extends State<UserProfilePage> {
                           final chatId =
                               await SosyalServis.sohbetIdGetirVeyaOlustur(
                                   widget.userId);
-                          if (!mounted) return;
+                          if (!mounted) {
+                            tekSeferGecisIptal(bilet);
+                            return;
+                          }
+                          if (sohbet != null && masaustu) {
+                            sohbet.sohbetiAc(
+                              WebSohbetHedef(
+                                chatId: chatId,
+                                otherUid: widget.userId,
+                                otherDisplayName: adSoyad,
+                                otherUsername: kullaniciAdi,
+                                otherPhotoUrl: photoUrl,
+                                otherAvatarKey: avatarKey,
+                              ),
+                            );
+                            tekSeferGecisBirak(bilet);
+                            return;
+                          }
                           navigator.push(
                             MaterialPageRoute(
                               builder: (_) => ChatPage(
@@ -507,8 +658,10 @@ class _UserProfilePageState extends State<UserProfilePage> {
                               ),
                             ),
                           );
+                          tekSeferGecisBirak(bilet);
                           // hata yakala
                         } catch (e) {
+                          tekSeferGecisIptal(bilet);
                           if (!context.mounted) return;
                           vibeSnackbarGoster(
                             context,
@@ -527,10 +680,11 @@ class _UserProfilePageState extends State<UserProfilePage> {
                           borderRadius: BorderRadius.circular(20),
                         ),
                       ),
-                      icon: const Icon(Icons.chat_bubble_outline),
+                      icon: const Icon(VibeIkon.mesajBos),
                       label: const Text("Mesaj Gönder"),
                     ),
                   ),
+                  ],
                   const SizedBox(height: 10),
                   SizedBox(
                     width: double.infinity,
@@ -614,26 +768,21 @@ class _UserProfilePageState extends State<UserProfilePage> {
       width: double.infinity,
       height: 140,
       padding: const EdgeInsets.all(18),
-      decoration: vibe.cardDecoration(),
+      decoration: vibe.kahramanKart(),
       alignment: Alignment.center,
-      child: const CircularProgressIndicator(
-        color: VibeAppTheme.accent,
-        strokeWidth: 2,
-      ),
+      child: const VibeYukleniyor(renk: VibeAppTheme.accent),
     );
   }
 
   // Maskot durum kartı
-  Widget _mascotKarti(MascotDurum mascot) {
+  Widget _mascotKarti(MascotDurum mascot, {required bool kendiProfil}) {
     final theme = Theme.of(context);
     final vibe = context.vibe;
     final odaAcik = MascotServis.odaAcik(mascot.seviye);
-    final mesaj = MascotServis.ruhHaliMesaji(mascot);
-
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(18),
-      decoration: vibe.cardDecoration(),
+      decoration: vibe.kahramanKart(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -645,10 +794,10 @@ class _UserProfilePageState extends State<UserProfilePage> {
                 strokeWidth: 3.5,
                 innerPadding: 3.5,
                 borderRadius: 20,
-                backgroundFill: vibe.inputFill,
                 child: MascotLottieView(
                   seviye: mascot.seviye,
                   gorselDurum: mascot.gorselDurum,
+                  renk: mascot.renk,
                   width: 86,
                   height: 86,
                   fit: BoxFit.contain,
@@ -672,22 +821,16 @@ class _UserProfilePageState extends State<UserProfilePage> {
                       style: TextStyle(color: vibe.mutedText, fontSize: 13),
                     ),
                     const SizedBox(height: 6),
-                    if (odaAcik)
-                      Text(
-                        mesaj,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: VibeAppTheme.accent,
-                          fontSize: 12,
-                          fontStyle: FontStyle.italic,
-                        ),
-                      )
-                    else
-                      Text(
-                        '${MascotServis.odaAcilisSeviyesi}. seviyede maskot sistemi açılır.',
-                        style: TextStyle(color: vibe.mutedText, fontSize: 12),
+                    MascotRuhHaliMetni(
+                      mascot: mascot,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: VibeAppTheme.accent,
+                        fontSize: 12,
+                        fontStyle: FontStyle.italic,
                       ),
+                    ),
                   ],
                 ),
               ),
@@ -695,42 +838,115 @@ class _UserProfilePageState extends State<UserProfilePage> {
           ),
           const SizedBox(height: 12),
           if (odaAcik) ...[
-            MascotDurumBari(
-              etiket: 'Enerji',
-              deger: mascot.enerji,
-              renk: Colors.amber,
-              compact: true,
-            ),
-            MascotDurumBari(
-              etiket: 'Mutluluk',
-              deger: mascot.mutluluk,
-              renk: Colors.pinkAccent,
-              compact: true,
-            ),
+            if (MascotServis.toklukAktif(mascot.seviye))
+              MascotDurumBari(
+                etiket: 'Tokluk',
+                deger: (_iyimserTokluk ?? mascot.tokluk).clamp(0, 100),
+                renk: Colors.orange,
+                compact: true,
+              ),
+            if (MascotServis.enerjiAktif(mascot.seviye))
+              MascotDurumBari(
+                etiket: 'Enerji',
+                deger: mascot.enerji,
+                renk: Colors.amber,
+                compact: true,
+                sayiGoster: false,
+              ),
+            if (MascotServis.mutlulukAktif(mascot.seviye))
+              MascotDurumBari(
+                etiket: 'Mutluluk',
+                deger: (_iyimserMutluluk ?? mascot.mutluluk).clamp(0, 100),
+                renk: Colors.redAccent,
+                compact: true,
+              ),
           ],
-          const SizedBox(height: 6),
-          Text(
-            'Gelişim: ${mascot.gelisimPuani} / ${mascot.gerekliGelisim}',
-            style: TextStyle(color: vibe.faintText, fontSize: 12),
-          ),
+          if (!kendiProfil) ...[
+            const SizedBox(height: 12),
+            _arkadasYemekButonu(mascot),
+          ],
         ],
       ),
+    );
+  }
+
+  Widget _arkadasYemekButonu(MascotDurum mascot) {
+    final vibe = context.vibe;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final yemekAcik = MascotServis.yemekSistemiAcik(mascot.seviye);
+    const maliyet = MascotServis.arkadasYemekVilMaliyeti;
+
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: uid == null
+          ? null
+          : FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
+      builder: (context, snap) {
+        final vil =
+            MascotServis.tryParse(snap.data?.data()?['robot'])?.vil ?? 0;
+        final vilYeter = vil >= maliyet;
+        final feederMap = snap.data?.data()?['robot'];
+        final kalanMs = MascotServis.arkadasYemekKalanMs(
+          feederRobot: feederMap is Map
+              ? Map<String, dynamic>.from(feederMap)
+              : const {},
+          hedefUid: widget.userId,
+        );
+        final bugunVerildi = _yerelBugunYemek || kalanMs > 0;
+
+        String? kilit;
+        if (!yemekAcik) {
+          kilit = 'Bu Vibel henüz yumurta; yemek 6. seviyede açılır.';
+        } else if (mascot.uyuyor) {
+          kilit = '${mascot.isim} uyuyor. Uyanınca yemek verebilirsin.';
+        } else if (!_karsilikliTakip) {
+          kilit = 'Karşılıklı takip gerekli.';
+        } else if (bugunVerildi) {
+          kilit = MascotServis.arkadasYemekBeklemeMetni(
+            kalanMs > 0 ? kalanMs : MascotServis.utcGeceYarisiKalanMs(),
+          );
+        } else if (!vilYeter) {
+          kilit = 'Vil yetersiz.';
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Semantics(
+              label: MaestroSemantics.maskotYemekVer,
+              button: true,
+              child: ElevatedButton.icon(
+                onPressed:
+                    kilit == null ? () => _arkadasYemekVer(mascot) : null,
+                icon: const Icon(Icons.restaurant, size: 18),
+                label: const Text('Yemek ver'),
+              ),
+            ),
+            if (kilit != null) ...[
+              const SizedBox(height: 6),
+              Text(
+                kilit,
+                style: TextStyle(color: vibe.mutedText, fontSize: 12),
+              ),
+            ],
+          ],
+        );
+      },
     );
   }
 
   // Takipçi/takip sayaç kutusu
   Widget _takipSayacKutusu(
     String baslik,
-    Stream<QuerySnapshot<Map<String, dynamic>>> stream, {
+    CollectionReference<Map<String, dynamic>> koleksiyon, {
     VoidCallback? onTap,
   }) {
     final theme = Theme.of(context);
     final vibe = context.vibe;
 
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: stream,
+    return FutureBuilder<AggregateQuerySnapshot>(
+      future: koleksiyon.count().get(),
       builder: (context, snap) {
-        final sayi = snap.data?.docs.length ?? 0;
+        final sayi = snap.data?.count ?? 0;
         final kutu = Container(
           padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
@@ -745,7 +961,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
                 style: TextStyle(
                   color: theme.colorScheme.onSurface,
                   fontWeight: FontWeight.bold,
-                  fontSize: 17,
+                  fontSize: 16,
                 ),
               ),
               const SizedBox(height: 2),
@@ -758,10 +974,14 @@ class _UserProfilePageState extends State<UserProfilePage> {
         );
 
         if (onTap == null) return kutu;
-        return InkWell(
-          onTap: onTap,
+        return Material(
+          color: Colors.transparent,
           borderRadius: BorderRadius.circular(16),
-          child: kutu,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(16),
+            child: kutu,
+          ),
         );
       },
     );
@@ -793,13 +1013,8 @@ class _UserProfilePageState extends State<UserProfilePage> {
     final theme = Theme.of(context);
     final vibe = context.vibe;
 
-    if (_takipYukleniyor) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: CircularProgressIndicator(color: theme.colorScheme.primary),
-        ),
-      );
+    if (hesapGizli && _takipYukleniyor) {
+      return const SizedBox.shrink();
     }
 
     final gonderilerGorunur =
@@ -871,9 +1086,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
         if (postSnapshot.connectionState == ConnectionState.waiting &&
             !postSnapshot.hasData) {
           return Center(
-            child: CircularProgressIndicator(
-              color: theme.colorScheme.primary,
-            ),
+            child: VibeYukleniyor(renk: theme.colorScheme.primary),
           );
         }
 
@@ -903,29 +1116,107 @@ class _UserProfilePageState extends State<UserProfilePage> {
         }
 
         return Column(
-          children: docs.map((doc) {
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _gonderiBolumBasligi(),
+            const SizedBox(height: 12),
+            _gonderiGorunumu == ProfilGonderiGorunumu.liste
+                ? Column(
+                    children: docs.map((doc) {
+                      final post = doc.data();
+                      return _UserProfilePostCard(
+                        key: ValueKey(doc.id),
+                        postId: doc.id,
+                        postOwnerId: widget.userId,
+                        currentUserId: currentUserId,
+                        kullaniciAdi:
+                            post['kullaniciAdi'] ?? 'Vibe Kullanıcısı',
+                        photoUrl: (post['photoUrl'] ?? '').toString(),
+                        avatarKey: (post['avatarKey'] ?? '').toString(),
+                        metin: post['metin'] ?? '',
+                        mentionUidleri: SosyalServis.bahsetmeUidHaritasiParse(
+                          post['mentionUidleri'],
+                        ),
+                        baslangicBegeniSayisi:
+                            _intDeger(post['begeniSayisi'], 0),
+                        baslangicYorumSayisi: _intDeger(post['yorumSayisi'], 0),
+                        createdAt: post['createdAt'],
+                        alintiSnapshot: AlintiGonderiSnapshot.haritadan(
+                          post['alintiSnapshot'],
+                          postId: post['alintiPostId']?.toString(),
+                          icAlintiDahilEt: false,
+                        ),
+                      );
+                    }).toList(),
+                  )
+                : _profilIzgarasi(
+                    docs: docs,
+                    currentUserId: currentUserId,
+                  ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _gonderiBolumBasligi() {
+    return Row(
+      children: [
+        Text(
+          _gonderiGorunumu == ProfilGonderiGorunumu.liste
+              ? 'Liste görünümü'
+              : 'Izgara görünümü',
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurface,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const Spacer(),
+        ProfilGorunumAnahtari(
+          gorunum: _gonderiGorunumu,
+          onChanged: (gorunum) => setState(() => _gonderiGorunumu = gorunum),
+        ),
+      ],
+    );
+  }
+
+  Widget _profilIzgarasi({
+    required List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+    required String currentUserId,
+  }) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final sutunSayisi = constraints.maxWidth >= 760 ? 3 : 2;
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: docs.length,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: sutunSayisi,
+            crossAxisSpacing: 10,
+            mainAxisSpacing: 10,
+            mainAxisExtent: 190,
+          ),
+          itemBuilder: (context, index) {
+            final doc = docs[index];
             final post = doc.data();
-            return _UserProfilePostCard(
-              key: ValueKey(doc.id),
+            return ProfilGonderiIzgaraKarti(
+              key: ValueKey('grid_${doc.id}'),
               postId: doc.id,
-              postOwnerId: widget.userId,
               currentUserId: currentUserId,
-              kullaniciAdi: post['kullaniciAdi'] ?? 'Vibe Kullanıcısı',
-              photoUrl: (post['photoUrl'] ?? '').toString(),
-              avatarKey: (post['avatarKey'] ?? '').toString(),
-              metin: post['metin'] ?? '',
-              mentionUidleri: SosyalServis.bahsetmeUidHaritasiParse(
-                post['mentionUidleri'],
-              ),
-              baslangicBegeniSayisi: _intDeger(post['begeniSayisi'], 0),
-              baslangicYorumSayisi: _intDeger(post['yorumSayisi'], 0),
+              kullaniciAdi:
+                  (post['kullaniciAdi'] ?? 'Vibe Kullanıcısı').toString(),
               createdAt: post['createdAt'],
+              metin: (post['metin'] ?? '').toString(),
+              begeniSayisi: _intDeger(post['begeniSayisi'], 0),
+              yorumSayisi: _intDeger(post['yorumSayisi'], 0),
               alintiSnapshot: AlintiGonderiSnapshot.haritadan(
                 post['alintiSnapshot'],
                 postId: post['alintiPostId']?.toString(),
+                icAlintiDahilEt: false,
               ),
             );
-          }).toList(),
+          },
         );
       },
     );
@@ -1081,7 +1372,7 @@ class _UserProfilePostCardState extends State<_UserProfilePostCard> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
       ),
       builder: (context) {
-        return _UserProfileYorumPaneli(
+        return YorumPaneli(
           postId: widget.postId,
           postOwnerId: widget.postOwnerId,
           userId: widget.currentUserId,
@@ -1089,6 +1380,12 @@ class _UserProfilePostCardState extends State<_UserProfilePostCard> {
             if (!mounted) return;
             setState(() {
               yorumSayisi += 1;
+            });
+          },
+          onYorumSilindi: () {
+            if (!mounted) return;
+            setState(() {
+              if (yorumSayisi > 0) yorumSayisi -= 1;
             });
           },
         );
@@ -1112,6 +1409,7 @@ class _UserProfilePostCardState extends State<_UserProfilePostCard> {
           ListTile(
             leading: vibeAvatar(
               radius: 20,
+              userId: widget.postOwnerId,
               photoUrl: widget.photoUrl,
               avatarKey: widget.avatarKey,
               fallbackText: widget.kullaniciAdi,
@@ -1119,12 +1417,20 @@ class _UserProfilePostCardState extends State<_UserProfilePostCard> {
               fallbackIconSize: 20,
               fallbackForegroundColor: theme.colorScheme.onPrimary,
             ),
-            title: Text(
-              widget.kullaniciAdi,
-              style: TextStyle(
-                color: theme.colorScheme.onSurface,
-                fontWeight: FontWeight.bold,
-              ),
+            title: Row(
+              children: [
+                Flexible(
+                  child: Text(
+                    widget.kullaniciAdi,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: theme.colorScheme.onSurface,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                IsimYanRozet(uid: widget.postOwnerId),
+              ],
             ),
             subtitle: Text(
               _tarihSaatYaz(widget.createdAt),
@@ -1166,22 +1472,32 @@ class _UserProfilePostCardState extends State<_UserProfilePostCard> {
                   onTap: begeniyiDegistir,
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 10),
-                    child: Row(
-                      children: [
-                        Icon(
-                          _begeni.begenildi
-                              ? Icons.favorite
-                              : Icons.favorite_border,
-                          color: Colors.redAccent,
-                          size: 26,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          "${_begeni.begeniSayisi}",
-                          style: TextStyle(color: vibe.mutedText, fontSize: 14),
-                        ),
-                      ],
+                      horizontal: 8,
+                      vertical: 10,
+                    ),
+                    child: Icon(
+                      _begeni.begenildi ? VibeIkon.begeni : VibeIkon.begeniBos,
+                      color: VibeAppTheme.accent,
+                      size: 26,
+                    ),
+                  ),
+                ),
+                InkWell(
+                  borderRadius: BorderRadius.circular(28),
+                  onTap: widget.currentUserId == widget.postOwnerId
+                      ? () => begenenlerPaneliniAc(
+                            context,
+                            postId: widget.postId,
+                          )
+                      : begeniyiDegistir,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 10,
+                    ),
+                    child: Text(
+                      "${_begeni.begeniSayisi}",
+                      style: TextStyle(color: vibe.mutedText, fontSize: 14),
                     ),
                   ),
                 ),
@@ -1195,7 +1511,7 @@ class _UserProfilePostCardState extends State<_UserProfilePostCard> {
                     child: Row(
                       children: [
                         Icon(
-                          Icons.chat_bubble_outline,
+                          VibeIkon.yorum,
                           color: vibe.mutedText,
                           size: 24,
                         ),
@@ -1212,213 +1528,6 @@ class _UserProfilePostCardState extends State<_UserProfilePostCard> {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-// Kullanıcı profil yorum paneli
-class _UserProfileYorumPaneli extends StatefulWidget {
-  const _UserProfileYorumPaneli({
-    required this.postId,
-    required this.postOwnerId,
-    required this.userId,
-    required this.onYorumEklendi,
-  });
-
-  final String postId; // gönderi kimliği
-  final String postOwnerId; // gönderi sahibi uid
-  final String userId; // oturum açmış kullanıcı uid
-  final VoidCallback onYorumEklendi; // yorum eklendi geri çağrısı
-
-  @override
-  State<_UserProfileYorumPaneli> createState() =>
-      _UserProfileYorumPaneliState();
-}
-
-// Yorum paneli durumu
-class _UserProfileYorumPaneliState extends State<_UserProfileYorumPaneli> {
-  final TextEditingController yorumController = TextEditingController();
-  bool isLoading = false; // yükleme durumu
-
-  // Abonelik ve kontrolcüleri temizle
-  @override
-  void dispose() {
-    yorumController.dispose();
-    super.dispose();
-  }
-
-  // Yorum ekle
-  Future<void> yorumEkle() async {
-    final metin = yorumController.text.trim();
-    if (metin.isEmpty) return;
-
-    setState(() => isLoading = true);
-
-    // hata yakalamalı blok
-    try {
-      await SosyalServis.yorumEkle(
-        postId: widget.postId,
-        postOwnerId: widget.postOwnerId,
-        currentUserId: widget.userId,
-        metin: metin,
-      );
-      yorumController.clear();
-      widget.onYorumEklendi();
-      if (mounted && widget.userId != widget.postOwnerId) {
-        puanAnimasyonuGoster(context, 3);
-      }
-      // hata yakala
-    } catch (e) {
-      if (mounted) {
-        vibeSnackbarGoster(
-          context,
-          internetAwareErrorMessage(
-            error: e,
-            fallback: "Yorum eklenemedi.",
-          ),
-        );
-      }
-      // temizlik
-    } finally {
-      if (mounted) setState(() => isLoading = false);
-    }
-  }
-
-  // Arayüzü oluştur
-  @override
-  Widget build(BuildContext context) {
-    final altBosluk = MediaQuery.of(context).viewInsets.bottom;
-    final vibe = context.vibe;
-    final onSurface = Theme.of(context).colorScheme.onSurface;
-
-    return Padding(
-      padding: EdgeInsets.only(bottom: altBosluk),
-      child: SizedBox(
-        height: MediaQuery.of(context).size.height * 0.72,
-        child: Column(
-          children: [
-            const SizedBox(height: 10),
-            Container(
-              width: 42,
-              height: 5,
-              decoration: BoxDecoration(
-                color: vibe.faintText,
-                borderRadius: BorderRadius.circular(20),
-              ),
-            ),
-            const SizedBox(height: 14),
-            Text(
-              "Yorumlar",
-              style: TextStyle(
-                color: onSurface,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            Divider(color: vibe.cardBorder),
-            Expanded(
-              child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                stream: FirebaseFirestore.instance
-                    .collection("posts")
-                    .doc(widget.postId)
-                    .collection("comments")
-                    .orderBy("createdAt", descending: false)
-                    .snapshots(),
-                builder: (context, snapshot) {
-                  final comments = snapshot.data?.docs ?? [];
-                  if (comments.isEmpty) {
-                    return Center(
-                      child: Text(
-                        "Henüz yorum yok.",
-                        style: TextStyle(color: onSurface),
-                      ),
-                    );
-                  }
-
-                  return ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: comments.length,
-                    itemBuilder: (context, index) {
-                      final yorum = comments[index].data();
-                      if (yorum["raporNedeniyleGizli"] == true) {
-                        return const SizedBox.shrink();
-                      }
-                      return ListTile(
-                        leading: vibeAvatar(
-                          radius: 18,
-                          photoUrl: "",
-                          avatarKey: "",
-                          fallbackText: yorum["kullaniciAdi"]?.toString() ??
-                              "Vibe Kullanıcısı",
-                          emojiSize: 16,
-                          fallbackIconSize: 18,
-                        ),
-                        title: Text(
-                          yorum["kullaniciAdi"] ?? "Vibe Kullanıcısı",
-                          style: TextStyle(
-                            color: onSurface,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              yorum["metin"] ?? "",
-                              style: TextStyle(
-                                color: onSurface,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            const SizedBox(height: 3),
-                            Text(
-                              _tarihSaatYaz(yorum["createdAt"]),
-                              style: TextStyle(
-                                color: vibe.faintText,
-                                fontSize: 11,
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  );
-                },
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: yorumController,
-                      style: TextStyle(color: onSurface),
-                      decoration: InputDecoration(
-                        hintText: "Yorum yaz...",
-                        hintStyle: TextStyle(color: vibe.faintText),
-                        filled: true,
-                        fillColor: vibe.inputFill,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(26),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  IconButton(
-                    onPressed: isLoading ? null : yorumEkle,
-                    icon: isLoading
-                        ? CircularProgressIndicator(color: onSurface)
-                        : const Icon(Icons.send, color: Colors.redAccent),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

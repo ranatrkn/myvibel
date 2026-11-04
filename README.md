@@ -1,16 +1,17 @@
-# vibe_life
+# MyVibel
 
-A new Flutter project.
+Sosyal paylaşım, Vibel karakteri ve vil/görevler. Kayıt **15 yaş ve üzeri**; mesajlaşma ve reklamlar **18+**.
 
-## Getting Started
+- Uygulama: [myvibel.com/app](https://myvibel.com/app/)
+- Yasal: [Gizlilik](https://myvibel.com/privacy.html) · [KVKK](https://myvibel.com/kvkk.html) · [Koşullar](https://myvibel.com/terms.html) · [Çocuk güvenliği](https://myvibel.com/cocuk-guvenligi.html)
 
-This project is a starting point for a Flutter application.
+```powershell
+flutter pub get
+flutter run
+```
 
-A few resources to get you started if this is your first Flutter project:
+Web hosting:
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/deploy-web.ps1
+```

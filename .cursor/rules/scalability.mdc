@@ -1,0 +1,45 @@
+---
+description: Olceklenabilirlik ve yuksek eszamanli kullanim icin tasarim kurallari
+globs: lib/**/*.dart,firestore.rules,firestore.indexes.json,functions/**/*
+alwaysApply: false
+---
+
+# Olceklenebilirlik Kurallari
+
+Yeni ozellik gelistirirken tek kullanicida calisan ama yuksek eszamanli kullanimda darbogaz olusturan cozumlerden kacin.
+
+## Tasarim Ilkeleri
+
+- **Pagination zorunlu:** Liste, feed, arama, bildirim ve profil sorgularinda `limit` + imlec/sayfalama kullan. Tum koleksiyonu tek seferde cekme.
+- **N+1 sorgudan kacin:** Dongu icinde tekrarlayan Firestore okuma/yazma yapma. Veriyi toplu oku, bellekte eslestir veya onden birlestirilmis alanlar kullan.
+- **Batch ve transaction:** Coklu yazmalarda `batch`/`transaction` kullan; batch basina en fazla ~400 islem sinirina uy.
+- **Hot path sade kalsin:** Uygulama acilisinda, feed yenilemede ve sekme gecislerinde agir senkron islem calistirma. Gerekirse lazy load veya arka plana ertele.
+- **Cache dusun:** Sik okunan, nadiren degisen veriler icin client cache (`SharedPreferences`, bellek onbellegi) veya sunucu tarafli cache degerlendir. Cache invalidation kuralini tanimla.
+- **Queue dusun:** Bildirim, puan, istatistik, temizlik gibi agir veya gecikmesi kabul edilebilir isler icin dogrudan istek icinde yapmak yerine kuyruk/Cloud Function/tetikleyici tasarla.
+- **Denormalizasyon bilincli olsun:** Sık okunan alanlari (or. kullanici adi, avatar) gonderi/bildirim dokumanina yaz; tutarlilik icin guncelleme yolunu da planla.
+- **Listener ve rebuild:** Stream/listener yalnizca gerektiginde kur; degisim olmadan UI yeniden cizdirme.
+- **Indeks ve filtre:** Bilesik sorgular icin `firestore.indexes.json` guncelle; client tarafinda buyuk veri setini filtreleme.
+
+## Kacinilacaklar
+
+- Tum kullanicilari veya tum gonderileri tek sorguda cekmek
+- Her istekte tum takip/engel listesini yeniden okuyup agir birlestirme yapmak (degismediyse cache/throttle)
+- Senkron dongude bekleme (`await` zinciri) ile toplu islem
+- Client tarafinda moderasyon, temizlik, toplu migration
+- Sinirsiz `snapshots()` dinleyicisi + genis `limit` kombinasyonu
+
+## Yeni Ozellik Kontrol Listesi
+
+1. En kotu durumda kac dokuman okunur/yazilir?
+2. 1.000+ eszamanli kullanicida hangi sorgu/indirim darbogaz olur?
+3. Pagination, cache veya queue gerekiyor mu?
+4. Firestore guvenlik kurallari ve indeksler yeni sorguyu destekliyor mu?
+5. UI ilk acilista mi yoksa kullanici eyleminde mi yukleniyor?
+
+## Projeye Ozgu Ornekler
+
+- Feed: `_partiBoyutu`, `_sayfaBoyutu`, lazy sekme yukleme (`feed_page.dart`)
+- Profil gonderileri: `limit(40)` + sayfalama
+- Hesap silme: batch ile parca parca silme (`hesap_sil_servis.dart`)
+
+Yeni kod bu desenleri takip etmeli; daha zayif bir desen secilecekse nedenini acikla ve riski sinirla.

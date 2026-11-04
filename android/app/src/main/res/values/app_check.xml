@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- lib/app_check_config.dart ile aynı token olmalı -->
-    <string name="app_check_debug_token" translatable="false">1BEA2DC3-0F0E-447F-9FE3-8F508445160D</string>
+    <!-- lib/app_check_config.dart / APP_CHECK_DEBUG_TOKEN ile aynı olmalı.
+         Boş bırakıldığında debug enjeksiyonu atlanır. -->
+    <string name="app_check_debug_token" translatable="false"></string>
 </resources>

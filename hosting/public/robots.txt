@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://myvibel.com/sitemap.xml

@@ -1,14 +1,16 @@
 // Sosyal alt servislerin tek noktadan erişim cephesi
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:vibe_life/sosyal/begeni_yorum_servis.dart';
-import 'package:vibe_life/sosyal/bildirim_servis.dart';
-import 'package:vibe_life/sosyal/engel_servis.dart';
-import 'package:vibe_life/sosyal/etiket_servis.dart';
-import 'package:vibe_life/sosyal/mesaj_servis.dart';
-import 'package:vibe_life/sosyal/sosyal_core.dart';
-import 'package:vibe_life/sosyal/takip_servis.dart';
+import 'package:myvibel/sosyal/begeni_yorum_servis.dart';
+import 'package:myvibel/sosyal/bildirim_servis.dart';
+import 'package:myvibel/sosyal/engel_servis.dart';
+import 'package:myvibel/sosyal/etiket_servis.dart';
+import 'package:myvibel/sosyal/mesaj_servis.dart';
+import 'package:myvibel/sosyal/sosyal_core.dart';
+import 'package:myvibel/sosyal/takip_servis.dart';
 
-export 'sosyal/takip_servis.dart' show TakipDurumu, TakipIslemSonucu;
+export 'sosyal/takip_servis.dart'
+    show TakipDurumu, TakipIslemSonucu, LiderlikTabloSonucu, TakipServis;
+export 'sosyal/begeni_yorum_servis.dart' show BegenenKayit, BegenenSayfa;
 
 // Tüm sosyal işlemleri yönlendiren ana servis
 class SosyalServis {
@@ -151,13 +153,13 @@ class SosyalServis {
       );
 
   // Haftalık görev liderlik tablosu
-  static Future<List<Map<String, dynamic>>> liderlikTablosuGetir({
-    int limit = 25,
+  static Future<LiderlikTabloSonucu> liderlikTablosuGetir({
+    int limit = TakipServis.liderlikLimit,
   }) =>
       TakipServis.liderlikTablosuGetir(limit: limit);
 
-  // Bekleyen takip ödüllerini senkronize et
-  static Future<void> takipOdulleriniSenkronizeEt(String uid) =>
+  // Bekleyen takip ödüllerini senkronize et; verilen toplam puanı döner.
+  static Future<int> takipOdulleriniSenkronizeEt(String uid) =>
       TakipServis.takipOdulleriniSenkronizeEt(uid);
 
   // Takip edilen profilleri listele
@@ -208,6 +210,13 @@ class SosyalServis {
   // Bildirim sil
   static Future<void> bildirimSil(String uid, String bildirimId) =>
       BildirimServis.bildirimSil(uid, bildirimId);
+
+  // Seçili bildirimleri toplu sil
+  static Future<void> bildirimleriSil(
+    String uid,
+    Iterable<String> bildirimIdleri,
+  ) =>
+      BildirimServis.bildirimleriSil(uid, bildirimIdleri);
 
   // Takip isteği bildirimlerini sil
   static Future<void> takipIstegiBildirimleriniSil(
@@ -432,15 +441,26 @@ class SosyalServis {
     required String postId,
     required String postOwnerId,
     required String currentUserId,
+    required bool begen,
   }) =>
       BegeniYorumServis.begeniDegistir(
         postId: postId,
         postOwnerId: postOwnerId,
         currentUserId: currentUserId,
+        begen: begen,
       );
 
   static Future<void> gecersizBegeniKayitlariniTemizle(String uid) =>
       BegeniYorumServis.gecersizBegeniKayitlariniTemizle(uid);
+
+  static Future<void> erisilemeyenBegeniKaydiniSil({
+    required String uid,
+    required String postId,
+  }) =>
+      BegeniYorumServis.erisilemeyenBegeniKaydiniSil(
+        uid: uid,
+        postId: postId,
+      );
 
   // Yorum ekle
   static Future<void> yorumEkle({
@@ -448,12 +468,32 @@ class SosyalServis {
     required String postOwnerId,
     required String currentUserId,
     required String metin,
+    String? parentId,
   }) =>
       BegeniYorumServis.yorumEkle(
         postId: postId,
         postOwnerId: postOwnerId,
         currentUserId: currentUserId,
         metin: metin,
+        parentId: parentId,
+      );
+
+  static Future<BegenenSayfa> begenenleriGetir({
+    required String postId,
+    DocumentSnapshot<Map<String, dynamic>>? baslangic,
+  }) =>
+      BegeniYorumServis.begenenleriGetir(
+        postId: postId,
+        baslangic: baslangic,
+      );
+
+  static Future<void> yorumSil({
+    required String postId,
+    required String commentId,
+  }) =>
+      BegeniYorumServis.yorumSil(
+        postId: postId,
+        commentId: commentId,
       );
 
   // Gönderiyi sil

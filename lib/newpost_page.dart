@@ -4,19 +4,22 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:vibe_life/alinti_gonderi.dart';
-import 'package:vibe_life/app_theme.dart';
-import 'package:vibe_life/error_messages.dart';
-import 'package:vibe_life/icerik_filtre_servis.dart';
-import 'package:vibe_life/haftalik_gorev_servis.dart';
-import 'package:vibe_life/puan_animasyon.dart';
-import 'package:vibe_life/maskot_servis.dart';
-import 'package:vibe_life/sosyal/sosyal_core.dart';
-import 'package:vibe_life/sosyal_servis.dart';
-import 'package:vibe_life/widgets/alinti_gonderi_onizleme.dart';
-import 'package:vibe_life/widgets/bahsetme_metin_alani.dart';
-import 'package:vibe_life/vibe_snackbar.dart';
-import 'package:vibe_life/widgets/maskot_lottie_view.dart';
+import 'package:myvibel/alinti_gonderi.dart';
+import 'package:myvibel/app_theme.dart';
+import 'package:myvibel/error_messages.dart';
+import 'package:myvibel/icerik_filtre_servis.dart';
+import 'package:myvibel/haftalik_gorev_servis.dart';
+import 'package:myvibel/puan_animasyon.dart';
+import 'package:myvibel/maestro_semantics.dart';
+import 'package:myvibel/maskot_servis.dart';
+import 'package:myvibel/sosyal/sosyal_core.dart';
+import 'package:myvibel/sosyal_servis.dart';
+import 'package:myvibel/widgets/alinti_gonderi_onizleme.dart';
+import 'package:myvibel/widgets/bahsetme_metin_alani.dart';
+import 'package:myvibel/vibe_snackbar.dart';
+import 'package:myvibel/widgets/maskot_lottie_view.dart';
+import 'package:myvibel/widgets/vibe_avatar.dart';
+import 'package:myvibel/widgets/vibe_ikonlar.dart';
 
 // Gönderi paylaşım formu
 class NewPostPage extends StatefulWidget {
@@ -39,9 +42,41 @@ class _NewPostPageState extends State<NewPostPage> {
   final TextEditingController postController =
       TextEditingController(); // Gönderi metni
   bool isLoading = false; // Paylaşım sürüyor mu
+  Timer? _hizTimer;
+  int _kalanPaylasimMs = 0;
+  // build içinde açılırsa her setState'te abonelik yenilenir, kart titrer.
+  late final Stream<DocumentSnapshot<Map<String, dynamic>>> _kullaniciAkisi =
+      FirebaseAuth.instance.currentUser == null
+          ? const Stream.empty()
+          : FirebaseFirestore.instance
+              .collection("users")
+              .doc(FirebaseAuth.instance.currentUser!.uid)
+              .snapshots();
+
+  @override
+  void initState() {
+    super.initState();
+    _hizTimer = Timer.periodic(const Duration(milliseconds: 250), (_) {
+      _hizLimitiniGuncelle();
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(SosyalCore.rateLimitPrefsYukle().then((_) {
+        if (mounted) _hizLimitiniGuncelle();
+      }));
+    });
+  }
+
+  void _hizLimitiniGuncelle() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    final kalan = SosyalCore.gonderiPaylasimKalanMs(uid);
+    if (kalan == _kalanPaylasimMs) return;
+    setState(() => _kalanPaylasimMs = kalan);
+  }
 
   @override
   void dispose() {
+    _hizTimer?.cancel();
     postController.dispose();
     super.dispose();
   }
@@ -92,9 +127,12 @@ class _NewPostPageState extends State<NewPostPage> {
       final userData = userDoc.data();
       final kullaniciAdi =
           userData?["kullaniciAdi"] ?? user.displayName ?? "Vibe Kullanıcısı";
-      final photoUrl =
-          (userData?["photoUrl"] ?? user.photoURL ?? "").toString();
       final avatarKey = (userData?["avatarKey"] ?? "").toString();
+      final photoUrl = vibeDenormalizePhotoUrl(
+        avatarKey: avatarKey,
+        photoUrl: userData?["photoUrl"]?.toString(),
+        authPhotoUrl: user.photoURL,
+      );
 
       final hesapGizli = userData?["hesapGizli"] == true;
       final mentionUidleri = await SosyalServis.bahsetmeUidleriniCoz(metin);
@@ -102,9 +140,7 @@ class _NewPostPageState extends State<NewPostPage> {
       Map<String, dynamic>? alintiAlanlari;
       final alinti = widget.alintiBaglam;
       if (alinti != null) {
-        final alintiSnap = await FirebaseFirestore.instance
-            .collection('posts')
-            .doc(alinti.postId)
+        final alintiSnap = await SosyalCore.gonderiRef(alinti.postId)
             .get();
         if (!alintiSnap.exists) {
           mesajGoster('Alıntılanan gönderi bulunamadı.');
@@ -124,15 +160,20 @@ class _NewPostPageState extends State<NewPostPage> {
           'alintiSnapshot': AlintiGonderiSnapshot.gonderiden(
             alinti.postId,
             alintiPost,
+            icAlintiDahilEt: false,
           ).toMap(),
         };
       }
 
+      if (!userDoc.exists) {
+        mesajGoster('Profilin henüz hazır değil. Çıkış yapıp tekrar giriş dene.');
+        return;
+      }
+
       final firestore = FirebaseFirestore.instance;
       final postRef = firestore.collection("posts").doc();
-      final batch = firestore.batch();
-
-      batch.set(postRef, {
+      final userRef = firestore.collection("users").doc(user.uid);
+      final postVerisi = {
         "userId": user.uid,
         "kullaniciAdi": kullaniciAdi,
         "photoUrl": photoUrl,
@@ -149,49 +190,79 @@ class _NewPostPageState extends State<NewPostPage> {
         "ownerHesapGizli": hesapGizli,
         "createdAt": FieldValue.serverTimestamp(),
         ...?alintiAlanlari,
-      });
-      batch.update(firestore.collection("users").doc(user.uid), {
-        "puan": FieldValue.increment(10),
-        "gonderiSayisi": FieldValue.increment(1),
-        "sonGonderiPuanPostId": postRef.id,
-      });
+      };
 
       try {
-        await batch.commit();
+        await firestore.runTransaction((tx) async {
+          final userSnap = await tx.get(userRef);
+          if (!userSnap.exists) {
+            throw 'Profil bulunamadı. Tekrar giriş yap.';
+          }
+          tx.set(postRef, postVerisi);
+          tx.update(userRef, {
+            "puan": FieldValue.increment(10),
+            "gonderiSayisi": FieldValue.increment(1),
+            "sonGonderiPuanPostId": postRef.id,
+          });
+        });
       } on FirebaseException catch (e) {
-        mesajGoster(_firestoreHataMesaji(e));
+        mesajGoster(
+          internetAwareErrorMessage(
+            error: e,
+            fallback: 'Gönderi yazılamadı. Biraz sonra tekrar dene.',
+          ),
+        );
         return;
       }
 
       await SosyalServis.gonderiPaylasimHizLimitiKaydet(user.uid);
-      unawaited(MascotServis.sosyalOdulKaydet(user.uid, MascotServis.vilGonderi));
 
-      if (mentionUidleri.isNotEmpty) {
-        await SosyalServis.bahsetmeBildirimleriGonder(
-          gonderenUid: user.uid,
-          mentionUidleri: mentionUidleri,
-          kaynak: "post",
-          postId: postRef.id,
-        );
+      try {
+        await MascotServis.sosyalOdulKaydet(user.uid, MascotServis.vilGonderi);
+      } catch (e) {
+        debugPrint('gonderi maskot odul: $e');
       }
 
-      final gorevSonuc = await HaftalikGorevServis.aksiyonKaydet(
-        user.uid,
-        GorevAksiyon.gonderi,
-      );
-      await MascotServis.sosyalAksiyon(user.uid, 'gonderi');
+      if (mentionUidleri.isNotEmpty) {
+        try {
+          await SosyalServis.bahsetmeBildirimleriGonder(
+            gonderenUid: user.uid,
+            mentionUidleri: mentionUidleri,
+            kaynak: "post",
+            postId: postRef.id,
+          );
+        } catch (e) {
+          debugPrint('bahsetme bildirim: $e');
+        }
+      }
+
+      HaftalikGorevSonuc? gorevSonuc;
+      try {
+        gorevSonuc = await HaftalikGorevServis.aksiyonKaydet(
+          user.uid,
+          GorevAksiyon.gonderi,
+        );
+      } catch (e) {
+        debugPrint('haftalik gorev: $e');
+      }
+      try {
+        await MascotServis.sosyalAksiyon(user.uid, 'gonderi');
+      } catch (e) {
+        debugPrint('sosyalAksiyon gonderi: $e');
+      }
 
       postController.clear();
 
       if (!mounted) return;
 
+      mesajGoster('Gönderi paylaşıldı.', tip: VibeMesajTipi.basari);
       puanAnimasyonuGoster(context, 10);
-      if (gorevSonuc.basarili) {
+      if (gorevSonuc != null && gorevSonuc.basarili) {
         for (final mesaj in gorevSonuc.mesajlar) {
           mesajGoster(mesaj, tip: VibeMesajTipi.basari);
         }
-      } else if (gorevSonuc.hata != null &&
-          gorevSonuc.hata != HaftalikGorevServis.gorevlerAcilmaHatasi) {
+      } else if (gorevSonuc?.hata != null &&
+          gorevSonuc!.hata != HaftalikGorevServis.gorevlerAcilmaHatasi) {
         mesajGoster(gorevSonuc.hata!, tip: VibeMesajTipi.uyari);
       }
       FocusManager.instance.primaryFocus?.unfocus();
@@ -200,7 +271,7 @@ class _NewPostPageState extends State<NewPostPage> {
       mesajGoster(
         internetAwareErrorMessage(
           error: e,
-          fallback: "Gönderi paylaşılamadı.",
+          fallback: 'Gönderi yazılamadı. Biraz sonra tekrar dene.',
         ),
       );
     } finally {
@@ -208,16 +279,9 @@ class _NewPostPageState extends State<NewPostPage> {
         setState(() {
           isLoading = false;
         });
+        _hizLimitiniGuncelle();
       }
     }
-  }
-
-  // Firestore hata kodunu mesaja çevirir
-  String _firestoreHataMesaji(FirebaseException e) {
-    if (e.code == "permission-denied") {
-      return "Gönderi paylaşılamadı. Lütfen tekrar dene.";
-    }
-    return "Gönderi kaydedilemedi. Lütfen tekrar dene.";
   }
 
   void mesajGoster(String mesaj, {VibeMesajTipi tip = VibeMesajTipi.hata}) {
@@ -271,10 +335,14 @@ class _NewPostPageState extends State<NewPostPage> {
                                 detayaGit: false,
                               ),
                             ),
-                            IconButton(
-                              onPressed: widget.onAlintiIptal,
-                              icon: Icon(Icons.close, color: vibe.mutedText),
-                              tooltip: 'Alıntıyı kaldır',
+                            maestroButton(
+                              label: MaestroSemantics.alintiyiKaldir,
+                              onTap: widget.onAlintiIptal,
+                              child: IconButton(
+                                onPressed: widget.onAlintiIptal,
+                                icon: Icon(Icons.close, color: vibe.mutedText),
+                                tooltip: MaestroSemantics.alintiyiKaldir,
+                              ),
                             ),
                           ],
                         ),
@@ -284,29 +352,33 @@ class _NewPostPageState extends State<NewPostPage> {
                         height: gonderiKutusuYuksekligi,
                         child: Container(
                           width: double.infinity,
-                          decoration: vibe.cardDecoration(),
+                          decoration: vibe.kahramanKart(radius: 20),
                           clipBehavior: Clip.antiAlias,
-                          child: BahsetmeMetinAlani(
-                            controller: postController,
-                            haricUid: user?.uid,
-                            expands: true,
-                            style: TextStyle(
-                              color: theme.colorScheme.onSurface,
-                              fontSize: 16,
-                              height: 1.45,
-                            ),
-                            decoration: InputDecoration(
-                              counterText: "",
-                              hintText: widget.alintiBaglam != null
-                                  ? 'Yorumunu ekle...'
-                                  : 'Bugün vibe\'ın nasıl?',
-                              hintStyle: TextStyle(color: vibe.mutedText),
-                              contentPadding: const EdgeInsets.all(18),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(25),
-                                borderSide: BorderSide.none,
+                          child: Semantics(
+                            label: MaestroSemantics.gonderiMetni,
+                            textField: true,
+                            child: BahsetmeMetinAlani(
+                              controller: postController,
+                              haricUid: user?.uid,
+                              expands: true,
+                              style: TextStyle(
+                                color: theme.colorScheme.onSurface,
+                                fontSize: 16,
+                                height: 1.45,
                               ),
-                              filled: false,
+                              decoration: InputDecoration(
+                                counterText: "",
+                                hintText: widget.alintiBaglam != null
+                                    ? 'Yorumunu ekle...'
+                                    : 'Bugün vibe\'ın nasıl?',
+                                hintStyle: TextStyle(color: vibe.mutedText),
+                                contentPadding: const EdgeInsets.all(18),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(25),
+                                  borderSide: BorderSide.none,
+                                ),
+                                filled: false,
+                              ),
                             ),
                           ),
                         ),
@@ -315,8 +387,17 @@ class _NewPostPageState extends State<NewPostPage> {
                       SizedBox(
                         width: double.infinity,
                         height: 52,
-                        child: ElevatedButton.icon(
-                          onPressed: isLoading ? null : gonderiPaylas,
+                        child: maestroButton(
+                          label: widget.alintiBaglam != null
+                              ? MaestroSemantics.alintiyiPaylas
+                              : MaestroSemantics.paylas,
+                          onTap: isLoading || _kalanPaylasimMs > 0
+                              ? null
+                              : gonderiPaylas,
+                          child: ElevatedButton.icon(
+                          onPressed: isLoading || _kalanPaylasimMs > 0
+                              ? null
+                              : gonderiPaylas,
                           icon: isLoading
                               ? const SizedBox(
                                   width: 22,
@@ -326,13 +407,15 @@ class _NewPostPageState extends State<NewPostPage> {
                                     strokeWidth: 3,
                                   ),
                                 )
-                              : const Icon(Icons.send),
+                              : const Icon(VibeIkon.gonder),
                           label: Text(
                             isLoading
                                 ? 'Paylaşılıyor...'
-                                : widget.alintiBaglam != null
-                                    ? 'Alıntıyı paylaş'
-                                    : 'Paylaş',
+                                : _kalanPaylasimMs > 0
+                                    ? 'Paylaş (${(_kalanPaylasimMs / 1000).ceil()} sn)'
+                                    : widget.alintiBaglam != null
+                                        ? 'Alıntıyı paylaş'
+                                        : 'Paylaş',
                           ),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: vibe.primaryButton,
@@ -341,21 +424,17 @@ class _NewPostPageState extends State<NewPostPage> {
                               borderRadius: BorderRadius.circular(30),
                             ),
                             textStyle: const TextStyle(
-                              fontSize: 17,
+                              fontSize: 16,
                               fontWeight: FontWeight.bold,
                               letterSpacing: 1.1,
                             ),
                           ),
                         ),
+                        ),
                       ),
                       const SizedBox(height: 20),
                       StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-                        stream: user != null
-                            ? FirebaseFirestore.instance
-                                .collection("users")
-                                .doc(user.uid)
-                                .snapshots()
-                            : const Stream.empty(),
+                        stream: _kullaniciAkisi,
                         builder: (context, snapshot) {
                           if (!snapshot.hasData) {
                             return const SizedBox.shrink();
@@ -368,7 +447,9 @@ class _NewPostPageState extends State<NewPostPage> {
                           final seviye = mascot.seviye;
                           final mascotIsmi = mascot.isim.trim();
                           final gosterilecekIsim =
-                              mascotIsmi.isEmpty ? "maskotun" : mascotIsmi;
+                              mascotIsmi.isEmpty ? "Vibel" : mascotIsmi;
+                          final yumurtaDonemi =
+                              seviye < MascotServis.toklukAcilisSeviyesi;
 
                           return Container(
                             width: double.infinity,
@@ -382,6 +463,7 @@ class _NewPostPageState extends State<NewPostPage> {
                                 MascotLottieView(
                                   seviye: seviye,
                                   gorselDurum: mascot.gorselDurum,
+                                  renk: mascot.renk,
                                   width: 28,
                                   height: 28,
                                   fit: BoxFit.contain,
@@ -390,7 +472,9 @@ class _NewPostPageState extends State<NewPostPage> {
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Text(
-                                    "Her paylaşım $gosterilecekIsim için puan kazandırır.",
+                                    yumurtaDonemi
+                                        ? "Her gönderi $gosterilecekIsim için +${MascotServis.vilGonderi} gelişim puanı."
+                                        : "Her gönderi +${MascotServis.vilGonderi} vil kazandırır.",
                                     style: TextStyle(
                                       color: vibe.subtleText,
                                       fontSize: 12,

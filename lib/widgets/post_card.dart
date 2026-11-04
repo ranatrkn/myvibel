@@ -1,21 +1,26 @@
 // Tek gönderi kartı: beğeni, yorum, iletme, şikayet ve engelleme
+import 'package:myvibel/ana_kabuk.dart';
+import 'package:myvibel/tek_sefer_navigasyon.dart';
 import 'package:flutter/material.dart';
-import 'package:vibe_life/alinti_gonderi.dart';
-import 'package:vibe_life/app_theme.dart';
-import 'package:vibe_life/error_messages.dart';
-import 'package:vibe_life/etiket_navigasyon.dart';
-import 'package:vibe_life/newpost_page.dart';
-import 'package:vibe_life/profile_page.dart' hide tarihSaatYaz;
-import 'package:vibe_life/sosyal_servis.dart';
-import 'package:vibe_life/user_profile_page.dart';
-import 'package:vibe_life/utils/tarih_saat.dart';
-import 'package:vibe_life/vibe_snackbar.dart';
-import 'package:vibe_life/widgets/alinti_gonderi_onizleme.dart';
-import 'package:vibe_life/widgets/gonderi_ilet_paneli.dart';
-import 'package:vibe_life/widgets/hashtag_metin.dart';
-import 'package:vibe_life/widgets/post_begeni_yardimci.dart';
-import 'package:vibe_life/widgets/vibe_avatar.dart';
-import 'package:vibe_life/widgets/yorum_paneli.dart';
+import 'package:myvibel/alinti_gonderi.dart';
+import 'package:myvibel/app_theme.dart';
+import 'package:myvibel/error_messages.dart';
+import 'package:myvibel/etiket_navigasyon.dart';
+import 'package:myvibel/newpost_page.dart';
+import 'package:myvibel/sosyal_servis.dart';
+import 'package:myvibel/utils/tarih_saat.dart';
+import 'package:myvibel/yas_hesap_kontrol.dart';
+import 'package:myvibel/vibe_snackbar.dart';
+import 'package:myvibel/widgets/alinti_gonderi_onizleme.dart';
+import 'package:myvibel/widgets/gonderi_ilet_paneli.dart';
+import 'package:myvibel/widgets/hashtag_metin.dart';
+import 'package:myvibel/widgets/isim_yan_rozet.dart';
+import 'package:myvibel/widgets/post_begeni_yardimci.dart';
+import 'package:myvibel/widgets/vibe_avatar.dart';
+import 'package:myvibel/widgets/vibe_ikonlar.dart';
+import 'package:myvibel/maestro_semantics.dart';
+import 'package:myvibel/widgets/begenenler_paneli.dart';
+import 'package:myvibel/widgets/yorum_paneli.dart';
 
 // Gönderi kartı widget'ı
 class PostCard extends StatefulWidget {
@@ -102,6 +107,9 @@ class _PostCardState extends State<PostCard> {
         oldWidget.postOwnerId != widget.postOwnerId) {
       _begeniYoneticiOlustur();
     }
+    if (oldWidget.baslangicBegenildi != widget.baslangicBegenildi) {
+      _begeni.begeniDurumunuUygula(widget.baslangicBegenildi);
+    }
     if (oldWidget.baslangicBegeniSayisi != widget.baslangicBegeniSayisi) {
       _begeni.guncelle(yeniBaslangicBegeni: widget.baslangicBegeniSayisi);
     }
@@ -123,25 +131,12 @@ class _PostCardState extends State<PostCard> {
     if (widget.postOwnerId.isEmpty) return;
 
     if (widget.postOwnerId == widget.userId) {
-      if (widget.onKendiProfilineGit != null) {
-        widget.onKendiProfilineGit!();
-        return;
-      }
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => const ProfilePage(),
-        ),
-      );
+      if (AnaKabuk.kendiProfilineGit()) return;
+      widget.onKendiProfilineGit?.call();
       return;
     }
 
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => UserProfilePage(userId: widget.postOwnerId),
-      ),
-    );
+    profiliAc(context, widget.postOwnerId);
   }
 
   // Beğeni ekle/kaldır (optimistik UI)
@@ -170,6 +165,12 @@ class _PostCardState extends State<PostCard> {
             if (!mounted) return;
             setState(() {
               yorumSayisi += 1;
+            });
+          },
+          onYorumSilindi: () {
+            if (!mounted) return;
+            setState(() {
+              if (yorumSayisi > 0) yorumSayisi -= 1;
             });
           },
         );
@@ -265,7 +266,7 @@ class _PostCardState extends State<PostCard> {
     }
   }
 
-  // Gönderiyi alıntıla (yalnızca açık hesap gönderileri; alıntı zinciri korunur)
+  // Gönderiyi alıntıla (yalnızca açık hesap gönderileri)
   void _gonderiyiAlintila() {
     if (!_alintiYapilabilir) return;
     final baglam = AlintiGonderiBaglam(
@@ -278,14 +279,13 @@ class _PostCardState extends State<PostCard> {
         photoUrl: widget.photoUrl,
         avatarKey: widget.avatarKey,
         createdAt: widget.createdAt,
-        icAlinti: widget.alintiSnapshot,
       ),
     );
     if (widget.onAlintiYap != null) {
       widget.onAlintiYap!(baglam);
       return;
     }
-    Navigator.push(
+    tekSeferPush(
       context,
       MaterialPageRoute(
         builder: (_) => NewPostPage(
@@ -359,6 +359,8 @@ class _PostCardState extends State<PostCard> {
             onTap: kullaniciProfilineGit,
             leading: vibeAvatar(
               radius: 20,
+              userId: widget.postOwnerId,
+              liderTaciGoster: true,
               photoUrl: widget.photoUrl,
               avatarKey: widget.avatarKey,
               fallbackText: widget.kullaniciAdi,
@@ -366,18 +368,31 @@ class _PostCardState extends State<PostCard> {
               fallbackIconSize: 20,
               fallbackForegroundColor: theme.colorScheme.onPrimary,
             ),
-            title: Text(
-              widget.kullaniciAdi,
-              style: TextStyle(
-                color: theme.colorScheme.onSurface,
-                fontWeight: FontWeight.bold,
-              ),
+            title: Row(
+              children: [
+                Flexible(
+                  child: Text(
+                    widget.kullaniciAdi,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: theme.colorScheme.onSurface,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                IsimYanRozet(uid: widget.postOwnerId),
+              ],
             ),
             subtitle: Text(
               tarihSaatYaz(widget.createdAt),
               style: TextStyle(color: vibe.faintText, fontSize: 12),
             ),
-            trailing: PopupMenuButton<String>(
+            trailing: maestroButton(
+              label: MaestroSemantics.gonderiMenusu,
+              child: PopupMenuButton<String>(
+                    tooltip: MaestroSemantics.gonderiMenusu,
+                    padding: const EdgeInsets.all(8),
+                    icon: Icon(VibeIkon.menu, color: vibe.mutedText),
                     onSelected: (value) {
                       if (value == "report_post") {
                         _postuSikayetEt();
@@ -395,10 +410,11 @@ class _PostCardState extends State<PostCard> {
                           value: "quote_post",
                           child: Text("Alıntıla"),
                         ),
-                      const PopupMenuItem(
-                        value: "share_post",
-                        child: Text("Gönderiyi İlet"),
-                      ),
+                      if (YasHesapKontrol.maybeOf(context)?.mesajAcik == true)
+                        const PopupMenuItem(
+                          value: "share_post",
+                          child: Text("Gönderiyi İlet"),
+                        ),
                       // Başkasının gönderisinde şikayet/engel seçenekleri
                       if (widget.postOwnerId != widget.userId) ...[
                         const PopupMenuItem(
@@ -412,6 +428,7 @@ class _PostCardState extends State<PostCard> {
                       ],
                     ],
                   ),
+            ),
           ),
           // Gönderi metni (hashtag ve mention destekli)
           Padding(
@@ -426,6 +443,7 @@ class _PostCardState extends State<PostCard> {
                     style: TextStyle(
                       color: theme.colorScheme.onSurface,
                       fontWeight: FontWeight.w500,
+                      fontSize: 17,
                     ),
                     onHashtagTap: (tag) => etiketSayfasinaGit(context, tag),
                   ),
@@ -444,98 +462,134 @@ class _PostCardState extends State<PostCard> {
               ],
             ),
           ),
-          // Beğeni, yorum ve ilet butonları
           Padding(
             padding: const EdgeInsets.all(12),
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: [
-                InkWell(
-                  borderRadius: BorderRadius.circular(28),
+                maestroButton(
+                  label: MaestroSemantics.gonderiyiBegen,
                   onTap: begeniyiDegistir,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 10,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(28),
+                    onTap: begeniyiDegistir,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 10,
+                      ),
+                      child: Icon(
+                        _begeni.begenildi ? VibeIkon.begeni : VibeIkon.begeniBos,
+                        color: VibeAppTheme.accent,
+                        size: 26,
+                      ),
                     ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          _begeni.begenildi ? Icons.favorite : Icons.favorite_border,
-                          color: Colors.redAccent,
-                          size: 26,
+                  ),
+                ),
+                maestroButton(
+                  label: widget.userId == widget.postOwnerId
+                      ? MaestroSemantics.begenenleriGoster
+                      : MaestroSemantics.gonderiyiBegen,
+                  onTap: widget.userId == widget.postOwnerId
+                      ? () => begenenlerPaneliniAc(
+                            context,
+                            postId: widget.postId,
+                          )
+                      : begeniyiDegistir,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(28),
+                    onTap: widget.userId == widget.postOwnerId
+                        ? () => begenenlerPaneliniAc(
+                              context,
+                              postId: widget.postId,
+                            )
+                        : begeniyiDegistir,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 10,
+                      ),
+                      child: Text(
+                        "${_begeni.begeniSayisi}",
+                        style: TextStyle(
+                          color: vibe.mutedText,
+                          fontSize: 14,
                         ),
-                        const SizedBox(width: 6),
-                        Text(
-                          "${_begeni.begeniSayisi}",
-                          style: TextStyle(
-                            color: vibe.mutedText,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
                 const SizedBox(width: 18),
-                InkWell(
-                  borderRadius: BorderRadius.circular(28),
+                maestroButton(
+                  label: MaestroSemantics.yorumlariAc,
                   onTap: yorumPaneliniAc,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 10,
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.chat_bubble_outline,
-                          color: vibe.mutedText,
-                          size: 24,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          "$yorumSayisi",
-                          style: TextStyle(
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(28),
+                    onTap: yorumPaneliniAc,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            VibeIkon.yorum,
                             color: vibe.mutedText,
-                            fontSize: 14,
+                            size: 24,
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 6),
+                          Text(
+                            "$yorumSayisi",
+                            style: TextStyle(
+                              color: vibe.mutedText,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
                 if (_alintiYapilabilir) ...[
                   const SizedBox(width: 8),
-                  InkWell(
-                    borderRadius: BorderRadius.circular(28),
+                  maestroButton(
+                    label: MaestroSemantics.gonderiyiAlintila,
                     onTap: _gonderiyiAlintila,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(28),
+                      onTap: _gonderiyiAlintila,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 10,
+                        ),
+                        child: Icon(
+                          VibeIkon.alinti,
+                          color: vibe.mutedText,
+                          size: 24,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+                maestroButton(
+                  label: MaestroSemantics.gonderiyiIlet,
+                  onTap: _gonderiyiIlet,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(28),
+                    onTap: _gonderiyiIlet,
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 10,
                         vertical: 10,
                       ),
                       child: Icon(
-                        Icons.reply_outlined,
+                        VibeIkon.ilet,
                         color: vibe.mutedText,
                         size: 24,
                       ),
-                    ),
-                  ),
-                ],
-                InkWell(
-                  borderRadius: BorderRadius.circular(28),
-                  onTap: _gonderiyiIlet,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 10,
-                    ),
-                    child: Icon(
-                      Icons.send_outlined,
-                      color: vibe.mutedText,
-                      size: 24,
                     ),
                   ),
                 ),

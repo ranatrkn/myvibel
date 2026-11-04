@@ -1,0 +1,159 @@
+appId: com.myvibel.app
+---
+# Keşfet arama kutusundan ${HESAP} profiline gir, tuşları dene, geri dön.
+- tapOn:
+    text: "Kullanıcı veya etiket ara"
+    optional: true
+- runFlow:
+    when:
+      visible: "Kullanıcı veya etiket ara"
+    commands:
+      - eraseText
+      - inputText: ${HESAP}
+      - waitForAnimationToEnd:
+          timeout: 5000
+      - tapOn:
+          text: ${HESAP}
+          optional: true
+- runFlow:
+    when:
+      visible: "Mesaj Gönder|Yemek ver.*|Takip Et|Takip Ediliyor|İstek Gönderildi"
+    commands:
+      - tapOn:
+          text: "Mesaj Gönder"
+          optional: true
+      - runFlow:
+          when:
+            visible: "Mesaj yaz.*"
+          commands:
+            - tapOn:
+                text: "Mesaj yaz.*"
+                optional: true
+            - inputText: "MaestroQA merhaba"
+            - hideKeyboard
+            - tapOn:
+                text: "Sessize al.*"
+                optional: true
+            - tapOn:
+                text: "Sessize almayı kaldır"
+                optional: true
+            - back
+      - tapOn:
+          text: "Takipçi"
+          optional: true
+      - runFlow:
+          when:
+            visible: "Takipçi"
+          commands:
+            - tapOn:
+                text: "Takip Edilen.*"
+                optional: true
+            - back
+      - tapOn:
+          text: "Takip Edilen"
+          optional: true
+      - runFlow:
+          when:
+            notVisible: "Mesaj Gönder|Yemek ver.*"
+          commands:
+            - back
+      - tapOn:
+          text: "Gönderiyi beğen"
+          index: 0
+          optional: true
+      - tapOn:
+          text: "Yorumları aç"
+          index: 0
+          optional: true
+      - runFlow:
+          when:
+            visible: "Yorumlar.*"
+          commands:
+            - tapOn:
+                text: "Yorum yaz.*"
+                optional: true
+            - inputText: "MaestroQA karsi hesap yorum"
+            - hideKeyboard
+            - tapOn:
+                text: "Yorum gönder"
+                optional: true
+            - waitForAnimationToEnd:
+                timeout: 4000
+            - tapOn:
+                text: "Yorumu yanıtla"
+                optional: true
+            - tapOn:
+                text: "Yanıtla"
+                optional: true
+            - tapOn:
+                text: "Yorum yaz.*|@.* yanıtla.*"
+                optional: true
+            - inputText: "MaestroQA karsi hesap yanit"
+            - hideKeyboard
+            - tapOn:
+                text: "Yorum gönder"
+                optional: true
+            - waitForAnimationToEnd:
+                timeout: 4000
+            - tapOn:
+                text: "Yanıtları göster"
+                optional: true
+            - tapOn:
+                text: ".*yanıtı gör"
+                optional: true
+            - tapOn:
+                text: "Yanıtları gizle"
+                optional: true
+            - back
+      - tapOn:
+          text: "Gönderiyi ilet"
+          index: 0
+          optional: true
+      - runFlow:
+          when:
+            visible: "İlet.*|Gönderiyi İlet.*"
+          commands:
+            - back
+      - scrollUntilVisible:
+          element: "Yemek ver.*"
+          direction: DOWN
+          optional: true
+      - tapOn:
+          text: "Yemek ver.*"
+          optional: true
+      - tapOn:
+          text: "Tekrar gösterme"
+          optional: true
+      - tapOn:
+          text: "Kapat"
+          optional: true
+      - tapOn:
+          text: "Takip Ediliyor"
+          optional: true
+      - tapOn:
+          text: "Takip Et"
+          optional: true
+      - tapOn:
+          text: "İstek Gönderildi"
+          optional: true
+      - tapOn:
+          text: "Kullanıcıyı Şikayet Et"
+          optional: true
+      - runFlow:
+          when:
+            visible: "Şikayet Sebebi|Kullanıcıyı Şikayet Et"
+          commands:
+            - tapOn:
+                text: "Vazgeç"
+                optional: true
+      - tapOn:
+          text: "Kullanıcıyı Engelle"
+          optional: true
+      - runFlow:
+          when:
+            visible: "Kullanıcıyı Engelle"
+          commands:
+            - tapOn:
+                text: "Vazgeç"
+                optional: true
+      - back

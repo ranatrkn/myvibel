@@ -1,0 +1,43 @@
+appId: com.myvibel.app
+---
+- tapOn:
+    text: "Tamam"
+    optional: true
+- tapOn:
+    text: "Atla"
+    optional: true
+- runFlow:
+    when:
+      visible: "Giriş Yap"
+    commands:
+      - evalScript: ${true}
+- runFlow:
+    when:
+      notVisible: "Giriş Yap"
+    commands:
+      - tapOn:
+          text: "Alt menü Profil"
+          optional: true
+      - extendedWaitUntil:
+          visible: "Ayarlar"
+          timeout: 25000
+      - tapOn:
+          text: "Çıkış Yap"
+          optional: true
+      - runFlow:
+          when:
+            notVisible: "Giriş Yap"
+          commands:
+            - tapOn:
+                text: "Ayarlar"
+                optional: true
+            - scrollUntilVisible:
+                element: "Çıkış Yap"
+                direction: DOWN
+                optional: true
+            - tapOn:
+                text: "Çıkış Yap"
+                optional: true
+      - extendedWaitUntil:
+          visible: "Giriş Yap"
+          timeout: 25000

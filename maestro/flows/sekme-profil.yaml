@@ -1,0 +1,14 @@
+appId: com.myvibel.app
+---
+- tapOn:
+    text: "Alt menü Profil"
+    optional: true
+- runFlow:
+    when:
+      notVisible: "Ayarlar"
+    commands:
+      - tapOn:
+          text: "Alt menü Profil"
+          optional: true
+- waitForAnimationToEnd:
+    timeout: 2500

@@ -1,7 +1,47 @@
-appId: com.vibelife.app
+appId: com.myvibel.app
 ---
-- stopApp
-- openLink: vibelife://app
+- launchApp:
+    appId: com.myvibel.app
+    clearState: false
+    stopApp: false
+- openLink: myvibel://app
+- tapOn:
+    text: "Atla"
+    optional: true
+- tapOn:
+    text: "Başla"
+    optional: true
+- tapOn:
+    text: "Tamam"
+    optional: true
+- tapOn:
+    text: "İleri"
+    optional: true
+- tapOn:
+    text: "Google ile devam et"
+    optional: true
+- tapOn:
+    text: "Google ile giriş"
+    optional: true
+- tapOn:
+    text: "Rana Türkan"
+    optional: true
+- tapOn:
+    text: "ranaturkan70@gmail.com"
+    optional: true
+- tapOn:
+    text: "Atla"
+    optional: true
+- tapOn:
+    text: "Tamam"
+    optional: true
+- tapOn:
+    text: "Başla"
+    optional: true
+- tapOn:
+    text: "Alt menü Ana"
+    optional: true
+- runFlow: ana-sayfaya-don.yaml
 - extendedWaitUntil:
     visible: "Takip Edilen"
     timeout: 60000

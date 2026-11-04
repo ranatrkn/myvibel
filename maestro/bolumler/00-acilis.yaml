@@ -1,0 +1,6 @@
+appId: com.myvibel.app
+---
+- runFlow: ../flows/launch.yaml
+- tapOn:
+    text: "Tamam"
+    optional: true

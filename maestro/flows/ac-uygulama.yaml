@@ -1,0 +1,21 @@
+appId: com.myvibel.app
+---
+- launchApp:
+    appId: com.myvibel.app
+    clearState: false
+    stopApp: false
+- tapOn:
+    text: "Atla"
+    optional: true
+- tapOn:
+    text: "Başla"
+    optional: true
+- tapOn:
+    text: "Tamam"
+    optional: true
+- tapOn:
+    text: "Bir Daha Gösterme"
+    optional: true
+- tapOn:
+    text: "İleri"
+    optional: true

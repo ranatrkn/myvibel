@@ -1,8 +1,9 @@
 // Haftalık görev kartı widget'ı.
+import 'package:myvibel/tek_sefer_navigasyon.dart';
 import 'package:flutter/material.dart';
-import 'package:vibe_life/app_theme.dart';
-import 'package:vibe_life/haftalik_gorev_servis.dart';
-import 'package:vibe_life/leaderboard_page.dart';
+import 'package:myvibel/app_theme.dart';
+import 'package:myvibel/haftalik_gorev_servis.dart';
+import 'package:myvibel/leaderboard_page.dart';
 
 // Günün görevlerini ve haftalık puanı gösterir
 class HaftalikGorevKarti extends StatelessWidget {
@@ -78,7 +79,7 @@ class HaftalikGorevKarti extends StatelessWidget {
                 border: Border.all(color: vibe.cardBorder),
               ),
               child: Text(
-                'Maskot uyuyor. Gönderi, beğeni ve yorum görevleri için maskotun uyanması gerekir.',
+                "Vibel uyuyor. Gönderi, beğeni ve yorum görevleri için Vibel'in uyanması gerekir.",
                 style: TextStyle(color: vibe.mutedText, fontSize: 12),
               ),
             ),
@@ -110,7 +111,7 @@ class HaftalikGorevKarti extends StatelessWidget {
           ] else ...[
             const SizedBox(height: 8),
             Text(
-              '5/5 bitince +${HaftalikGorevServis.gunBonusu} bonus',
+              '${durum.gorevler.length}/${durum.gorevler.length} bitince +${HaftalikGorevServis.gunBonusu} bonus',
               style: TextStyle(color: vibe.mutedText, fontSize: 12),
             ),
           ],
@@ -119,7 +120,7 @@ class HaftalikGorevKarti extends StatelessWidget {
             alignment: Alignment.centerRight,
             child: TextButton.icon(
               onPressed: () {
-                Navigator.push(
+                tekSeferPush(
                   context,
                   MaterialPageRoute(
                     builder: (_) => const LeaderboardPage(),

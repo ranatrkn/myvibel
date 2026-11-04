@@ -1,0 +1,5 @@
+appId: com.myvibel.app
+---
+# Oturum zaten açık (@ranatrkan). Giriş bekleme yok.
+- runFlow: flows/ac-uygulama.yaml
+- runFlow: detayli-test.yaml

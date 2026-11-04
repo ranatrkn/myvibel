@@ -1,0 +1,43 @@
+appId: com.myvibel.app
+---
+# 5. seviye Vibel'i gönderi paylaşarak 6. seviyeye çıkarır.
+# Çıkış Yap'a dokunma. Gönderiler arası en az 6 sn beklenir.
+- launchApp
+- extendedWaitUntil:
+    visible: "Takip Edilen"
+    timeout: 60000
+- assertVisible: "Takip Edilen"
+
+- repeat:
+    times: 25
+    commands:
+      - runFlow:
+          when:
+            notVisible: "• Seviye 6"
+          commands:
+            - tapOn: "Alt menü Yeni gönderi"
+            - extendedWaitUntil:
+                visible: "Paylaş"
+                timeout: 20000
+            - tapOn: "Gönderi metni"
+            - inputText: "Rety gelisim"
+            - hideKeyboard
+            - waitForAnimationToEnd:
+                timeout: 3000
+            - tapOn: "Paylaş"
+            - runFlow:
+                when:
+                  visible: "Cok hizli gonderi paylasiyorsun.*"
+                commands:
+                  - waitForAnimationToEnd:
+                      timeout: 8000
+                  - tapOn: "Paylaş"
+            - extendedWaitUntil:
+                visible: "Takip Edilen"
+                timeout: 30000
+            - waitForAnimationToEnd:
+                timeout: 8000
+
+- extendedWaitUntil:
+    visible: "• Seviye 6"
+    timeout: 20000

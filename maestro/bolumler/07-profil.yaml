@@ -1,0 +1,76 @@
+appId: com.myvibel.app
+---
+- runFlow: ../flows/ana-sayfaya-don.yaml
+- tapOn: "Alt menü Profil"
+- scrollUntilVisible:
+    element: "Beğendiklerim"
+    direction: DOWN
+    timeout: 20000
+- tapOn: "Gönderilerim.*"
+- tapOn: "Beğendiklerim"
+- tapOn: "Gönderilerim.*"
+- tapOn:
+    text: "Izgara görünümü|Liste görünümü|Profil görünümünü değiştir"
+    optional: true
+- tapOn: "Takipçi listesi"
+- waitForAnimationToEnd:
+    timeout: 2000
+- back
+- tapOn: "Takip edilen listesi"
+- waitForAnimationToEnd:
+    timeout: 2000
+- back
+- scrollUntilVisible:
+    element: "Liderlik tablosu"
+    direction: UP
+    timeout: 20000
+- tapOn: "Liderlik tablosu"
+- waitForAnimationToEnd:
+    timeout: 2000
+- back
+- tapOn: "Profili düzenle"
+- runFlow:
+    when:
+      visible: "Profili Düzenle.*"
+    commands:
+      - tapOn: "Vazgeç"
+- scrollUntilVisible:
+    element: "Arkadaşlık bağları"
+    direction: UP
+    optional: true
+- scrollUntilVisible:
+    element: "Arkadaşlık bağları"
+    direction: DOWN
+    optional: true
+- tapOn:
+    text: "Arkadaşlık bağları"
+    optional: true
+- runFlow:
+    when:
+      visible: "Arkadaşlık bağları"
+    commands:
+      - back
+- scrollUntilVisible:
+    element: "Vibel odası"
+    direction: DOWN
+    optional: true
+- tapOn:
+    text: "Vibel odası"
+    optional: true
+- runFlow:
+    when:
+      visible: ".*odası"
+    commands:
+      - tapOn:
+          text: "Uyandır"
+          optional: true
+      - tapOn:
+          text: "Yemek.*"
+          optional: true
+      - tapOn:
+          text: "Tekrar gösterme"
+          optional: true
+      - tapOn:
+          text: "Kapat"
+          optional: true
+      - back

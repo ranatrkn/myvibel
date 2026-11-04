@@ -1,0 +1,55 @@
+appId: com.myvibel.app
+---
+- runFlow: ../flows/ana-sayfaya-don.yaml
+- tapOn: "Alt menü Keşfet"
+- extendedWaitUntil:
+    visible: "Liderlik"
+    timeout: 30000
+- tapOn: "Liderlik"
+- waitForAnimationToEnd:
+    timeout: 3000
+- back
+- tapOn:
+    text: "Kullanıcı veya etiket ara"
+    optional: true
+- runFlow:
+    when:
+      visible: "Kullanıcı veya etiket ara"
+    commands:
+      - inputText: "ttt"
+      - hideKeyboard
+      - waitForAnimationToEnd:
+          timeout: 8000
+      - tapOn:
+          text: "Kullanıcı @ttt"
+          optional: true
+      - tapOn:
+          text: "@ttt"
+          optional: true
+      - tapOn:
+          text: "ttt"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 4000
+- runFlow:
+    when:
+      visible: "Mesaj Gönder|Takip Et|Takip Ediliyor"
+    commands:
+      - tapOn:
+          text: "Mesaj Gönder"
+          optional: true
+      - runFlow:
+          when:
+            visible: "Mesaj yaz.*"
+          commands:
+            - tapOn: "Mesaj yaz.*"
+            - inputText: "MaestroQA mesaj koyu"
+            - hideKeyboard
+            - tapOn:
+                text: "Gönder|Mesaj gönder"
+                optional: true
+            - back
+      - tapOn:
+          text: "Takip Et"
+          optional: true
+      - back

@@ -1,0 +1,12 @@
+appId: com.myvibel.app
+---
+- runFlow: ana-sayfaya-don.yaml
+- tapOn: "Alt menü Yeni gönderi"
+- runFlow: yeni-gonderi-hazir.yaml
+- tapOn: "Gönderi metni"
+- inputText: "Maestro gonderi kontrol"
+- hideKeyboard
+- tapOn: "Paylaş|Alıntıyı paylaş"
+- extendedWaitUntil:
+    visible: "Gönderi paylaşıldı."
+    timeout: 20000

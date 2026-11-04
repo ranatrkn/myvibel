@@ -1,0 +1,6 @@
+﻿{
+  "terminal.integrated.env.windows": {
+    "Path": "C:\\maestro\\bin;${env:Path}",
+    "MAESTRO_CLI_NO_ANALYTICS": "1"
+  }
+}

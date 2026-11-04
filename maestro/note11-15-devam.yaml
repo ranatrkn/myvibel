@@ -1,0 +1,5 @@
+appId: com.myvibel.app
+---
+# @rana zaten açık
+- runFlow: flows/ac-uygulama.yaml
+- runFlow: genis-15.yaml

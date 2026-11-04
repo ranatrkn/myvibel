@@ -1,11 +1,13 @@
 // Gönderiyi takip edilenlere DM ile iletme paneli.
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:vibe_life/app_theme.dart';
-import 'package:vibe_life/error_messages.dart';
-import 'package:vibe_life/sosyal_servis.dart';
-import 'package:vibe_life/vibe_snackbar.dart';
-import 'package:vibe_life/widgets/vibe_avatar.dart';
+import 'package:myvibel/app_theme.dart';
+import 'package:myvibel/error_messages.dart';
+import 'package:myvibel/sosyal_servis.dart';
+import 'package:myvibel/vibe_snackbar.dart';
+import 'package:myvibel/widgets/vibe_avatar.dart';
+import 'package:myvibel/widgets/vibe_yukleniyor.dart';
+import 'package:myvibel/widgets/vibe_ikonlar.dart';
 
 // Alt sayfa olarak gönderi iletme panelini açar
 Future<void> gonderiIletPaneliniGoster({
@@ -26,6 +28,7 @@ Future<void> gonderiIletPaneliniGoster({
     ),
     builder: (ctx) {
       return _GonderiIletPaneli(
+        ustContext: context,
         postId: postId,
         postMetin: postMetin,
         postKullaniciAdi: postKullaniciAdi,
@@ -36,11 +39,13 @@ Future<void> gonderiIletPaneliniGoster({
 
 // Gönderi iletme alt sayfa içeriği
 class _GonderiIletPaneli extends StatefulWidget {
+  final BuildContext ustContext;
   final String postId;
   final String postMetin;
   final String postKullaniciAdi;
 
   const _GonderiIletPaneli({
+    required this.ustContext,
     required this.postId,
     required this.postMetin,
     required this.postKullaniciAdi,
@@ -52,7 +57,6 @@ class _GonderiIletPaneli extends StatefulWidget {
 
 class _GonderiIletPaneliState extends State<_GonderiIletPaneli> {
   late Future<List<Map<String, dynamic>>> _profillerFuture;
-  String _islemdeUid = "";
 
   @override
   void initState() {
@@ -61,10 +65,11 @@ class _GonderiIletPaneliState extends State<_GonderiIletPaneli> {
     _profillerFuture = SosyalServis.takipEdilenProfilleriGetir(uid);
   }
 
-  // Seçilen kullanıcıya gönderiyi iletir
+  // Seçilen kullanıcıya gönderiyi iletir (panel hemen kapanır, gönderim arka planda)
   Future<void> _ilet(String hedefUid) async {
-    if (_islemdeUid.isNotEmpty) return;
-    setState(() => _islemdeUid = hedefUid);
+    final ust = widget.ustContext;
+    Navigator.pop(context);
+    vibeSnackbarGoster(ust, "Gönderi iletildi.", tip: VibeMesajTipi.basari);
     try {
       await SosyalServis.gonderiIlet(
         postId: widget.postId,
@@ -72,20 +77,16 @@ class _GonderiIletPaneliState extends State<_GonderiIletPaneli> {
         postMetin: widget.postMetin,
         postKullaniciAdi: widget.postKullaniciAdi,
       );
-      if (!mounted) return;
-      Navigator.pop(context);
-      vibeSnackbarGoster(context, "Gönderi iletildi.", tip: VibeMesajTipi.basari);
     } catch (e) {
-      if (!mounted) return;
+      if (!ust.mounted) return;
+      ScaffoldMessenger.of(ust).hideCurrentSnackBar();
       vibeSnackbarGoster(
-        context,
+        ust,
         internetAwareErrorMessage(
           error: e,
           fallback: "Gönderi iletilemedi.",
         ),
       );
-    } finally {
-      if (mounted) setState(() => _islemdeUid = "");
     }
   }
 
@@ -135,18 +136,31 @@ class _GonderiIletPaneliState extends State<_GonderiIletPaneli> {
               child: FutureBuilder<List<Map<String, dynamic>>>(
                 future: _profillerFuture,
                 builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return Center(
-                      child: CircularProgressIndicator(
-                        color: theme.colorScheme.primary,
+                  // Panel yüklenirken tam ekran açılıp sonra küçülmesin
+                  Widget sabitAlan(Widget child) =>
+                      SizedBox(height: 180, child: Center(child: child));
+
+                  if (snapshot.connectionState == ConnectionState.waiting &&
+                      !snapshot.hasData) {
+                    return sabitAlan(
+                      VibeYukleniyor(renk: theme.colorScheme.primary),
+                    );
+                  }
+
+                  if (snapshot.hasError) {
+                    return sabitAlan(
+                      Text(
+                        "Takip edilenler yüklenemedi.",
+                        style: TextStyle(color: vibe.mutedText),
+                        textAlign: TextAlign.center,
                       ),
                     );
                   }
 
                   final profiller = snapshot.data ?? [];
                   if (profiller.isEmpty) {
-                    return Center(
-                      child: Text(
+                    return sabitAlan(
+                      Text(
                         "İletmek için önce birini takip et.",
                         style: TextStyle(color: vibe.mutedText),
                       ),
@@ -162,7 +176,6 @@ class _GonderiIletPaneliState extends State<_GonderiIletPaneli> {
                       final uid = p["uid"] as String;
                       final adSoyad = p["adSoyad"] as String;
                       final kullaniciAdi = p["kullaniciAdi"] as String;
-                      final yukleniyor = _islemdeUid == uid;
 
                       return ListTile(
                         shape: RoundedRectangleBorder(
@@ -172,6 +185,7 @@ class _GonderiIletPaneliState extends State<_GonderiIletPaneli> {
                         tileColor: vibe.cardColor,
                         leading: vibeAvatar(
                           radius: 20,
+                          userId: uid,
                           photoUrl: (p["photoUrl"] ?? "").toString(),
                           avatarKey: (p["avatarKey"] ?? "").toString(),
                           fallbackText: kullaniciAdi,
@@ -188,17 +202,8 @@ class _GonderiIletPaneliState extends State<_GonderiIletPaneli> {
                           "@$kullaniciAdi",
                           style: TextStyle(color: vibe.mutedText),
                         ),
-                        trailing: yukleniyor
-                            ? SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: theme.colorScheme.primary,
-                                ),
-                              )
-                            : Icon(Icons.send, color: vibe.mutedText),
-                        onTap: yukleniyor ? null : () => _ilet(uid),
+                        trailing: Icon(VibeIkon.gonder, color: vibe.mutedText),
+                        onTap: () => _ilet(uid),
                       );
                     },
                   );

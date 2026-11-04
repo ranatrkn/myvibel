@@ -1,4 +1,4 @@
-appId: com.vibelife.app
+appId: com.myvibel.app
 ---
 - runFlow: flows/launch.yaml
 
@@ -38,7 +38,7 @@ appId: com.vibelife.app
 - assertVisible: "Henüz gönderin yok."
 
 # Maskot odası
-- tapOn: "Maskot odasini ac"
+- tapOn: "Vibel odası"
 - extendedWaitUntil:
     visible: "Maskot odası"
     timeout: 20000

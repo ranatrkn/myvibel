@@ -1,7 +1,8 @@
 // Haftalık günlük görev sistemi ve Firestore kaydı.
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
-import 'package:vibe_life/maskot_servis.dart';
+import 'package:myvibel/maskot_servis.dart';
+import 'package:myvibel/sosyal/takip_servis.dart';
 
 // Görev ilerlemesinde sayılan aksiyon türleri
 enum GorevAksiyon { acilis, begeni, takip, yorum, gonderi }
@@ -92,11 +93,18 @@ class HaftalikGorevSonuc {
 class HaftalikGorevServis {
   HaftalikGorevServis._();
 
-  static const gunBonusu = 100; // Gün tamamlama bonusu
-  static const maksHaftalikPuan = 1320; // Haftalık puan üst sınırı
+  static const gunBonusu = 20;
+  static const maksHaftalikPuan = 1000;
+  static const altinPuan = 1000;
+  static const gumusPuan = 900;
+  static const bronzPuan = 800;
+  static const altinVil = 300;
+  static const gumusVil = 200;
+  static const bronzVil = 100;
+  static const katilimVil = 50;
 
   static String get gorevlerAcilmaHatasi =>
-      'Görevler ${MascotServis.mutlulukAcilisSeviyesi}. seviyede açılır.';
+      'Görevler ${MascotServis.gorevAcilisSeviyesi}. seviyede açılır.';
 
   static const _gunAdlari = [
     'Pazartesi',
@@ -113,14 +121,15 @@ class HaftalikGorevServis {
   static const _yorumHedefleri = [2, 4, 6, 8, 10, 12, 14];
   static const _gonderiHedefleri = [1, 2, 3, 4, 3, 2, 1];
 
+  // Dört görev + 20 bonus, yedi gün = 1000.
   static const _gunlukGorevOdulleri = [
-    [10, 10, 10, 15, 15],
-    [10, 15, 15, 15, 15],
-    [10, 15, 15, 20, 20],
-    [10, 15, 20, 20, 25],
-    [10, 20, 20, 20, 25],
-    [10, 20, 20, 25, 30],
-    [10, 25, 25, 25, 40],
+    [19, 19, 22, 22],
+    [22, 24, 24, 26],
+    [24, 26, 29, 31],
+    [27, 29, 33, 35],
+    [29, 31, 33, 37],
+    [31, 33, 38, 42],
+    [38, 40, 44, 52],
   ];
 
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -148,6 +157,21 @@ class HaftalikGorevServis {
   }
 
   // Haftanın gün adını döndürür
+  static String rozetTuru(int puan) {
+    if (puan >= altinPuan) return 'altin';
+    if (puan >= gumusPuan) return 'gumus';
+    if (puan >= bronzPuan) return 'bronz';
+    return '';
+  }
+
+  static int vilOdulu(int puan) {
+    if (puan >= altinPuan) return altinVil;
+    if (puan >= gumusPuan) return gumusVil;
+    if (puan >= bronzPuan) return bronzVil;
+    if (puan > 0) return katilimVil;
+    return 0;
+  }
+
   static String bugununAdi([DateTime? tarih]) {
     final gun = (tarih ?? turkiyeSimdi()).weekday - DateTime.monday;
     return _gunAdlari[gun.clamp(0, _gunAdlari.length - 1)];
@@ -171,38 +195,31 @@ class HaftalikGorevServis {
     final oduller = _gunlukGorevOdulleri[index];
     return [
       GorevSatiri(
-        id: 'acilis',
-        baslik: 'Uygulamaya gir',
-        hedef: 1,
-        odul: oduller[0],
-        aksiyon: GorevAksiyon.acilis,
-      ),
-      GorevSatiri(
         id: 'begeni',
         baslik: 'Gönderi beğen',
         hedef: _begeniHedefleri[index],
-        odul: oduller[1],
+        odul: oduller[0],
         aksiyon: GorevAksiyon.begeni,
       ),
       GorevSatiri(
         id: 'takip',
         baslik: 'Kişi takip et',
         hedef: _takipHedefleri[index],
-        odul: oduller[2],
+        odul: oduller[1],
         aksiyon: GorevAksiyon.takip,
       ),
       GorevSatiri(
         id: 'yorum',
         baslik: 'Yorum yap',
         hedef: _yorumHedefleri[index],
-        odul: oduller[3],
+        odul: oduller[2],
         aksiyon: GorevAksiyon.yorum,
       ),
       GorevSatiri(
         id: 'gonderi',
         baslik: 'Gönderi paylaş',
         hedef: _gonderiHedefleri[index],
-        odul: oduller[4],
+        odul: oduller[3],
         aksiyon: GorevAksiyon.gonderi,
       ),
     ];
@@ -368,7 +385,7 @@ class HaftalikGorevServis {
       gorevler: durum.gorevler,
     );
 
-    if (!guncelDurum.gorevTamamMi(gorev) && aksiyon != GorevAksiyon.acilis) {
+    if (!guncelDurum.gorevTamamMi(gorev)) {
       final hedefGorev = guncelDurum.gorevler.firstWhere(
         (item) => item.aksiyon == aksiyon,
       );
@@ -414,6 +431,44 @@ class HaftalikGorevServis {
     return 'Görev kaydedilemedi (${e.code}).';
   }
 
+  static Map<String, dynamic> _haftaKapanisYazisi({
+    required Map<String, dynamic> data,
+    required Map<String, dynamic> synced,
+    required int tacSira,
+  }) {
+    final ham = data['haftalikGorev'];
+    if (ham is! Map) return {};
+    final eskiHafta = (ham['hafta'] ?? '').toString();
+    final yeniHafta = (synced['hafta'] ?? '').toString();
+    if (eskiHafta.isEmpty || eskiHafta == yeniHafta) return {};
+    if ((data['sonOdulHafta'] ?? '').toString() == eskiHafta) return {};
+
+    final puan = _int(ham['puan']);
+    final vil = vilOdulu(puan);
+    final tur = rozetTuru(puan);
+    final robot = data['robot'] is Map
+        ? Map<String, dynamic>.from(data['robot'] as Map)
+        : <String, dynamic>{};
+    final yaz = <String, dynamic>{
+      'sonOdulHafta': eskiHafta,
+    };
+    if (vil > 0) {
+      yaz['robot.etkilesimPuani'] = _int(robot['etkilesimPuani']) + vil;
+    }
+    if (tur == 'altin') yaz['rozetAltin'] = _int(data['rozetAltin']) + 1;
+    if (tur == 'gumus') yaz['rozetGumus'] = _int(data['rozetGumus']) + 1;
+    if (tur == 'bronz') yaz['rozetBronz'] = _int(data['rozetBronz']) + 1;
+    if (tacSira >= 1 &&
+        tacSira <= 3 &&
+        (data['sonTacHafta'] ?? '').toString() != eskiHafta) {
+      yaz['sonTacHafta'] = eskiHafta;
+      if (tacSira == 1) yaz['tacAltin'] = _int(data['tacAltin']) + 1;
+      if (tacSira == 2) yaz['tacGumus'] = _int(data['tacGumus']) + 1;
+      if (tacSira == 3) yaz['tacBronz'] = _int(data['tacBronz']) + 1;
+    }
+    return yaz;
+  }
+
   /// Gün/hafta değiştiyse Firestore kaydını günceller.
   static Future<HaftalikGorevSonuc> gunSenkronizeEt(String uid) async {
     if (uid.isEmpty) {
@@ -421,6 +476,12 @@ class HaftalikGorevServis {
     }
 
     final ref = _db.collection('users').doc(uid);
+    var tacSira = 0;
+    try {
+      final ust = await TakipServis.liderlikUstUcUidleri();
+      final yer = ust.indexOf(uid);
+      if (yer >= 0) tacSira = yer + 1;
+    } catch (_) {}
     try {
       return await _db.runTransaction<HaftalikGorevSonuc>((tx) async {
         final snap = await tx.get(ref);
@@ -431,19 +492,24 @@ class HaftalikGorevServis {
           return HaftalikGorevSonuc(hata: gorevlerAcilmaHatasi);
         }
 
-        final ham = snap.data()?['haftalikGorev'];
+        final data = snap.data() ?? {};
+        final ham = data['haftalikGorev'];
         final synced = senkronHaftalikGorevMap(ham);
-        if (_mapAyni(ham, synced)) {
+        final odul = _haftaKapanisYazisi(
+          data: data,
+          synced: synced,
+          tacSira: tacSira,
+        );
+        if (odul.isEmpty && _mapAyni(ham, synced)) {
           return HaftalikGorevSonuc(
-            durum: kullaniciVerisindenDurum(snap.data()),
+            durum: kullaniciVerisindenDurum(data),
           );
         }
 
-        tx.set(
-          ref,
-          {'haftalikGorev': synced},
-          SetOptions(merge: true),
-        );
+        tx.update(ref, {
+          'haftalikGorev': synced,
+          ...odul,
+        });
 
         return HaftalikGorevSonuc(
           durum: kullaniciVerisindenDurum({
@@ -460,21 +526,9 @@ class HaftalikGorevServis {
     }
   }
 
-  /// Uygulama açılışında: gün senkronu + giriş görevi.
-  static Future<HaftalikGorevSonuc> oturumSenkronizeEt(String uid) async {
-    final senkron = await gunSenkronizeEt(uid);
-    if (senkron.hata == gorevlerAcilmaHatasi) {
-      return senkron;
-    }
-    if (senkron.hata != null &&
-        senkron.hata != gorevlerAcilmaHatasi) {
-      return senkron;
-    }
-    return aksiyonKaydet(uid, GorevAksiyon.acilis);
-  }
-
-  static Future<HaftalikGorevSonuc> acilisKaydet(String uid) {
-    return aksiyonKaydet(uid, GorevAksiyon.acilis);
+  /// Uygulama açılışında gün/hafta senkronu.
+  static Future<HaftalikGorevSonuc> oturumSenkronizeEt(String uid) {
+    return gunSenkronizeEt(uid);
   }
 
   // Sosyal aksiyon sonrası görev ilerlemesini kaydeder

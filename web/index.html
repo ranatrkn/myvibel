@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="tr">
 <head>
   <!--
     If you are serving your web app in a path other than the root, change the
@@ -17,20 +17,68 @@
   <base href="$FLUTTER_BASE_HREF">
 
   <meta charset="UTF-8">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="description" content="MyVibel: gönderi paylaş, arkadaşlarınla mesajlaş, Vibel'ini büyüt. Sosyal akış, puan ve haftalık görevler.">
+  <meta name="keywords" content="MyVibel, My Vibel, vibel karakteri, sosyal medya, Vibel">
+  <meta name="robots" content="index, follow, max-image-preview:none">
+  <meta name="theme-color" content="#1A002E">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <link rel="canonical" href="https://myvibel.com/app/">
+
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="MyVibel">
+  <meta property="og:url" content="https://myvibel.com/app/">
+  <meta property="og:title" content="MyVibel">
+  <meta property="og:description" content="Paylaş, Bağ kur, Vibel ile büyü.">
 
   <!-- iOS meta tags & icons -->
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="vibe_life">
-  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="MyVibel">
 
-  <!-- Favicon -->
-  <link rel="icon" type="image/png" href="favicon.png"/>
+  <link rel="icon" type="image/png" href="favicon.png">
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4786108844945952" crossorigin="anonymous"></script>
 
-  <title>vibe_life</title>
-  <link rel="manifest" href="manifest.json">
+  <title>MyVibel</title>
+
+  <!-- Google Sign-In (web) -->
+  <meta name="google-signin-client_id" content="808611716551-e9usr5incluue56upgtout3r2lbme2cs.apps.googleusercontent.com">
+
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: #1A002E;
+    }
+    #yukleniyor {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      color: rgba(255,255,255,.85);
+      font-family: system-ui, "Segoe UI", sans-serif;
+      z-index: 9999;
+      pointer-events: none;
+      transition: opacity .25s ease;
+    }
+    #yukleniyor.gizli { opacity: 0; }
+    #yukleniyor .nokta {
+      width: 36px;
+      height: 36px;
+      border: 3px solid rgba(255,255,255,.2);
+      border-top-color: #c62828;
+      border-radius: 50%;
+      animation: don 0.8s linear infinite;
+    }
+    @keyframes don { to { transform: rotate(360deg); } }
+  </style>
 
   <script>
     // The value below is injected by flutter build, do not touch.
@@ -39,17 +87,58 @@
   <!-- This script adds the flutter initialization JS code -->
   <script src="flutter.js" defer></script>
 </head>
-<body>
+<body style="margin:0;background:#1A002E;">
+  <div id="yukleniyor" aria-live="polite">
+    <div class="nokta" aria-hidden="true"></div>
+    <div>MyVibel yükleniyor…</div>
+  </div>
   <script>
+    // Eski service worker / cache temizliği (eski web sürümü takılmasın)
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function(regs) {
+        for (var i = 0; i < regs.length; i++) {
+          regs[i].unregister();
+        }
+      });
+      if (window.caches && caches.keys) {
+        caches.keys().then(function(keys) {
+          for (var i = 0; i < keys.length; i++) {
+            caches.delete(keys[i]);
+          }
+        });
+      }
+    }
+  </script>
+  <script>
+    function yukleniyorGizle() {
+      var el = document.getElementById('yukleniyor');
+      if (!el) return;
+      el.classList.add('gizli');
+      setTimeout(function() { el.remove(); }, 300);
+    }
     window.addEventListener('load', function(ev) {
-      // Download main.dart.js
+      // main.dart.js dosya adı sabit; query ile tarayıcı önbelleğini kır.
+      var entry = 'main.dart.js?v=' + encodeURIComponent(serviceWorkerVersion || String(Date.now()));
       _flutter.loader.loadEntrypoint({
-        serviceWorker: {
-          serviceWorkerVersion: serviceWorkerVersion,
-        },
+        entrypointUrl: entry,
         onEntrypointLoaded: function(engineInitializer) {
-          engineInitializer.initializeEngine().then(function(appRunner) {
+          engineInitializer.initializeEngine({
+            renderer: 'canvaskit',
+            // entrypoint query string asset yollarını bozmasın
+            assetBase: '/app/',
+            canvasKitBaseUrl: '/app/canvaskit/',
+          }).then(function(appRunner) {
             appRunner.runApp();
+            // Flutter ilk frame'e yakın gizle
+            setTimeout(yukleniyorGizle, 600);
+          }).catch(function(err) {
+            console.error('Flutter init failed', err);
+            yukleniyorGizle();
+            document.body.innerHTML =
+              '<div style="color:#fff;font-family:system-ui;padding:24px;text-align:center">' +
+              '<h2>MyVibel yüklenemedi</h2>' +
+              '<p>Sayfayı yenile (Ctrl+F5). Sorun sürerse farklı tarayıcı dene.</p>' +
+              '</div>';
           });
         }
       });

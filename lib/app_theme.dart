@@ -8,7 +8,7 @@ extension VibeThemeContext on BuildContext {
       VibeThemeExtension.dark;
 }
 
-// VibeLife'a özel tema renkleri ve dekorasyonları
+// MyVibel'a özel tema renkleri ve dekorasyonları
 @immutable
 class VibeThemeExtension extends ThemeExtension<VibeThemeExtension> {
   final Color gradientStart;
@@ -41,40 +41,39 @@ class VibeThemeExtension extends ThemeExtension<VibeThemeExtension> {
     required this.isDark,
   });
 
-  static const dark = VibeThemeExtension( // Koyu tema paleti
+  static const dark = VibeThemeExtension(
     gradientStart: Color.fromARGB(255, 40, 0, 0),
     gradientEnd: Color.fromARGB(255, 15, 0, 38),
-    cardColor: Color(0x12FFFFFF),
-    cardBorder: Color(0x1FFFFFFF),
+    cardColor: Color(0x18FFFFFF),
+    cardBorder: Color(0x28FFFFFF),
     mutedText: Color(0x8AFFFFFF),
     subtleText: Color(0xB3FFFFFF),
     faintText: Color(0x61FFFFFF),
     sheetBackground: Color(0xFF1A002E),
-    inputFill: Color(0x1AFFFFFF),
+    inputFill: Color(0x1FFFFFFF),
     dialogBackground: Color(0xFF1A002E),
     primaryButton: Color.fromARGB(255, 120, 0, 0),
     titleOnGradient: Color.fromARGB(200, 237, 237, 237),
     isDark: true,
   );
 
-  static const light = VibeThemeExtension( // Açık tema paleti
-    gradientStart: Color(0xFFFFE8F0),
-    gradientEnd: Color(0xFFF0E8FA),
+  static const light = VibeThemeExtension(
+    gradientStart: Color(0xFFFFE8E8),
+    gradientEnd: Color(0xFFE8E8FA),
     cardColor: Color(0xFFFFFFFF),
-    cardBorder: Color(0x1A6B5B7A),
-    mutedText: Color(0xFF2D2538),
-    subtleText: Color(0xFF18131F),
-    faintText: Color(0xFF3F334D),
+    cardBorder: Color(0x336B5B7A),
+    mutedText: Color(0xFF6A6278),
+    subtleText: Color(0xFF524A5E),
+    faintText: Color(0xFF7A7388),
     sheetBackground: Color(0xFFFDFBFF),
     inputFill: Color(0xFFFFFFFF),
     dialogBackground: Color(0xFFFDFBFF),
     primaryButton: Color.fromARGB(255, 120, 0, 0),
-    titleOnGradient: Color(0xFF1A1025),
+    titleOnGradient: Color(0xFF524A5E),
     isDark: false,
   );
 
-  // Kart stili dekorasyonu
-  BoxDecoration cardDecoration({double radius = 25}) {
+  BoxDecoration cardDecoration({double radius = 16}) {
     return BoxDecoration(
       color: cardColor,
       borderRadius: BorderRadius.circular(radius),
@@ -83,21 +82,58 @@ class VibeThemeExtension extends ThemeExtension<VibeThemeExtension> {
           ? null
           : [
               BoxShadow(
-                color: Colors.black.withOpacity(0.06),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 10,
+                offset: const Offset(0, 3),
               ),
             ],
     );
   }
 
-  // Gradyan arka plan dekorasyonu
+  BoxDecoration kahramanKart({double radius = 22}) {
+    return cardDecoration(radius: radius);
+  }
+
+  BoxDecoration satirKart({double radius = 12}) {
+    return BoxDecoration(
+      color: cardColor,
+      borderRadius: BorderRadius.circular(radius),
+      border: Border.all(color: cardBorder),
+    );
+  }
+
   BoxDecoration gradientDecoration() {
     return BoxDecoration(
       gradient: LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
         colors: [gradientStart, gradientEnd],
+      ),
+    );
+  }
+
+  InputDecoration alanDekoru({
+    required String hint,
+    IconData? ikon,
+  }) {
+    final kenar = BorderRadius.circular(18);
+    return InputDecoration(
+      hintText: hint,
+      hintStyle: TextStyle(color: mutedText),
+      filled: true,
+      fillColor: inputFill,
+      prefixIcon: ikon == null ? null : Icon(ikon, color: mutedText),
+      border: OutlineInputBorder(
+        borderRadius: kenar,
+        borderSide: BorderSide(color: cardBorder),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: kenar,
+        borderSide: BorderSide(color: cardBorder),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: kenar,
+        borderSide: const BorderSide(color: VibeAppTheme.accent, width: 1.4),
       ),
     );
   }
@@ -138,111 +174,278 @@ class VibeThemeExtension extends ThemeExtension<VibeThemeExtension> {
   @override
   VibeThemeExtension lerp(ThemeExtension<VibeThemeExtension>? other, double t) {
     if (other is! VibeThemeExtension) return this;
-    return t < 0.5 ? this : other; // Basit geçiş
+    return t < 0.5 ? this : other;
   }
 }
 
-// MaterialApp ThemeData tanımları
 class VibeAppTheme {
+  static const String fontFamily = 'Outfit';
   static const Color accent = Colors.redAccent;
+  static const Color splashArkaPlan = Color(0xFF1A002E);
+
+  /// Giriş/kayıt hariç uygulama içi yazı ölçeği.
+  static const icerikYaziCarpani = 1.35;
 
   static ThemeData get dark {
     const vibe = VibeThemeExtension.dark;
-
-    return ThemeData(
-      useMaterial3: true,
+    return _olustur(
       brightness: Brightness.dark,
-      scaffoldBackgroundColor: const Color(0xFF1A002E),
-      colorScheme: const ColorScheme.dark(
+      vibe: vibe,
+      scaffold: const Color(0xFF1A002E),
+      scheme: const ColorScheme.dark(
         surface: Color(0xFF1A002E),
         onSurface: Colors.white,
         onSurfaceVariant: Color(0xB3FFFFFF),
         primary: accent,
         onPrimary: Colors.white,
       ),
-      extensions: const [vibe],
-      appBarTheme: const AppBarTheme(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        foregroundColor: Colors.white,
-      ),
-      bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-        backgroundColor: Color(0xFF1A002E),
-        selectedItemColor: accent,
-        unselectedItemColor: Color(0x8AFFFFFF),
-        type: BottomNavigationBarType.fixed,
-      ),
-      snackBarTheme: SnackBarThemeData(
-        backgroundColor: const Color.fromARGB(255, 120, 0, 0),
-        behavior: SnackBarBehavior.floating,
-        contentTextStyle: const TextStyle(color: Colors.white),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ),
-      dialogTheme: const DialogTheme(
-        backgroundColor: Color(0xFF1A002E),
-      ),
-      dividerColor: Colors.white12,
-      switchTheme: SwitchThemeData(
-        thumbColor: MaterialStateProperty.all(Colors.white),
-      ),
-      elevatedButtonTheme: ElevatedButtonThemeData(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: vibe.primaryButton,
-          foregroundColor: Colors.white,
-        ),
-      ),
+      navArkaPlan: const Color(0xFF1A002E),
+      navSecili: accent,
+      navNormal: const Color(0x8AFFFFFF),
+      appBarYazi: Colors.white,
+      dialogArkaPlan: const Color(0xFF1A002E),
+      bolen: Colors.white12,
     );
   }
 
   static ThemeData get light {
     const vibe = VibeThemeExtension.light;
-
-    return ThemeData(
-      useMaterial3: true,
+    return _olustur(
       brightness: Brightness.light,
-      scaffoldBackgroundColor: const Color(0xFFF5F0FA),
-      colorScheme: const ColorScheme.light(
+      vibe: vibe,
+      scaffold: const Color(0xFFF5F0FA),
+      scheme: const ColorScheme.light(
         surface: Color(0xFFF5F0FA),
-        onSurface: Color(0xFF000000),
-        onSurfaceVariant: Color(0xFF1F1F1F),
+        onSurface: Color(0xFF524A5E),
+        onSurfaceVariant: Color(0xFF6A6278),
         primary: accent,
         onPrimary: Colors.white,
       ),
-      extensions: const [vibe],
-      appBarTheme: const AppBarTheme(
+      navArkaPlan: const Color(0xFFFDFBFF),
+      navSecili: accent,
+      navNormal: const Color(0xFF6A6278),
+      appBarYazi: const Color(0xFF524A5E),
+      dialogArkaPlan: const Color(0xFFFDFBFF),
+      bolen: const Color(0x1A6B5B7A),
+    );
+  }
+
+  static ThemeData _olustur({
+    required Brightness brightness,
+    required VibeThemeExtension vibe,
+    required Color scaffold,
+    required ColorScheme scheme,
+    required Color navArkaPlan,
+    required Color navSecili,
+    required Color navNormal,
+    required Color appBarYazi,
+    required Color dialogArkaPlan,
+    required Color bolen,
+  }) {
+    final acikTema = brightness == Brightness.light;
+    final base = ThemeData(
+      useMaterial3: true,
+      brightness: brightness,
+      fontFamily: fontFamily,
+      scaffoldBackgroundColor: scaffold,
+      colorScheme: scheme,
+      extensions: [vibe],
+    );
+
+    return base.copyWith(
+      textTheme: _yaziTemasi(base.textTheme, scheme.onSurface, acikTema),
+      primaryTextTheme:
+          _yaziTemasi(base.primaryTextTheme, scheme.onSurface, acikTema),
+      appBarTheme: AppBarTheme(
         backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
-        foregroundColor: Color(0xFF000000),
+        scrolledUnderElevation: 0,
+        shadowColor: Colors.transparent,
+        foregroundColor: appBarYazi,
+        titleTextStyle: _kalinYazi(
+          size: 24,
+          color: appBarYazi,
+          weight: FontWeight.w600,
+          letterSpacing: 0.4,
+        ),
+        toolbarTextStyle: _kalinYazi(
+          size: 16,
+          color: appBarYazi,
+          weight: FontWeight.w600,
+        ),
       ),
-      bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-        backgroundColor: Color(0xFFFDFBFF),
-        selectedItemColor: accent,
-        unselectedItemColor: Color(0xFF2F2F2F),
+      listTileTheme: ListTileThemeData(
+        titleTextStyle: _kalinYazi(
+          size: 16,
+          color: scheme.onSurface,
+          weight: FontWeight.w600,
+        ),
+        subtitleTextStyle: _kalinYazi(
+          size: 13,
+          color: vibe.mutedText,
+          weight: FontWeight.w500,
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        hintStyle: _kalinYazi(
+          size: 15,
+          color: vibe.mutedText,
+          weight: FontWeight.w500,
+        ),
+        labelStyle: _kalinYazi(
+          size: 15,
+          color: scheme.onSurface,
+          weight: FontWeight.w500,
+        ),
+      ),
+      bottomNavigationBarTheme: BottomNavigationBarThemeData(
+        backgroundColor: navArkaPlan,
+        selectedItemColor: navSecili,
+        unselectedItemColor: navNormal,
+        selectedLabelStyle: _kalinYazi(
+          size: 12,
+          weight: FontWeight.w600,
+        ),
+        unselectedLabelStyle: _kalinYazi(
+          size: 12,
+          weight: FontWeight.w500,
+        ),
         type: BottomNavigationBarType.fixed,
       ),
       snackBarTheme: SnackBarThemeData(
-        backgroundColor: const Color.fromARGB(255, 120, 0, 0),
+        backgroundColor: vibe.primaryButton,
         behavior: SnackBarBehavior.floating,
-        contentTextStyle: const TextStyle(color: Colors.white),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        contentTextStyle: _kalinYazi(
+          size: 15,
+          color: Colors.white,
+          weight: FontWeight.w600,
+        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
-      dialogTheme: const DialogTheme(
-        backgroundColor: Color(0xFFFDFBFF),
+      dialogTheme: DialogTheme(
+        backgroundColor: dialogArkaPlan,
+        titleTextStyle: _kalinYazi(
+          size: 22,
+          color: scheme.onSurface,
+          weight: FontWeight.w600,
+        ),
+        contentTextStyle: _kalinYazi(
+          size: 16,
+          color: scheme.onSurface,
+          weight: FontWeight.w500,
+        ),
       ),
-      dividerColor: const Color(0x1A6B5B7A),
+      dividerColor: bolen,
       switchTheme: SwitchThemeData(
         thumbColor: MaterialStateProperty.all(Colors.white),
         trackColor: MaterialStateProperty.resolveWith((states) {
           if (states.contains(MaterialState.selected)) return accent;
-          return const Color(0xFFD8CEDE);
+          return brightness == Brightness.dark
+              ? const Color(0xFF4A3040)
+              : const Color(0xFFD8CEDE);
         }),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: vibe.primaryButton,
           foregroundColor: Colors.white,
+          textStyle: _kalinYazi(
+            size: 16,
+            color: Colors.white,
+            weight: FontWeight.w600,
+            letterSpacing: 0.4,
+          ),
         ),
       ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          textStyle: _kalinYazi(
+            size: 15,
+            weight: FontWeight.w600,
+          ),
+        ),
+      ),
+    );
+  }
+
+  static TextStyle _kalinYazi({
+    required FontWeight weight,
+    double? size,
+    Color? color,
+    double? letterSpacing,
+  }) {
+    return TextStyle(
+      fontFamily: fontFamily,
+      fontWeight: weight,
+      fontSize: size,
+      color: color,
+      letterSpacing: letterSpacing,
+      fontVariations: [FontVariation('wght', weight.value.toDouble())],
+    );
+  }
+
+  static TextTheme _yaziTemasi(TextTheme kaynak, Color yaziRenk, bool acikTema) {
+    TextStyle? u(TextStyle? s, FontWeight acikMin) {
+      final taban = s ?? const TextStyle();
+      var w = taban.fontWeight ?? FontWeight.w400;
+      if (acikTema) {
+        if (w.value < acikMin.value) w = acikMin;
+        if (w.value < FontWeight.w500.value) w = FontWeight.w500;
+        if (w.value > FontWeight.w600.value) w = FontWeight.w600;
+      } else if (w.value < FontWeight.w500.value) {
+        w = FontWeight.w500;
+      }
+      return taban.copyWith(
+        fontFamily: fontFamily,
+        fontWeight: w,
+        color: taban.color ?? yaziRenk,
+        fontVariations: [FontVariation('wght', w.value.toDouble())],
+      );
+    }
+
+    return kaynak.copyWith(
+      displayLarge: u(kaynak.displayLarge, FontWeight.w600),
+      displayMedium: u(kaynak.displayMedium, FontWeight.w600),
+      displaySmall: u(kaynak.displaySmall, FontWeight.w600),
+      headlineLarge: u(kaynak.headlineLarge, FontWeight.w600),
+      headlineMedium: u(kaynak.headlineMedium, FontWeight.w600),
+      headlineSmall: u(kaynak.headlineSmall, FontWeight.w600),
+      titleLarge: u(kaynak.titleLarge, FontWeight.w600),
+      titleMedium: u(kaynak.titleMedium, FontWeight.w600),
+      titleSmall: u(kaynak.titleSmall, FontWeight.w600),
+      bodyLarge: u(kaynak.bodyLarge, FontWeight.w500),
+      bodyMedium: u(kaynak.bodyMedium, FontWeight.w500),
+      bodySmall: u(kaynak.bodySmall, FontWeight.w500),
+      labelLarge: u(kaynak.labelLarge, FontWeight.w600),
+      labelMedium: u(kaynak.labelMedium, FontWeight.w500),
+      labelSmall: u(kaynak.labelSmall, FontWeight.w500),
+    );
+  }
+}
+
+/// Giriş/kayıt ekranlarında yazı boyutunu uygulama içi büyütmeden korur.
+class AuthEkranYaziOlcegi extends StatelessWidget {
+  const AuthEkranYaziOlcegi({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    const geri = 1 / VibeAppTheme.icerikYaziCarpani;
+    final appBarYazi = theme.appBarTheme.titleTextStyle;
+    return Theme(
+      data: theme.copyWith(
+        textTheme: theme.textTheme.apply(fontSizeFactor: geri),
+        primaryTextTheme: theme.primaryTextTheme.apply(fontSizeFactor: geri),
+        appBarTheme: theme.appBarTheme.copyWith(
+          titleTextStyle: appBarYazi?.copyWith(
+            fontSize: (appBarYazi.fontSize ?? 20) * geri,
+          ),
+        ),
+      ),
+      child: child,
     );
   }
 }

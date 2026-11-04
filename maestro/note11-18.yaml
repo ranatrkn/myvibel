@@ -1,0 +1,10 @@
+appId: com.myvibel.app
+---
+- runFlow: flows/ac-uygulama.yaml
+- runFlow: flows/cikis.yaml
+- runFlow:
+    file: flows/email-giris.yaml
+    env:
+      EMAIL: ${EMAIL}
+      SIFRE: ${SIFRE}
+- runFlow: full-audit.yaml

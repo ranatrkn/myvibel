@@ -1,17 +1,24 @@
 // Maskot bakım odası — yemek, uyku, gelişim.
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:vibe_life/app_theme.dart';
-import 'package:vibe_life/error_messages.dart';
-import 'package:vibe_life/haftalik_gorev_servis.dart';
-import 'package:vibe_life/maskot_servis.dart';
-import 'package:vibe_life/vibe_snackbar.dart';
-import 'package:vibe_life/widgets/haftalik_gorev_karti.dart';
-import 'package:vibe_life/widgets/maskot_durum_bari.dart';
-import 'package:vibe_life/widgets/maskot_gelisim_cercevesi.dart';
-import 'package:vibe_life/widgets/maskot_lottie_view.dart';
-import 'package:vibe_life/widgets/vibe_gradient_scaffold.dart';
+import 'package:myvibel/app_theme.dart';
+import 'package:myvibel/error_messages.dart';
+import 'package:myvibel/haftalik_gorev_servis.dart';
+import 'package:myvibel/maestro_semantics.dart';
+import 'package:myvibel/maskot_servis.dart';
+import 'package:myvibel/vibe_snackbar.dart';
+import 'package:myvibel/widgets/mascot_ruh_hali_metni.dart';
+import 'package:myvibel/widgets/haftalik_gorev_karti.dart';
+import 'package:myvibel/widgets/maskot_durum_bari.dart';
+import 'package:myvibel/widgets/maskot_gelisim_cercevesi.dart';
+import 'package:myvibel/widgets/maskot_lottie_view.dart';
+import 'package:myvibel/widgets/vibe_yukleniyor.dart';
+import 'package:myvibel/widgets/vil_harcama_uyarisi.dart';
+import 'package:myvibel/widgets/vil_rozeti.dart';
+import 'package:myvibel/widgets/vibe_gradient_scaffold.dart';
 
 class MascotPage extends StatefulWidget {
   const MascotPage({super.key});
@@ -22,6 +29,7 @@ class MascotPage extends StatefulWidget {
 
 class _MascotPageState extends State<MascotPage> {
   bool _islemSuruyor = false;
+  Map<String, dynamic>? _iyimserRobot;
 
   @override
   void initState() {
@@ -41,7 +49,10 @@ class _MascotPageState extends State<MascotPage> {
       if (!mounted) return;
       vibeSnackbarGoster(
         context,
-        internetAwareErrorMessage(error: e, fallback: e.toString()),
+        internetAwareErrorMessage(
+          error: e,
+          fallback: 'Yemek veya bakım şu an yapılamadı. Tekrar dene.',
+        ),
       );
     } finally {
       if (mounted) setState(() => _islemSuruyor = false);
@@ -57,33 +68,49 @@ class _MascotPageState extends State<MascotPage> {
       );
     }
 
-    return VibeGradientScaffold(
-      appBar: AppBar(title: const Text('Maskot odası')),
-      body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-        stream: FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) {
-            return const Center(
-              child: CircularProgressIndicator(color: VibeAppTheme.accent),
-            );
-          }
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
+      builder: (context, snapshot) {
+        final data = snapshot.data?.data();
+        final robotHam = _iyimserRobot ?? data?['robot'];
+        final mascot = data != null ? MascotServis.tryParse(robotHam) : null;
+        final baslik = mascot != null ? '${mascot.isim} odası' : 'Vibel odası';
 
-          final data = snapshot.data!.data() ?? {};
-          final mascot = MascotServis.tryParse(data['robot']);
-          if (mascot == null) {
-            return const Center(
-              child: CircularProgressIndicator(color: VibeAppTheme.accent),
-            );
-          }
+        return VibeGradientScaffold(
+          appBar: VibeGradientScaffold.seffafBaslik(baslik),
+          body: _maskotGovdesi(
+            snapshot: snapshot,
+            uid: uid,
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _maskotGovdesi({
+    required AsyncSnapshot<DocumentSnapshot<Map<String, dynamic>>> snapshot,
+    required String uid,
+  }) {
+        if (!snapshot.hasData) {
+          return const Center(
+            child: VibeYukleniyor(renk: VibeAppTheme.accent),
+          );
+        }
+
+        final data = snapshot.data!.data() ?? {};
+        final mascot = MascotServis.tryParse(_iyimserRobot ?? data['robot']);
+        if (mascot == null) {
+          return const Center(
+            child: VibeYukleniyor(renk: VibeAppTheme.accent),
+          );
+        }
           final gorevDurumu = MascotServis.gunlukGorevlerAcik(mascot.seviye)
               ? HaftalikGorevServis.kullaniciVerisindenDurum(data)
               : null;
           final odaAcik = MascotServis.odaAcik(mascot.seviye);
           final uyuyor = mascot.uyuyor;
-          final mesaj = MascotServis.ruhHaliMesaji(mascot);
           final vibe = context.vibe;
           final onSurface = Theme.of(context).colorScheme.onSurface;
-          final sonrakiFaz = MascotServis.sonrakiFazSeviyesi(mascot.seviye);
 
           if (!odaAcik) {
             return Center(
@@ -99,14 +126,26 @@ class _MascotPageState extends State<MascotPage> {
                       child: MascotLottieView(
                         seviye: mascot.seviye,
                         gorselDurum: mascot.gorselDurum,
+                        renk: mascot.renk,
                         width: 120,
                         height: 120,
+                        renkSecilebilir:
+                            mascot.seviye >= MascotServis.odaAcilisSeviyesi,
                       ),
                     ),
                     const SizedBox(height: 16),
                     Text(
-                      '${MascotServis.odaAcilisSeviyesi}. seviyede maskot odası açılır.\n'
-                      'Şimdilik etkileşimlerle otomatik büyürsün.',
+                      'Seviye ${mascot.seviye}',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: onSurface,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    MascotRuhHaliMetni(
+                      mascot: mascot,
                       textAlign: TextAlign.center,
                       style: TextStyle(color: vibe.mutedText),
                     ),
@@ -129,19 +168,12 @@ class _MascotPageState extends State<MascotPage> {
                   ),
                 ),
                 Text(
-                  'Seviye ${mascot.seviye} · ${MascotServis.fazBasligi(mascot.seviye)}',
+                  'Seviye ${mascot.seviye}',
                   style: TextStyle(color: vibe.mutedText),
                 ),
-                if (mascot.seviye < MascotServis.mutlulukAcilisSeviyesi) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    'Sonraki duygu kilidi: Seviye $sonrakiFaz',
-                    style: TextStyle(color: vibe.faintText, fontSize: 12),
-                  ),
-                ],
                 const SizedBox(height: 8),
-                Text(
-                  mesaj,
+                MascotRuhHaliMetni(
+                  mascot: mascot,
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                     color: VibeAppTheme.accent,
@@ -157,33 +189,28 @@ class _MascotPageState extends State<MascotPage> {
                   child: MascotLottieView(
                     seviye: mascot.seviye,
                     gorselDurum: mascot.gorselDurum,
+                    renk: mascot.renk,
                     width: 220,
                     height: 220,
+                    renkSecilebilir:
+                        mascot.seviye >= MascotServis.odaAcilisSeviyesi,
                   ),
                 ),
                 const SizedBox(height: 20),
                 if (MascotServis.vilCuzdaniAcik(mascot.seviye)) ...[
                   Padding(
                     padding: const EdgeInsets.only(bottom: 10),
-                    child: Row(
-                      children: [
-                        Text(
-                          'Vil',
-                          style: TextStyle(
-                            color: vibe.mutedText,
-                            fontWeight: FontWeight.w600,
+                    child: Semantics(
+                      label: MaestroSemantics.vilBakiyesi(mascot.vil),
+                      child: Row(
+                        children: [
+                          VilRozeti(
+                            miktar: mascot.vil,
+                            jetonBoyutu: 26,
+                            yaziBoyutu: 16,
                           ),
-                        ),
-                        const Spacer(),
-                        Text(
-                          '${mascot.vil}',
-                          style: const TextStyle(
-                            color: Colors.lightBlueAccent,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ],
@@ -192,26 +219,21 @@ class _MascotPageState extends State<MascotPage> {
                     etiket: 'Tokluk',
                     deger: mascot.tokluk,
                     renk: Colors.orangeAccent,
+                    sayiGoster: false,
                   ),
                 if (MascotServis.enerjiAktif(mascot.seviye))
                   MascotDurumBari(
                     etiket: 'Enerji',
                     deger: mascot.enerji,
                     renk: Colors.amber,
+                    sayiGoster: false,
                   ),
                 if (MascotServis.mutlulukAktif(mascot.seviye))
                   MascotDurumBari(
                     etiket: 'Mutluluk',
                     deger: mascot.mutluluk,
-                    renk: Colors.pinkAccent,
+                    renk: Colors.redAccent,
                   ),
-                const SizedBox(height: 8),
-                Text(
-                  'Gelişim: ${mascot.gelisimPuani} / ${mascot.gerekliGelisim}'
-                  '${MascotServis.vilCuzdaniAcik(mascot.seviye) ? ' · Vil: ${mascot.vil}' : ''}',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: vibe.mutedText, fontSize: 13),
-                ),
                 const SizedBox(height: 24),
                 if (gorevDurumu != null) ...[
                   HaftalikGorevKarti(
@@ -227,16 +249,6 @@ class _MascotPageState extends State<MascotPage> {
                       child: Text(
                         'Kalan dinlenme: ${_sureYaz(kalan)}',
                         style: TextStyle(color: vibe.mutedText, fontSize: 13),
-                      ),
-                    ),
-                  if (!MascotServis.uyuSistemiAcik(mascot.seviye))
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: Text(
-                        'Dinlenme ${MascotServis.enerjiAcilisSeviyesi}. seviyede tam açılır. '
-                        'Şimdilik uyandırabilirsin.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: vibe.faintText, fontSize: 12),
                       ),
                     ),
                   if (MascotServis.uyandirEngelMesaji(mascot) case final engel?)
@@ -258,36 +270,74 @@ class _MascotPageState extends State<MascotPage> {
                             !MascotServis.erkenUyandirabilir(mascot)
                         ? null
                         : () => _guvenliIslem(() async {
-                              final sonuc = await MascotServis.uyandir(uid);
-                              if (mounted) {
-                                vibeSnackbarGoster(
-                                  context,
-                                  sonuc,
-                                  tip: VibeMesajTipi.basari,
-                                );
-                              }
+                              await MascotServis.uyandir(uid);
                             }),
                   ),
                 ] else ...[
                   if (MascotServis.yemekSistemiAcik(mascot.seviye))
                     _aksiyonButon(
-                      label:
-                          'Yemek (${MascotServis.yemekVilMaliyeti} vil)',
+                      label: 'Yemek',
                       icon: Icons.restaurant,
                       onPressed: _islemSuruyor ||
                               mascot.tokluk >= 100 ||
                               mascot.vil < MascotServis.yemekVilMaliyeti
                           ? null
-                          : () => _guvenliIslem(() async {
-                                final sonuc = await MascotServis.yemekVer(uid);
-                                if (mounted) {
+                          : () async {
+                                final devam = await VilHarcamaUyarisi.onayla(
+                                  context: context,
+                                  islem: VilHarcamaUyarisi.yemek,
+                                  maliyet: MascotServis.yemekVilMaliyeti,
+                                  vilHarcanacak: true,
+                                );
+                                if (!devam || !mounted || _islemSuruyor) return;
+                                final ham = data['robot'] is Map
+                                    ? Map<String, dynamic>.from(
+                                        data['robot'] as Map,
+                                      )
+                                    : <String, dynamic>{};
+                                late final Map<String, dynamic> robot;
+                                try {
+                                  robot = MascotServis.yemekHesapla(ham).robot;
+                                } catch (e) {
+                                  if (!mounted) return;
                                   vibeSnackbarGoster(
                                     context,
-                                    sonuc,
-                                    tip: VibeMesajTipi.basari,
+                                    internetAwareErrorMessage(
+                                      error: e,
+                                      fallback:
+                                          'Yemek veya bakım şu an yapılamadı. Tekrar dene.',
+                                    ),
                                   );
+                                  return;
                                 }
-                              }),
+                                setState(() {
+                                  _iyimserRobot = robot;
+                                  _islemSuruyor = true;
+                                });
+                                unawaited(() async {
+                                  try {
+                                    await MascotServis.yemekVer(
+                                      uid,
+                                      anlikRobot: ham,
+                                    );
+                                  } catch (e) {
+                                    if (!mounted) return;
+                                    setState(() => _iyimserRobot = null);
+                                    vibeSnackbarGoster(
+                                      context,
+                                      internetAwareErrorMessage(
+                                        error: e,
+                                        fallback:
+                                            'Yemek veya bakım şu an yapılamadı. Tekrar dene.',
+                                      ),
+                                    );
+                                  } finally {
+                                    if (mounted) {
+                                      setState(() => _islemSuruyor = false);
+                                    }
+                                  }
+                                }());
+                              },
                     ),
                   if (MascotServis.uyuSistemiAcik(mascot.seviye) &&
                       mascot.enerji <= MascotServis.uyuMaxEnerji)
@@ -298,23 +348,13 @@ class _MascotPageState extends State<MascotPage> {
                       onPressed: _islemSuruyor
                           ? null
                           : () => _guvenliIslem(() async {
-                                final sonuc = await MascotServis.uyuYap(uid);
-                                if (mounted) {
-                                  vibeSnackbarGoster(
-                                    context,
-                                    sonuc,
-                                    tip: VibeMesajTipi.bilgi,
-                                  );
-                                }
+                                await MascotServis.uyuYap(uid);
                               }),
                     ),
                 ],
               ],
             ),
           );
-        },
-      ),
-    );
   }
 
   String _sureYaz(Duration sure) {

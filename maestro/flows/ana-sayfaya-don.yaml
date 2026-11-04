@@ -1,0 +1,123 @@
+appId: com.myvibel.app
+---
+# Pushed ekran / baska sekmeden Ana (Takip Edilen) gorunene kadar toparlan.
+# Cikis Yap'a basmaz. Gerekirse deep link ile uygulamayi yeniden acar.
+- repeat:
+    times: 8
+    while:
+      visible: "Sohbetlerde ara.*"
+    commands:
+      - back
+      - waitForAnimationToEnd:
+          timeout: 1200
+- repeat:
+    times: 6
+    while:
+      visible: "Mesaj yaz.*"
+    commands:
+      - back
+      - waitForAnimationToEnd:
+          timeout: 1200
+- repeat:
+    times: 4
+    while:
+      visible: "Liderlik Tablosu"
+    commands:
+      - back
+      - waitForAnimationToEnd:
+          timeout: 1200
+- repeat:
+    times: 4
+    while:
+      visible: "Yemek.*"
+    commands:
+      - back
+      - waitForAnimationToEnd:
+          timeout: 1200
+- runFlow:
+    when:
+      visible: "Geri"
+    commands:
+      - tapOn:
+          text: "Geri"
+          optional: true
+      - back
+      - waitForAnimationToEnd:
+          timeout: 1500
+- runFlow:
+    when:
+      visible: "Liderlik"
+    commands:
+      - back
+      - tapOn:
+          text: "Alt menü Ana"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 2000
+- runFlow:
+    when:
+      visible: "Bildirimler"
+    commands:
+      - tapOn:
+          text: "Alt menü Ana"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 2000
+- runFlow:
+    when:
+      visible: "Paylaş"
+    commands:
+      - tapOn:
+          text: "Alt menü Ana"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 2000
+- runFlow:
+    when:
+      visible: "Beğendiklerim"
+    commands:
+      - tapOn:
+          text: "Alt menü Ana"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 2000
+- runFlow:
+    when:
+      visible: "Gizli Hesap.*"
+    commands:
+      - back
+      - waitForAnimationToEnd:
+          timeout: 1500
+- repeat:
+    times: 5
+    while:
+      notVisible: "Takip Edilen"
+    commands:
+      - back
+      - waitForAnimationToEnd:
+          timeout: 1000
+- runFlow:
+    when:
+      notVisible: "Takip Edilen"
+    commands:
+      - tapOn:
+          text: "Alt menü Ana"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 2000
+- runFlow:
+    when:
+      notVisible: "Takip Edilen"
+    commands:
+      - launchApp:
+          appId: com.myvibel.app
+          clearState: false
+          stopApp: false
+      - waitForAnimationToEnd:
+          timeout: 4000
+      - tapOn:
+          text: "Alt menü Ana"
+          optional: true
+      - extendedWaitUntil:
+          visible: "Takip Edilen"
+          timeout: 45000

@@ -1,0 +1,30 @@
+appId: com.myvibel.app
+---
+- runFlow: ../flows/ana-sayfaya-don.yaml
+- tapOn: "Alt menü Ana"
+- extendedWaitUntil:
+    visible: "Takip Edilen"
+    timeout: 20000
+- tapOn:
+    text: "Akış"
+    optional: true
+- tapOn:
+    text: "Takip Edilen"
+    optional: true
+- tapOn: "Alt menü Yeni gönderi"
+- runFlow: ../flows/yeni-gonderi-hazir.yaml
+- tapOn: "Gönderi metni"
+- inputText: "MaestroQA audit koyu"
+- hideKeyboard
+- tapOn: "Paylaş|Alıntıyı paylaş"
+- waitForAnimationToEnd:
+    timeout: 4000
+- runFlow:
+    when:
+      visible: "Paylaş|Alıntıyı paylaş"
+    commands:
+      - tapOn: "Paylaş|Alıntıyı paylaş"
+- tapOn: "Alt menü Ana"
+- extendedWaitUntil:
+    visible: "Takip Edilen"
+    timeout: 30000

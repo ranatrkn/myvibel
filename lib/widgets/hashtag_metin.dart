@@ -1,9 +1,9 @@
 // Hashtag ve @bahsetme tıklanabilir metin widget'ı.
+import 'package:myvibel/tek_sefer_navigasyon.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:vibe_life/app_theme.dart';
-import 'package:vibe_life/sosyal_servis.dart';
-import 'package:vibe_life/user_profile_page.dart';
+import 'package:myvibel/app_theme.dart';
+import 'package:myvibel/sosyal_servis.dart';
 
 // Metin parçası türü
 enum _MetinParcaTipi { metin, hashtag, bahsetme }
@@ -96,15 +96,17 @@ class HashtagMetin extends StatelessWidget {
     BuildContext context,
     String kullaniciAdi,
   ) async {
+    final bilet = tekSeferGecisAl();
+    if (bilet == null) return;
     final uid = mentionUidleri?[kullaniciAdi] ??
         await SosyalServis.kullaniciUidGetir(kullaniciAdi);
     onMentionTap?.call(kullaniciAdi, uid);
-    if (uid == null || !context.mounted) return;
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => UserProfilePage(userId: uid),
-      ),
-    );
+    if (uid == null || !context.mounted) {
+      tekSeferGecisIptal(bilet);
+      return;
+    }
+    profiliAc(context, uid);
+    tekSeferGecisBirak(bilet);
   }
 
   @override
@@ -114,6 +116,7 @@ class HashtagMetin extends StatelessWidget {
         TextStyle(
           color: theme.colorScheme.onSurface,
           fontWeight: FontWeight.w500,
+          fontSize: 15,
         );
     final parcalar = _parcala();
     if (parcalar.isEmpty) {

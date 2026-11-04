@@ -3,10 +3,17 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:vibe_life/sosyal/bildirim_servis.dart';
+import 'package:myvibel/sosyal/bildirim_servis.dart';
 
 // Ortak yardımcı metotlar ve sabitler
 class SosyalCore {
+  static const sabitGonderiId = 'myvibel-karsilama';
+
+  /// Karşılama gönderisi de normal posts belgesidir; akış onu üste sabitler.
+  static DocumentReference<Map<String, dynamic>> gonderiRef(String postId) {
+    return db.collection('posts').doc(postId);
+  }
+
   static final db = FirebaseFirestore.instance; // Firestore veritabanı örneği
   static const int postRaporEsigi = 5; // Gönderi gizleme şikayet eşiği
   static const int yorumRaporEsigi = 4; // Yorum gizleme şikayet eşiği
@@ -62,8 +69,19 @@ class SosyalCore {
       uid: uid,
       aksiyon: 'post',
       minAralikMs: gonderiMinAralikMs,
-      mesaj: 'Cok hizli gonderi paylasiyorsun. Lutfen biraz bekle.',
+      mesaj: 'Çok hızlı paylaşım. Birkaç saniye bekle.',
     );
+  }
+
+  static int gonderiPaylasimKalanMs(String uid) {
+    final key = '$uid:post';
+    final simdi = DateTime.now().millisecondsSinceEpoch;
+    final bellekten = _sonAksiyonMs[key] ?? 0;
+    final kayitli = _rateLimitPrefs?.getInt('rate_limit:$key') ?? 0;
+    final son = bellekten > kayitli ? bellekten : kayitli;
+    if (son <= 0) return 0;
+    final kalan = gonderiMinAralikMs - (simdi - son);
+    return kalan > 0 ? kalan : 0;
   }
 
   // Gönderi paylaşım zamanını kaydeder
@@ -95,9 +113,9 @@ class SosyalCore {
           .get();
       return blockedBy.exists;
     } on FirebaseException catch (e) {
-      // Okuma engellenirse etkileşimi güvenli tarafta kapat.
-      debugPrint("engellendiMi read denied ($kaynakUid -> $hedefUid): ${e.code}");
-      return true;
+      // Okuma hatası engel değildir. Gerçek engel kayıtta ve kurallarda durur.
+      debugPrint("engellendiMi read failed ($kaynakUid -> $hedefUid): ${e.code}");
+      return false;
     }
   }
 

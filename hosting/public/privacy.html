@@ -3,47 +3,108 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>VibeLife Gizlilik Politikası</title>
-  <style>
-    body { font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; max-width: 720px; margin: 0 auto; padding: 24px 16px; color: #222; }
-    h1 { color: #c62828; font-size: 1.6rem; }
-    h2 { font-size: 1.1rem; margin-top: 1.5rem; }
-    a { color: #c62828; }
-    .meta { color: #666; font-size: 0.9rem; }
-  </style>
+  <title>MyVibel Gizlilik Politikası</title>
+  <link rel="stylesheet" href="/site-common.css">
+  <link rel="icon" type="image/png" href="/app/favicon.png">
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4786108844945952"
+     crossorigin="anonymous"></script>
 </head>
 <body>
-  <h1>VibeLife Gizlilik Politikası</h1>
-  <p class="meta">Son güncelleme: 5 Haziran 2026 · Sürüm 1.0.0</p>
+  <header class="site-top">
+    <a href="/">MyVibel</a>
+    <div class="links">
+      <a href="/app/">Uygulama</a>
+      <a href="/kvkk.html">KVKK</a>
+      <a href="/terms.html">Koşullar</a>
+      <a href="/cocuk-guvenligi.html">Çocuk güvenliği</a>
+    </div>
+  </header>
+  <div class="wrap">
+  <h1>MyVibel Gizlilik Politikası</h1>
+  <p class="meta">Son güncelleme: 22 Ekim 2026 · Sürüm 1.0.0</p>
+  <div class="content">İşbu Gizlilik Politikası, MyVibel mobil uygulaması ile aynı hizmete bağlı https://myvibel.com web arayüzünü («Hizmet») kullanan kişilerin kişisel verilerinin hangi kapsamda işlendiğini düzenler. Politika, Hizmetin fiilen çalışan sürümüne göredir. Kullanım Koşulları ve KVKK Aydınlatma Metni ile birlikte okunur. Çelişki halinde, kişisel veriye ilişkin konuda KVKK Aydınlatma Metni ve emredici mevzuat esas alınır.
 
-  <p>VibeLife mobil uygulamasını kullandığınızda aşağıdaki veriler işlenebilir.</p>
+1. Veri sorumlusu
+Veri sorumlusu, «MyVibel» markası altında Hizmeti işleten gerçek kişidir. Hizmet bir ticaret şirketi, dernek veya başka bir tüzel kişilik bünyesinde sunulmamaktadır. Bu nedenle ticaret unvanı, MERSİS numarası veya vergi kimlik numarası yayımlanmaz.
+6698 sayılı Kanun’un 10. maddesinin aradığı kimlik ve iletişim bilgisi için başvuru kanalı destek@myvibel.com adresidir. Aynı başvuru, uygulama içi Profil → Destek ve Geri Bildirim formu üzerinden, konu olarak KVKK başvurusu seçilerek de yapılır ve https://myvibel.com/kvkk.html adresinden yönlendirilir. Usulüne uygun bir başvuruda veya yetkili merciin isteminde, tebligata elverişli kimlik ve adres bilgisi ayrıca bildirilir. Ev adresi yayımlanmaz.
 
-  <h2>Toplanan veriler</h2>
-  <ul>
-    <li>E-posta adresi ve kimlik doğrulama bilgileri</li>
-    <li>Profil bilgileri (ad, kullanıcı adı, avatar)</li>
-    <li>Gönderiler, yorumlar ve beğeniler</li>
-    <li>Özel mesajlar</li>
-    <li>Bildirim tokeni (ileride push bildirim için)</li>
-    <li>Uygulama içi maskot istatistikleri (enerji, mutluluk, seviye)</li>
-  </ul>
+2. Kapsam ve tanımlar
+«Kullanıcı», hesap oluşturan veya Hizmeti kullanan gerçek kişidir. «İçerik», kullanıcının Hizmete yüklediği metin, yorum, beğeni, alıntı ve benzeri kayıtlardır. «Vibel», kullanıcının hesap içindeki sanal karakteridir. Politika, Hizmeti ziyaret eden ve hesap açmayan kişilerin teknik olarak işlenen verilerini de, ilgili olduğu ölçüde kapsar.
 
-  <h2>Verilerin kullanım amacı</h2>
-  <p>Veriler; uygulamanın çalışması, sosyal etkileşim, güvenlik, moderasyon, destek ve yasal yükümlülükler için kullanılır.</p>
+3. İşlenen kişisel veriler
+Aşağıdakiler, Hizmetin mevcut sürümünde fiilen işlenen verilerdir.
 
-  <h2>Verilerin saklanması</h2>
-  <p>Veriler Google Firebase altyapısında (Firestore, Authentication) güvenli şekilde saklanır.</p>
+3.1. Hesap
+Ad ve soyad, kullanıcı adı, e-posta adresi, beyan edilen doğum tarihi, isteğe bağlı olarak Google hesabından gelen profil görseli adresi veya uygulama içi avatar anahtarı. E-posta ve doğum tarihi herkese açık profil belgesinde tutulmaz; kullanıcıya özel hesap kaydında saklanır. Kullanıcı adı ile girişin çalışması için e-posta, kullanıcı adı kaydında da bulunabilir. Bu sürümde cihazdan fotoğraf veya video dosyası yüklenmez ve Firebase Storage kullanılmaz.
 
-  <h2>Hesap silme</h2>
-  <p>Hesabınızı uygulama içinden sildiğinizde profil, gönderi, mesaj, takip ve ilgili veriler silme akışına dahil edilir.</p>
+3.2. İçerik ve sosyal işlem
+Gönderi metni, yorum, beğeni, alıntı kaydı ve anlık görüntüsü, etiket, bahsetme ve çözümlenen kullanıcı kimlikleri, takip ve takip isteği kayıtları, herkese açık veya gizli hesap tercihi.
 
-  <h2>Üçüncü taraflar</h2>
-  <p>Veriler yalnızca hizmet sunumu için Firebase/Google altyapısı ile işlenir; reklam amaçlı satılmaz.</p>
+3.3. Mesajlaşma
+On sekiz yaşını doldurmuş hesaplar arasındaki mesaj metinleri, iletilen gönderi kayıtları ve sohbet üst verisi (katılımcılar, son mesaj özeti, sessize alma ve gizleme). On beş ile on yedi yaş arasındaki hesaplarda mesaj kutusu sunulmaz.
 
-  <h2>Destek ve iletişim</h2>
-  <p>Hesap, teknik sorun, KVKK veya öneri taleplerinizi VibeLife mobil uygulamasındaki <strong>Profil → Destek ve Geri Bildirim</strong> alanından iletebilirsiniz. Gerekirse VibeLife ekibi uygulama içinden bilgilendirir.</p>
-  <p>Gönderi veya kullanıcı şikayetleri için ilgili içeriğin menüsündeki «Şikayet Et» seçeneğini kullanın.</p>
+3.4. Vibel
+Karakterin adı ve rengi, seviye, gelişim puanı, sanal vil birimi, belirli seviyeden sonra tokluk, enerji, mutluluk, uyku ve ilgili zaman damgaları, haftalık görev sayaçları. Bunlar oyun kaydıdır; sağlık verisi olarak işlenmez.
 
-  <p><a href="kvkk.html">KVKK Aydınlatma Metni</a> · <a href="index.html">Ana sayfa</a></p>
+3.5. Güvenlik, destek ve moderasyon
+Kimlik doğrulama oturumu; Google veya Apple ile giriş seçildiyse ilgili sağlayıcının oturum kimliği; App Check ve mobil Crashlytics tanı kayıtları; destek talebinin konusu, metni, kullanıcı kimliği ve durumu; şikayet ve engelleme kayıtları; hesap silinirken isteğe bağlı bırakılan geri bildirim. Destek kaydına uygulama sürümü yazılabilir.
+
+3.6. Reklam ve çerez
+On sekiz yaşını doldurmuş hesaplarda, Android akışında Google AdMob ve giriş yapılmış web akışında Google AdSense bir reklam isteği oluşturabilir. Bu istek kapsamında Google; IP adresi, tarayıcı veya cihaz bilgisi, çerez ve Android’de reklam kimliği gibi teknik verileri kendi şartlarına göre işleyebilir. MyVibel bu verileri kendi veritabanında reklam profili olarak saklamaz. Ayrı bir rıza yönetim ekranı bu sürümde yoktur. On sekiz yaşını doldurmamış hesaplarda reklam gösterilmez. Firebase Analytics ve pazarlama e-postası yoktur. Uzak anlık bildirim (FCM) cihaz belirteci saklanmaz; Vibel hatırlatmaları cihazda yerel olarak planlanır.
+
+4. Amaçlar ve hukuki sebepler
+Kayıttaki onay kutusu, Kullanım Koşulları ile bu politikanın okunduğunun kabulüdür. Bu kabul, her işleme için 6698 sayılı Kanun anlamında açık rıza değildir.
+
+• Sözleşmenin kurulması ve ifası: hesap, profil, akış, keşfet, bildirim kaydı, on sekiz yaş üstü mesajlaşma ve Vibel mekanikleri.
+• Hukuki yükümlülük: yaş grubuna göre kısıt, saklama ve yetkili merci taleplerinin yerine getirilmesi.
+• Meşru menfaat: güvenliğin sağlanması, spam ve kötüye kullanımın önlenmesi, şikayet incelemesi, hizmetin ayakta tutulması ve hata tanısı. Bu menfaat, ilgili kişinin temel hak ve özgürlüklerine üstün gelmez.
+• Açık rıza: bu sürümde MyVibel tarafından ayrıca alınan bir reklam rızası yoktur. Kişiselleştirilmiş reklam profillemesi MyVibel tarafından yürütülmez. Google’ın kendi reklam kontrolleri, kullanıcının cihaz ve Google hesap ayarlarına tabidir.
+
+5. Özel nitelikli veri
+Irk, sağlık, biyometrik veri, din, sendika veya ceza mahkûmiyeti gibi özel nitelikli veriler bilinçli olarak toplanmaz. Doğum tarihi yalnızca yaş grubunu belirlemek için işlenir. Kullanıcının içerik veya mesajına kendi isteğiyle yazdığı hassas bilgi, Hizmetin o içeriği yayımlaması veya iletmesi kapsamında ve kullanıcının kendi fiiliyle sınırlı kalır.
+
+6. İçerik ve özel mesaj
+Yayımlanan içerik, hesabın gizli olup olmamasına ve takip ilişkisine göre diğer kullanıcılarca görülebilir. Şikayet veya moderasyon incelemesinde içerik gizlenebilir veya kaldırılabilir. Hesap silindiğinde kullanıcının kendi gönderi ve yorumları silme akışına alınır. Başka kullanıcıların içeriklerinde kalan alıntı görüntüsü ile kopyalanmış ad veya avatar, teknik olarak kendiliğinden silinmeyebilir.
+Özel mesajlar, Hizmetin sunulması için Cloud Firestore’da tutulur. Mesajların sürekli insan tarafından okunduğu bir ürün özelliği yoktur. Erişim; barındırma, güvenlik, kötüye kullanım şüphesi, kullanıcı şikayeti ve kanunen zorunlu hallerle sınırlıdır.
+
+7. Aktarılan taraflar
+Kişisel veriler satılmaz ve reklam havuzu olarak üçüncü kişilere devredilmez. Hizmetin işlemesi için veriler şu altyapı sağlayıcılarına, her biri kendi hizmetinin gerektirdiği ölçüde aktarılabilir:
+• Google Firebase: kimlik doğrulama, Cloud Firestore, App Check
+• Firebase Crashlytics: yalnızca mobil uygulama; web arayüzünde başlatılmaz
+• Google veya Apple: kullanıcı o giriş yöntemini seçerse
+• Google AdMob: on sekiz yaş üstü Android akışı
+• Google AdSense: on sekiz yaş üstü ve giriş yapılmış web akışı
+Bu taraflar, veri işleyen veya bağımsız veri sorumlusu sıfatını kendi hizmet şartlarına göre taşır. MyVibel, Google’ın reklam ilgisini kendi adına profillemez.
+
+8. Yurt dışına aktarım
+Firebase ve Google hizmetleri veriyi Türkiye dışında barındırabilir. Aktarım, sözleşmenin ifası ve Hizmetin teknik olarak sunulması için zorunludur. Güvence, Google’ın yürürlükteki veri işleme şartlarıdır. Standart sözleşme veya Kurul izni gibi aracın somut metni, usulüne uygun talep üzerine ve elde bulunduğu ölçüde açıklanır. Aktarım aracının bir örneği kamuya bu metinle birlikte eklenmemiştir.
+
+9. Saklama ve silme
+Hesap açık olduğu sürece veriler, Hizmetin sunulması için gerekli süre boyunca saklanır. Profil → Ayarlar → Hesabı Sil ile kimlik doğrulama hesabı, profil, kullanıcı adı kaydı, kullanıcının gönderileri, beğenileri, silinebilen yorumları, katıldığı sohbetler, takip ve engel kayıtları ile ilgili şikayet ve destek kayıtları silinmeye çalışılır. Bir adım hata verirse silme diğer adımlarla sürer. İşlem geri alınamaz.
+Silme sonrasında kalabilecek kayıtlar: hesap silme geri bildirimi; başkalarının içeriğindeki alıntı görüntüsü; teknik artık kayıt; Crashlytics’te daha önce oluşmuş hata kaydı; cihazda kalan yerel tercih.
+Destek, KVKK ve şikayet kayıtları ile hesap silme geri bildirimi, kapanıştan veya oluşumdan itibaren en geç yirmi dört ay içinde silinir veya kimlikten arındırılır. Üçüncü tarafın kendi saklama süresi bu süreye tabi olmayabilir. Ayrı bir anonimleştirme yazılımı yoktur.
+
+10. Çocuklar ve yaş
+Hizmet, on beş yaşını doldurmamış kişilere yönelik değildir ve bu kişilere sunulmaz. Doğum tarihi kullanıcı beyanıdır. Tarih seçici ve sunucu kontrolü on beş yaş altını reddeder. Bu kontrol, nüfus kaydı veya e-Devlet doğrulaması değildir. Beyanı on beş yaş altı olan mevcut hesap girişte kilitlenir.
+On beş ile on yedi yaş arasındaki hesap kısıtlıdır. Ayrıntı: https://myvibel.com/cocuk-guvenligi.html
+On sekiz yaşın dolduğu hesap, tam özellikli hesaba geçer. Yaş veya hesap kararına itiraz, Destek formundaki «Yaş / hesap itirazı» ile yapılır ve otomatik sonuçlanmaz. Yaş sınırı, Kanun’dan doğan diğer yükümlülükleri kaldırmaz.
+
+11. Çerezler
+Yasal sayfalarda analitik çerez kullanılmaz. Oturumun sürmesi için tarayıcı, Firebase Authentication’ın işlevsel çerez veya yerel kaydını tutabilir. Şifre sıfırlama sayfası bu amaçla Firebase betiğini yükler. Giriş yapılmış web akışında AdSense, reklam çerezi yerleştirebilir. Ana sayfadaki AdSense doğrulama betiği, reklam birimi göstermese de Google alanına istek yapabilir. Uygulama içi web görünümü aynı Firebase projesini kullanır.
+
+12. Güvenlik
+Erişim, kimlik doğrulama ve veritabanı kuralları ile sınırlandırılır. Hiçbir elektronik sistemin mutlak güvenli olduğu taahhüt edilmez. İhlal şüphesi, mevzuatın gerektirdiği ölçüde ilgili kişiye ve Kişisel Verileri Koruma Kurulu’na bildirilir.
+
+13. Haklar ve başvuru
+Kanun’un 11. maddesindeki haklar KVKK Aydınlatma Metni’nde sayılmıştır: https://myvibel.com/kvkk.html
+Başvuru, destek formu ile yapılır. Kimliğin doğrulanması istenebilir. Başvuru, talebin veri sorumlusuna ulaşmasından itibaren en geç otuz gün içinde sonuçlandırılır. İşlemin ayrıca bir maliyeti doğması halinde, Kurul’un tarifesindeki ücret istenebilir. Başvurunun reddi, süresinde cevap verilmemesi veya cevabın yetersiz görülmesi halinde ilgili kişi, Kişisel Verileri Koruma Kurulu’na şikâyet hakkını kullanabilir.
+Yaş grubuna göre özelliğin açılıp kapanması, beyan edilen doğum tarihine dayalı bir kuraldır. Bu kural aleyhe hukuki sonuç doğurduğunda itiraz, aynı destek formu ile yapılır.
+
+14. Değişiklik
+Politika güncellenebilir. Önemli değişiklik, uygulama içi duyuru veya bu sayfanın yeni sürümü ile duyurulur. Yürürlükteki sürüm: 1.0.0, 22 Ekim 2026. Hizmeti kullanmaya devam etmek, güncel metnin okunduğu anlamına gelir. Emredici hükümler, metindeki değişiklikle daraltılamaz.</div>
+  <nav>
+    <a href="kvkk.html">KVKK Aydınlatma Metni</a> · <a href="terms.html">Kullanım Koşulları</a> · <a href="cocuk-guvenligi.html">Çocuk güvenliği</a>
+  </nav>
+  </div>
 </body>
 </html>

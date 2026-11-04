@@ -1,6 +1,6 @@
 // Maskot enerji/mutluluk ilerleme çubuğu.
 import 'package:flutter/material.dart';
-import 'package:vibe_life/app_theme.dart';
+import 'package:myvibel/app_theme.dart';
 
 // Etiketli yüzdelik durum çubuğu
 class MascotDurumBari extends StatelessWidget {
@@ -11,6 +11,7 @@ class MascotDurumBari extends StatelessWidget {
     required this.renk,
     this.ters = false,
     this.compact = false,
+    this.sayiGoster = true,
   });
 
   final String etiket; // Gösterilecek isim (Enerji, Mutluluk)
@@ -18,6 +19,7 @@ class MascotDurumBari extends StatelessWidget {
   final Color renk; // Çubuk rengi
   final bool ters; // Doluluk tersine çevrilsin mi
   final bool compact; // Küçük boyut modu
+  final bool sayiGoster; // Sağdaki sayısal değer
 
   @override
   Widget build(BuildContext context) {
@@ -41,14 +43,16 @@ class MascotDurumBari extends StatelessWidget {
                   fontWeight: FontWeight.w600,
                 ),
               ),
-              const Spacer(),
-              Text(
-                '$deger',
-                style: TextStyle(
-                  color: theme.colorScheme.onSurface,
-                  fontSize: compact ? 11 : 12,
+              if (sayiGoster) ...[
+                const Spacer(),
+                Text(
+                  '$deger',
+                  style: TextStyle(
+                    color: theme.colorScheme.onSurface,
+                    fontSize: compact ? 11 : 12,
+                  ),
                 ),
-              ),
+              ],
             ],
           ),
           SizedBox(height: compact ? 4 : 6),

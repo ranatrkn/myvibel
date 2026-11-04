@@ -1,0 +1,17 @@
+appId: com.myvibel.app
+---
+- runFlow: ../flows/ana-sayfaya-don.yaml
+- tapOn: "Alt menü Profil"
+- extendedWaitUntil:
+    visible: "Beğendiklerim"
+    timeout: 25000
+- scrollUntilVisible:
+    element: "Ayarlar"
+    direction: UP
+    optional: true
+- tapOn: "Ayarlar"
+- extendedWaitUntil:
+    visible: "Gizli Hesap.*"
+    timeout: 15000
+- tapOn: "Koyu"
+- back

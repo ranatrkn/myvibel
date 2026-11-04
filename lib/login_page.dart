@@ -1,12 +1,22 @@
 // E-posta/şifre ile giriş ekranı.
+import 'package:myvibel/tek_sefer_navigasyon.dart';
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:vibe_life/auth_eposta.dart';
-import 'package:vibe_life/app_theme.dart';
-import 'package:vibe_life/error_messages.dart';
-import 'package:vibe_life/register_page.dart';
-import 'package:vibe_life/widgets/vibe_gradient_scaffold.dart';
-import 'package:vibe_life/vibe_snackbar.dart';
+import 'package:myvibel/auth_eposta.dart';
+import 'package:myvibel/app_theme.dart';
+import 'package:myvibel/error_messages.dart';
+import 'package:myvibel/apple_giris_servis.dart';
+import 'package:myvibel/google_giris_servis.dart';
+import 'package:myvibel/register_page.dart';
+import 'package:myvibel/kayit_servis.dart';
+import 'package:myvibel/widgets/apple_giris_butonu.dart';
+import 'package:myvibel/widgets/google_giris_butonu.dart';
+import 'package:myvibel/widgets/vibe_gradient_scaffold.dart';
+import 'package:myvibel/widgets/vibe_marka_baslik.dart';
+import 'package:myvibel/widgets/web_auth_landing.dart';
+import 'package:myvibel/vibe_snackbar.dart';
 
 // Ana giriş sayfası
 class VibeHomePage extends StatefulWidget {
@@ -17,10 +27,16 @@ class VibeHomePage extends StatefulWidget {
 }
 
 class _VibeHomePageState extends State<VibeHomePage> {
-  final TextEditingController emailController = TextEditingController(); // E-posta alanı
-  final TextEditingController sifreController = TextEditingController(); // Şifre alanı
+  final TextEditingController emailController =
+      TextEditingController(); // E-posta alanı
+  final TextEditingController sifreController =
+      TextEditingController(); // Şifre alanı
 
   bool isLoading = false; // Giriş işlemi sürüyor mu
+  bool googleYukleniyor = false;
+  bool appleYukleniyor = false;
+
+  bool get _sosyalYukleniyor => googleYukleniyor || appleYukleniyor;
 
   @override
   void dispose() {
@@ -29,13 +45,13 @@ class _VibeHomePageState extends State<VibeHomePage> {
     super.dispose();
   }
 
-  // Firebase ile e-posta/şifre girişi
+  // Firebase ile e-posta veya kullanıcı adı + şifre girişi
   Future<void> girisYap() async {
-    final email = emailController.text.trim();
+    final kimlikGirdi = emailController.text.trim();
     final sifre = sifreController.text.trim();
 
-    if (email.isEmpty || sifre.isEmpty) {
-      mesajGoster("Lütfen e-posta ve şifre alanlarını doldur.");
+    if (kimlikGirdi.isEmpty || sifre.isEmpty) {
+      mesajGoster("Lütfen e-posta/kullanıcı adı ve şifre alanlarını doldur.");
       return;
     }
 
@@ -44,38 +60,49 @@ class _VibeHomePageState extends State<VibeHomePage> {
     });
 
     try {
+      final email = await KayitServis.girisKimliginiCoz(kimlikGirdi);
       await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: email,
         password: sifre,
       );
 
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid != null) {
+        unawaited(KayitServis.kullaniciAdiGirisEmailiniSenkronla(uid));
+      }
+
       if (!mounted) return;
 
       vibeSnackbarGoster(context, "Hoş geldin", tip: VibeMesajTipi.basari);
-      if (Navigator.canPop(context)) {
-        Navigator.pop(context);
-      }
+      // AuthControlPage auth dinleyicisi Feed'e geçer.
+      // Web'de canPop tarayıcı geçmişinden true olup boş gri ekrana düşürüyor.
     } on FirebaseAuthException catch (e) {
       String mesaj = "Giriş yapılamadı.";
 
       if (e.code == 'user-not-found') {
-        mesaj = "Bu e-posta ile kayıtlı kullanıcı bulunamadı.";
+        mesaj = e.message?.trim().isNotEmpty == true
+            ? e.message!.trim()
+            : "Bu e-posta veya kullanıcı adı ile kayıtlı hesap bulunamadı.";
       } else if (e.code == 'wrong-password') {
         mesaj = "Şifre hatalı.";
       } else if (e.code == 'invalid-email') {
-        mesaj = "Geçerli bir e-posta adresi gir.";
+        mesaj = e.message?.trim().isNotEmpty == true
+            ? e.message!.trim()
+            : "Geçerli bir e-posta veya kullanıcı adı gir.";
       } else if (e.code == 'invalid-credential') {
-        mesaj = "E-posta veya şifre hatalı.";
+        mesaj = "E-posta/kullanıcı adı veya şifre hatalı.";
       } else if (e.code == 'network-request-failed') {
-        mesaj = "internet bağlantısı yok";
+        mesaj = baglantiUyariMesaji(e);
       }
 
+      debugPrint('Giris Auth hatasi: ${e.code} ${e.message}');
       mesajGoster(mesaj);
     } catch (e) {
+      debugPrint('Giris beklenmeyen hata: $e');
       mesajGoster(
         internetAwareErrorMessage(
           error: e,
-          fallback: "Beklenmeyen bir hata oluştu.",
+          fallback: 'Beklenmeyen bir hata oluştu.',
         ),
       );
     } finally {
@@ -84,6 +111,38 @@ class _VibeHomePageState extends State<VibeHomePage> {
           isLoading = false;
         });
       }
+    }
+  }
+
+  Future<void> googleIleDevam() async {
+    setState(() => googleYukleniyor = true);
+    try {
+      // Her seferinde hesap seçici çıksın.
+      final sonuc = await GoogleGirisServis.girisYap(hesabiYenidenSec: true);
+      if (!mounted || sonuc == GoogleGirisSonuc.iptal) return;
+      // AuthControlPage yönlendirir; web'de pop boş ekran yapıyor.
+    } catch (e) {
+      await GoogleGirisServis.googleOturumunuKapat();
+      if (!mounted) return;
+      final mesaj = GoogleGirisServis.hataMesaji(e);
+      if (mesaj.isNotEmpty) mesajGoster(mesaj);
+    } finally {
+      if (mounted) setState(() => googleYukleniyor = false);
+    }
+  }
+
+  Future<void> appleIleDevam() async {
+    setState(() => appleYukleniyor = true);
+    try {
+      final sonuc = await AppleGirisServis.girisYap();
+      if (!mounted || sonuc == AppleGirisSonuc.iptal) return;
+      // AuthControlPage yönlendirir; web'de pop boş ekran yapıyor.
+    } catch (e) {
+      if (!mounted) return;
+      final mesaj = AppleGirisServis.hataMesaji(e);
+      if (mesaj.isNotEmpty) mesajGoster(mesaj);
+    } finally {
+      if (mounted) setState(() => appleYukleniyor = false);
     }
   }
 
@@ -125,134 +184,142 @@ class _VibeHomePageState extends State<VibeHomePage> {
     final vibe = context.vibe;
     final theme = Theme.of(context);
 
-    return VibeGradientScaffold(
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 40),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              const SizedBox(height: 80),
-              Text(
-                "VibeLife",
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 52,
-                  fontWeight: FontWeight.w900,
-                  color: vibe.titleOnGradient,
-                  letterSpacing: 6.0,
-                  shadows: vibe.isDark
-                      ? const [
-                          Shadow(
-                            blurRadius: 10.0,
-                            color: Colors.black45,
-                            offset: Offset(3.0, 3.0),
+    final form = AuthEkranYaziOlcegi(
+      child: VibeGradientScaffold(
+        body: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const SizedBox(height: 36),
+                const VibeMarkaBaslik(altYazi: 'Hesabına gir'),
+                const SizedBox(height: 36),
+                Container(
+                  padding: const EdgeInsets.fromLTRB(18, 22, 18, 10),
+                  decoration: vibe.kahramanKart(radius: 24),
+                  child: Column(
+                    children: [
+                      TextField(
+                        controller: emailController,
+                        keyboardType: TextInputType.emailAddress,
+                        autocorrect: false,
+                        style: TextStyle(color: theme.colorScheme.onSurface),
+                        decoration: vibe.alanDekoru(
+                          hint: 'E-posta veya kullanıcı adı',
+                          ikon: Icons.person_outline_rounded,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: sifreController,
+                        obscureText: true,
+                        style: TextStyle(color: theme.colorScheme.onSurface),
+                        decoration: vibe.alanDekoru(
+                          hint: 'Şifre',
+                          ikon: Icons.key_rounded,
+                        ),
+                      ),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed:
+                              isLoading ? null : sifremiUnuttumPaneliniAc,
+                          child: Text(
+                            "Şifremi unuttum",
+                            style: TextStyle(
+                              color: vibe.mutedText,
+                              fontSize: 13,
+                              decoration: TextDecoration.underline,
+                            ),
                           ),
-                        ]
-                      : null,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: ElevatedButton(
+                          onPressed:
+                              (isLoading || _sosyalYukleniyor) ? null : girisYap,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: vibe.primaryButton,
+                            foregroundColor: Colors.white,
+                            shape: const StadiumBorder(),
+                            textStyle: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 1.2,
+                            ),
+                          ),
+                          child: isLoading
+                              ? const CircularProgressIndicator(
+                                  color: Colors.white)
+                              : const Text("Giriş Yap"),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(child: Divider(color: vibe.cardBorder)),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            child: Text(
+                              'veya',
+                              style: TextStyle(
+                                  color: vibe.mutedText, fontSize: 13),
+                            ),
+                          ),
+                          Expanded(child: Divider(color: vibe.cardBorder)),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      GoogleGirisButonu(
+                        onPressed: (isLoading || _sosyalYukleniyor)
+                            ? null
+                            : googleIleDevam,
+                        yukleniyor: googleYukleniyor,
+                      ),
+                      if (AppleGirisServis.gorunur) ...[
+                        const SizedBox(height: 12),
+                        AppleGirisButonu(
+                          onPressed: (isLoading || _sosyalYukleniyor)
+                              ? null
+                              : appleIleDevam,
+                          yukleniyor: appleYukleniyor,
+                        ),
+                      ],
+                      const SizedBox(height: 8),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 160),
-              TextField(
-                controller: emailController,
-                keyboardType: TextInputType.emailAddress,
-                style: TextStyle(color: theme.colorScheme.onSurface),
-                decoration: InputDecoration(
-                  hintText: "E-posta",
-                  hintStyle: TextStyle(color: vibe.mutedText),
-                  filled: true,
-                  fillColor: vibe.inputFill,
-                  prefixIcon: Icon(Icons.email, color: vibe.mutedText),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(30),
-                    borderSide: BorderSide(color: vibe.cardBorder),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(30),
-                    borderSide: BorderSide(color: vibe.cardBorder),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 40),
-              TextField(
-                controller: sifreController,
-                obscureText: true,
-                style: TextStyle(color: theme.colorScheme.onSurface),
-                decoration: InputDecoration(
-                  hintText: "Şifre",
-                  hintStyle: TextStyle(color: vibe.mutedText),
-                  filled: true,
-                  fillColor: vibe.inputFill,
-                  prefixIcon: Icon(Icons.key, color: vibe.mutedText),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(30),
-                    borderSide: BorderSide(color: vibe.cardBorder),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(30),
-                    borderSide: BorderSide(color: vibe.cardBorder),
-                  ),
-                ),
-              ),
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton(
-                  onPressed: isLoading ? null : sifremiUnuttumPaneliniAc,
+                const SizedBox(height: 12),
+                TextButton(
+                  onPressed: () {
+                    tekSeferPush(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const RegisterPage(),
+                      ),
+                    );
+                  },
                   child: Text(
-                    "Şifremi unuttum",
+                    "Hesabın Yok mu? Kayıt Ol",
                     style: TextStyle(
                       color: vibe.mutedText,
-                      fontSize: 13,
+                      fontSize: 14,
                       decoration: TextDecoration.underline,
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton(
-                  onPressed: isLoading ? null : girisYap,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: vibe.primaryButton,
-                    foregroundColor: Colors.white,
-                    shape: const StadiumBorder(),
-                    textStyle: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 1.2,
-                    ),
-                  ),
-                  child: isLoading
-                      ? const CircularProgressIndicator(color: Colors.white)
-                      : const Text("Giriş Yap"),
-                ),
-              ),
-              const SizedBox(height: 20),
-              TextButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const RegisterPage(),
-                    ),
-                  );
-                },
-                child: Text(
-                  "Hesabın Yok mu? Kayıt Ol",
-                  style: TextStyle(
-                    color: vibe.mutedText,
-                    fontSize: 14,
-                    decoration: TextDecoration.underline,
-                  ),
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
     );
+
+    return WebAuthLanding(form: form);
   }
 }
 

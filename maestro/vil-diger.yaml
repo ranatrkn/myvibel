@@ -1,0 +1,28 @@
+appId: com.myvibel.app
+---
+- launchApp:
+    appId: com.myvibel.app
+    clearState: false
+    stopApp: false
+- extendedWaitUntil:
+    visible: "Alt menü Keşfet|Takip Edilen|Alt menü Profil"
+    timeout: 40000
+- tapOn: "Alt menü Keşfet"
+- extendedWaitUntil:
+    visible: "Önerilen Kullanıcılar|Liderlik"
+    timeout: 25000
+- tapOn:
+    text: "Takip Ediliyor"
+    index: 0
+- waitForAnimationToEnd:
+    timeout: 4000
+- tapOn:
+    text: "Takip Et"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 4000
+- tapOn: "Alt menü Profil"
+- extendedWaitUntil:
+    visible: "Beğendiklerim"
+    timeout: 25000
+- takeScreenshot: vil-takip-sonra

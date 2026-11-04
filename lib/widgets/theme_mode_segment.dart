@@ -1,7 +1,8 @@
 // Koyu/açık tema seçim segmenti.
 import 'package:flutter/material.dart';
-import 'package:vibe_life/app_theme.dart';
-import 'package:vibe_life/theme_controller.dart';
+import 'package:myvibel/app_theme.dart';
+import 'package:myvibel/maestro_semantics.dart';
+import 'package:myvibel/theme_controller.dart';
 
 // Ayarlardaki görünüm (tema) seçici
 class ThemeModeSegment extends StatelessWidget {
@@ -93,7 +94,11 @@ class _SegmentOption extends StatelessWidget {
   Widget build(BuildContext context) {
     final vibe = context.vibe;
 
-    return Material(
+    return maestroButton(
+      label: label,
+      selected: selected,
+      onTap: onTap,
+      child: Material(
       color: selected ? vibe.primaryButton : Colors.transparent,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
@@ -122,6 +127,7 @@ class _SegmentOption extends StatelessWidget {
           ),
         ),
       ),
+    ),
     );
   }
 }

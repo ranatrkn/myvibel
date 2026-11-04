@@ -4,11 +4,12 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
-import 'package:vibe_life/error_messages.dart';
-import 'package:vibe_life/haftalik_gorev_servis.dart';
-import 'package:vibe_life/maskot_servis.dart';
-import 'package:vibe_life/sosyal/bildirim_servis.dart';
-import 'package:vibe_life/sosyal/sosyal_core.dart';
+import 'package:myvibel/error_messages.dart';
+import 'package:myvibel/haftalik_gorev_servis.dart';
+import 'package:myvibel/maskot_servis.dart';
+import 'package:myvibel/sosyal/bildirim_servis.dart';
+import 'package:myvibel/sosyal/engel_servis.dart';
+import 'package:myvibel/sosyal/sosyal_core.dart';
 
 // Kullanıcının takip durumu
 enum TakipDurumu {
@@ -30,24 +31,52 @@ class TakipIslemSonucu {
   final bool bildirimiTemizle;
 }
 
+class LiderlikTabloSonucu {
+  const LiderlikTabloSonucu({
+    required this.liste,
+    this.benimSira,
+  });
+
+  final List<Map<String, dynamic>> liste;
+  final int? benimSira;
+
+  bool get ilkYuzde {
+    final sira = benimSira;
+    if (sira == null) return false;
+    return sira >= 1 && sira <= liste.length && sira <= 100;
+  }
+}
+
 // Takip sistemi ve liderlik servisi
 class TakipServis {
-  // Liderlik satırlarını filtreler ve sıralar
+  static const liderlikLimit = 100;
+
+  static bool takipCikisVilHarcanacakVeri(Map<String, dynamic>? data) {
+    return data != null &&
+        data["puanVerildi"] == true &&
+        data["vilGeriAlindi"] != true;
+  }
+
+  static Future<bool> takipCikisVilHarcanacak(String hedefUid) async {
+    final current = FirebaseAuth.instance.currentUser;
+    if (current == null || hedefUid.isEmpty) return false;
+    final snap = await SosyalCore.db
+        .collection("users")
+        .doc(current.uid)
+        .collection("followRewarded")
+        .doc(hedefUid)
+        .get();
+    return takipCikisVilHarcanacakVeri(snap.data());
+  }
+
+  // Liderlik satırlarını maskot seviyesine göre sıralar
   static List<Map<String, dynamic>> _liderlikSatirlariniDuzenle(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> docs, {
-    required int limit,
-    required String buHafta,
+    int? limit,
   }) {
     final satirlar = docs.map((doc) {
       final data = doc.data();
       final robot = MascotServis.parse(data["robot"]);
-      final gorevRaw = data["haftalikGorev"];
-      final gorevMap =
-          gorevRaw is Map ? Map<String, dynamic>.from(gorevRaw) : const {};
-      final gorevHafta = (gorevMap["hafta"] ?? "").toString();
-      final gorevPuani = gorevHafta == buHafta
-          ? (gorevMap["puan"] is num ? (gorevMap["puan"] as num).toInt() : 0)
-          : 0;
       return {
         "uid": doc.id,
         "adSoyad": data["adSoyad"] ?? "Vibe Kullanıcısı",
@@ -55,70 +84,108 @@ class TakipServis {
         "photoUrl": data["photoUrl"] ?? "",
         "avatarKey": data["avatarKey"] ?? "",
         "robotSeviye": robot.seviye,
-        "haftalikGorevPuani": gorevPuani,
+        "robotGelisimPuani": robot.gelisimPuani,
+        "robotIsim": robot.isim,
       };
     }).where((satir) {
-      final seviye = satir["robotSeviye"] as int;
-      final puan = satir["haftalikGorevPuani"] as int;
-      return seviye >= MascotServis.odaAcilisSeviyesi &&
-          puan > 0; // Oda açık ve puanlı
+      return (satir["robotSeviye"] as int) >= 1;
     }).toList();
 
     satirlar.sort((a, b) {
-      final puanKars = (b["haftalikGorevPuani"] as int)
-          .compareTo(a["haftalikGorevPuani"] as int);
-      if (puanKars != 0) return puanKars; // Önce haftalık puan
-      return (b["robotSeviye"] as int).compareTo(a["robotSeviye"] as int);
+      final seviyeKars = (b["robotSeviye"] as int)
+          .compareTo(a["robotSeviye"] as int);
+      if (seviyeKars != 0) return seviyeKars;
+      return (b["robotGelisimPuani"] as int)
+          .compareTo(a["robotGelisimPuani"] as int);
     });
 
+    if (limit == null) return satirlar;
     return satirlar.take(limit).toList();
   }
 
-  // Haftalık görev liderlik tablosunu getirir
-  static Future<List<Map<String, dynamic>>> liderlikTablosuGetir({
-    int limit = 25,
-  }) async {
-    final buHafta = HaftalikGorevServis.haftaKimligi();
+  static Query<Map<String, dynamic>> _liderlikSiraliSorgu({required int limit}) {
+    return SosyalCore.db
+        .collection("users")
+        .orderBy("robot.seviye", descending: true)
+        .orderBy("robot.gelisimPuani", descending: true)
+        .limit(limit);
+  }
+
+  static Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>>
+      _liderlikBelgeleriniGetir({required int limit}) async {
     try {
-      final snap = await SosyalCore.db
-          .collection("users")
-          .where("haftalikGorev.hafta", isEqualTo: buHafta)
-          .orderBy("haftalikGorev.puan", descending: true)
-          .limit(limit * 4)
-          .get();
-      return _liderlikSatirlariniDuzenle(
-        snap.docs,
-        limit: limit,
-        buHafta: buHafta,
-      );
-    } catch (_) {
-      try {
-        // Hafta filtresi başarısızsa genel sıralama dene
-        final snap = await SosyalCore.db
-            .collection("users")
-            .orderBy("haftalikGorev.puan", descending: true)
-            .limit(limit * 8)
-            .get();
-        return _liderlikSatirlariniDuzenle(
-          snap.docs,
-          limit: limit,
-          buHafta: buHafta,
-        );
-      } catch (_) {
-        // Son çare: tüm kullanıcılardan filtrele
-        final snap = await SosyalCore.db.collection("users").limit(160).get();
-        return _liderlikSatirlariniDuzenle(
-          snap.docs,
-          limit: limit,
-          buHafta: buHafta,
-        );
-      }
+      final snap = await _liderlikSiraliSorgu(limit: limit).get();
+      return snap.docs;
+    } catch (e) {
+      debugPrint("liderlik sirali sorgu yedegi: $e");
+      final snap = await SosyalCore.db.collection("users").limit(300).get();
+      return snap.docs;
     }
   }
 
-  // Bekleyen takip ödüllerini senkronize eder
-  static Future<void> takipOdulleriniSenkronizeEt(String uid) async {
-    if (uid.isEmpty) return;
+  static Future<int?> _benimSirayiHesapla({
+    required String uid,
+    required List<Map<String, dynamic>> sirali,
+  }) async {
+    final idx = sirali.indexWhere((s) => s["uid"] == uid);
+    if (idx >= 0) return idx + 1;
+    // Limitsiz count() kuralda kapalı; listede yoksa sıra gösterme.
+    return null;
+  }
+
+  // Maskot seviyesine göre liderlik tablosunu getirir
+  static Future<LiderlikTabloSonucu> liderlikTablosuGetir({
+    int limit = liderlikLimit,
+  }) async {
+    final current = FirebaseAuth.instance.currentUser;
+    const onYedek = 60;
+    final ilkLimit = (limit + onYedek).clamp(limit, 250).toInt();
+    final belgeFuture = _liderlikBelgeleriniGetir(limit: ilkLimit);
+    var engelIdleri = <String>{};
+    if (current != null) {
+      final engeller = await Future.wait([
+        EngelServis.engellenenKullanicilariGetir(current.uid),
+        EngelServis.beniEngelleyenKullanicilariGetir(current.uid),
+      ]);
+      engelIdleri = {...engeller[0], ...engeller[1]};
+    }
+
+    var snapDocs = await belgeFuture;
+    final cekimLimiti =
+        (limit + engelIdleri.length + 30).clamp(limit, 250).toInt();
+    if (cekimLimiti > ilkLimit) {
+      snapDocs = await _liderlikBelgeleriniGetir(limit: cekimLimiti);
+    }
+    final docs = engelIdleri.isEmpty
+        ? snapDocs
+        : snapDocs.where((doc) => !engelIdleri.contains(doc.id)).toList();
+
+    final tumu = _liderlikSatirlariniDuzenle(docs);
+    int? benimSira;
+    final uid = current?.uid;
+    if (uid != null && uid.isNotEmpty) {
+      benimSira = await _benimSirayiHesapla(uid: uid, sirali: tumu);
+    }
+
+    return LiderlikTabloSonucu(
+      liste: tumu.take(limit).toList(),
+      benimSira: benimSira,
+    );
+  }
+
+  // Engel filtresi olmadan global ilk 3 kullanıcı uid'lerini getirir (avatar taçları için)
+  static Future<List<String>> liderlikUstUcUidleri() async {
+    final snapDocs = await _liderlikBelgeleriniGetir(limit: 12);
+    final satirlar = _liderlikSatirlariniDuzenle(snapDocs, limit: 3);
+    return satirlar
+        .map((satir) => (satir['uid'] ?? '').toString())
+        .where((uid) => uid.isNotEmpty)
+        .toList();
+  }
+
+  // Bekleyen takip ödüllerini senkronize eder; verilen toplam puanı döner.
+  static Future<int> takipOdulleriniSenkronizeEt(String uid) async {
+    if (uid.isEmpty) return 0;
 
     final oduller = await SosyalCore.db
         .collection("users")
@@ -126,6 +193,7 @@ class TakipServis {
         .collection("followRewarded")
         .get();
 
+    var toplamPuan = 0;
     for (final doc in oduller.docs) {
       final data = doc.data();
       if (data["puanVerildi"] == true) continue; // Zaten verilmiş
@@ -135,7 +203,7 @@ class TakipServis {
           hedefUid: doc.id,
         );
         if (verildi) {
-          unawaited(MascotServis.sosyalOdulKaydet(uid, MascotServis.vilTakip));
+          toplamPuan += 5;
           unawaited(
             HaftalikGorevServis.aksiyonKaydet(uid, GorevAksiyon.takip)
                 .then((sonuc) {
@@ -149,6 +217,7 @@ class TakipServis {
         debugPrint('takipOdulleriniSenkronizeEt failed (${doc.id}): $e');
       }
     }
+    return toplamPuan;
   }
 
   // Takip ödül puanını transaction ile verir
@@ -165,9 +234,7 @@ class TakipServis {
         return false; // Daha önce verilmiş
       }
 
-      final userSnap = await tx.get(userRef);
-      final mevcutPuan = userSnap.data()?["puan"];
-      final mevcutPuanInt = mevcutPuan is num ? mevcutPuan.toInt() : 0;
+      await tx.get(userRef);
 
       if (rewardSnap.exists) {
         tx.update(rewardRef, {"puanVerildi": true});
@@ -179,11 +246,24 @@ class TakipServis {
         });
       }
 
-      tx.update(userRef, {
-        "puan": mevcutPuanInt + 5,
+      final userGuncelleme = <String, dynamic>{
+        "puan": FieldValue.increment(5),
         "sonTakipOdulUid": hedefUid,
-      });
+      };
+      tx.update(userRef, userGuncelleme);
       return true;
+    }).then((verildi) async {
+      if (verildi) {
+        try {
+          await MascotServis.sosyalOdulKaydet(
+            takipEdenUid,
+            MascotServis.vilTakip,
+          );
+        } catch (e) {
+          debugPrint('takip maskot odul: $e');
+        }
+      }
+      return verildi;
     });
   }
 
@@ -231,6 +311,7 @@ class TakipServis {
       final snap = await SosyalCore.db
           .collection("users")
           .where(FieldPath.documentId, whereIn: part)
+          .limit(part.length)
           .get();
       for (final doc in snap.docs) {
         final data = doc.data();
@@ -257,6 +338,7 @@ class TakipServis {
         .collection("users")
         .doc(uid)
         .collection("following")
+        .limit(500)
         .get();
     return snap.docs.map((doc) => doc.id).toSet();
   }
@@ -398,16 +480,16 @@ class TakipServis {
     // Bu yüzden sadece erişilebilen taraftan kontrol yapılır.
     if (current.uid == hedefUid) {
       final followerSnap = await followerRef.get();
-      if (followerSnap.exists) return false;
-
-      await kaydiYaz(followerRef, "followers");
-      await kaydiYaz(followingRef, "following");
+      if (!followerSnap.exists) {
+        await kaydiYaz(followerRef, "followers");
+        await kaydiYaz(followingRef, "following");
+      }
     } else if (current.uid == takipEdenUid) {
       final followingSnap = await followingRef.get();
-      if (followingSnap.exists) return false;
-
-      await kaydiYaz(followingRef, "following");
-      await kaydiYaz(followerRef, "followers");
+      if (!followingSnap.exists) {
+        await kaydiYaz(followingRef, "following");
+        await kaydiYaz(followerRef, "followers");
+      }
     } else {
       throw "Takip işlemi için yetkin yok.";
     }
@@ -456,6 +538,12 @@ class TakipServis {
           }
         }),
       );
+    }
+
+    final oturumUid = FirebaseAuth.instance.currentUser?.uid;
+    if (oturumUid != null) {
+      final otherUid = oturumUid == takipEdenUid ? hedefUid : takipEdenUid;
+      unawaited(MascotServis.bagTakibiYenilendi(otherUid));
     }
 
     return puanEklendi;
@@ -556,10 +644,6 @@ class TakipServis {
       puanVer: true,
     );
 
-    if (puanVerildi) {
-      unawaited(MascotServis.sosyalOdulKaydet(current.uid, MascotServis.vilTakip));
-    }
-
     return puanVerildi
         ? "Takip ediliyor. +5 puan kazandın!"
         : "Takip ediliyor.";
@@ -569,24 +653,96 @@ class TakipServis {
   static Future<String> takiptenCik(String hedefUid) async {
     final current = FirebaseAuth.instance.currentUser;
     if (current == null) return "Oturum bulunamadı.";
+    if (hedefUid.isEmpty) return "Geçersiz kullanıcı.";
 
-    final batch = SosyalCore.db.batch();
-    batch.delete(SosyalCore.db
-        .collection("users")
-        .doc(current.uid)
-        .collection("following")
-        .doc(hedefUid));
-    batch.delete(SosyalCore.db
+    final userRef = SosyalCore.db.collection("users").doc(current.uid);
+    final followingRef = userRef.collection("following").doc(hedefUid);
+    final followerRef = SosyalCore.db
         .collection("users")
         .doc(hedefUid)
         .collection("followers")
-        .doc(current.uid));
-    batch.delete(SosyalCore.db
+        .doc(current.uid);
+    final requestRef = SosyalCore.db
         .collection("users")
         .doc(hedefUid)
         .collection("followRequests")
-        .doc(current.uid));
-    await batch.commit();
+        .doc(current.uid);
+    final rewardRef = userRef.collection("followRewarded").doc(hedefUid);
+
+    final followingSnap = await followingRef.get();
+    if (!followingSnap.exists) {
+      await requestRef.delete();
+      return "Takipten çıkıldı.";
+    }
+
+    final rewardSnap = await rewardRef.get();
+    final vilHarcanacak = takipCikisVilHarcanacakVeri(rewardSnap.data());
+
+    if (vilHarcanacak) {
+      await MascotServis.sosyalGeriAlVilOnKontrol(
+        uid: current.uid,
+        maliyet: MascotServis.vilTakipGeriAlMaliyeti,
+        yetersizMesaji: MascotServis.sosyalGeriAlVilYetersizMesaji(
+          "Takipten çıkmak",
+          MascotServis.vilTakipGeriAlMaliyeti,
+        ),
+      );
+    }
+
+    try {
+      await SosyalCore.db.runTransaction((tx) async {
+        final followingNow = await tx.get(followingRef);
+        if (!followingNow.exists) return;
+
+        final rewardNow = await tx.get(rewardRef);
+        final userSnap = await tx.get(userRef);
+        final userData = userSnap.data() ?? <String, dynamic>{};
+        final rewardData = rewardNow.data();
+        final odulSimdi =
+            rewardNow.exists && rewardData?["puanVerildi"] == true;
+        final vilSimdi = takipCikisVilHarcanacakVeri(rewardData);
+
+        if (vilSimdi) {
+          final puanInt =
+              userData["puan"] is num ? (userData["puan"] as num).toInt() : 0;
+          final guncelleme = <String, dynamic>{
+            "sonTakipOdulUid": hedefUid,
+          };
+          if (puanInt >= 5) {
+            guncelleme["puan"] = FieldValue.increment(-5);
+          }
+          MascotServis.sosyalGeriAlVilEkle(
+            guncelleme: guncelleme,
+            robotHam: userData["robot"],
+            maliyet: MascotServis.vilTakipGeriAlMaliyeti,
+            yetersizMesaji: MascotServis.sosyalGeriAlVilYetersizMesaji(
+              "Takipten çıkmak",
+              MascotServis.vilTakipGeriAlMaliyeti,
+            ),
+          );
+          if (guncelleme.length > 1) {
+            tx.update(userRef, guncelleme);
+          }
+          tx.update(rewardRef, {"vilGeriAlindi": true});
+        } else if (rewardNow.exists && !odulSimdi) {
+          tx.delete(rewardRef);
+        }
+
+        tx.delete(followingRef);
+        tx.delete(followerRef);
+        tx.delete(requestRef);
+      });
+    } on FirebaseException catch (e) {
+      if (e.code != "permission-denied") rethrow;
+      // Puan/vil geri alma kuralı takılırsa takip kaydı yine silinsin.
+      await Future.wait([
+        SosyalCore.guvenliSil(followingRef),
+        SosyalCore.guvenliSil(followerRef),
+        SosyalCore.guvenliSil(requestRef),
+      ]);
+    }
+
+    unawaited(MascotServis.bagTakibiKesildi(hedefUid));
 
     return "Takipten çıkıldı.";
   }
@@ -742,13 +898,20 @@ class TakipServis {
   // Takip butonuna basıldığında uygun işlemi yapar
   static Future<String> takipButonunaBas(
       String hedefUid, TakipDurumu durum) async {
-    switch (durum) {
-      case TakipDurumu.takipEdiliyor:
-        return takiptenCik(hedefUid);
-      case TakipDurumu.istekGonderildi:
-        return takipIstegiIptal(hedefUid);
-      case TakipDurumu.takipEtmiyor:
-        return takipEt(hedefUid);
+    try {
+      switch (durum) {
+        case TakipDurumu.takipEdiliyor:
+          return await takiptenCik(hedefUid);
+        case TakipDurumu.istekGonderildi:
+          return await takipIstegiIptal(hedefUid);
+        case TakipDurumu.takipEtmiyor:
+          return await takipEt(hedefUid);
+      }
+    } catch (e) {
+      return internetAwareErrorMessage(
+        error: e,
+        fallback: "Takip işlemi başarısız.",
+      );
     }
   }
 

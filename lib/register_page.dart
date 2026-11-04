@@ -1,12 +1,21 @@
 // Yeni kullanıcı kayıt ekranı — profil e-posta doğrulandıktan sonra oluşur.
+import 'package:myvibel/tek_sefer_navigasyon.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:vibe_life/app_theme.dart';
-import 'package:vibe_life/error_messages.dart';
-import 'package:vibe_life/kayit_servis.dart';
-import 'package:vibe_life/legal_pages.dart';
-import 'package:vibe_life/widgets/vibe_gradient_scaffold.dart';
-import 'package:vibe_life/vibe_snackbar.dart';
+import 'package:myvibel/app_theme.dart';
+import 'package:myvibel/error_messages.dart';
+import 'package:myvibel/apple_giris_servis.dart';
+import 'package:myvibel/google_giris_servis.dart';
+import 'package:myvibel/kayit_servis.dart';
+import 'package:myvibel/legal_pages.dart';
+import 'package:myvibel/widgets/apple_giris_butonu.dart';
+import 'package:myvibel/widgets/google_giris_butonu.dart';
+import 'package:myvibel/widgets/vibe_gradient_scaffold.dart';
+import 'package:myvibel/widgets/vibe_marka_baslik.dart';
+import 'package:myvibel/widgets/web_auth_landing.dart';
+import 'package:myvibel/vibe_snackbar.dart';
+import 'package:myvibel/yasal_icerik.dart';
+import 'package:myvibel/yas_dogrulama.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
@@ -23,7 +32,12 @@ class _RegisterPageState extends State<RegisterPage> {
   final TextEditingController sifreTekrarController = TextEditingController();
 
   bool isLoading = false;
+  bool googleYukleniyor = false;
+  bool appleYukleniyor = false;
   bool gizlilikOnayi = false;
+  DateTime? dogumTarihi;
+
+  bool get _sosyalYukleniyor => googleYukleniyor || appleYukleniyor;
 
   @override
   void dispose() {
@@ -83,8 +97,22 @@ class _RegisterPageState extends State<RegisterPage> {
       return;
     }
 
+    if (dogumTarihi == null) {
+      mesajGoster('Doğum tarihini seçmelisin.');
+      return;
+    }
+
+    if (!YasDogrulama.kayitIcinUygunMu(dogumTarihi!)) {
+      mesajGoster(
+        YasDogrulama.kayitYasMesaji(YasalIcerik.uygulamaAdi),
+      );
+      return;
+    }
+
     if (!gizlilikOnayi) {
-      mesajGoster('Kayıt için Gizlilik Politikası ve KVKK metnini onaylamalısın.');
+      mesajGoster(
+        'Kayıt için Gizlilik Politikası, KVKK Aydınlatma Metni ve Kullanım Koşulları\'nı onaylamalısın.',
+      );
       return;
     }
 
@@ -97,6 +125,7 @@ class _RegisterPageState extends State<RegisterPage> {
         kullaniciAdiKucuk: kullaniciAdiKucuk,
         email: email,
         sifre: sifre,
+        dogumTarihi: YasDogrulama.sadeceTarih(dogumTarihi!),
       );
 
       if (!mounted) return;
@@ -123,7 +152,7 @@ class _RegisterPageState extends State<RegisterPage> {
       } else if (e.code == 'operation-not-allowed') {
         mesaj = 'E-posta/şifre ile kayıt şu anda kullanılamıyor.';
       } else if (e.code == 'network-request-failed') {
-        mesaj = 'İnternet bağlantısı kurulamadı.';
+        mesaj = baglantiUyariMesaji(e);
       } else if (e.code == 'too-many-requests') {
         mesaj = 'Çok fazla kayıt denemesi yapıldı. Biraz bekleyip tekrar dene.';
       }
@@ -145,6 +174,37 @@ class _RegisterPageState extends State<RegisterPage> {
     }
   }
 
+  Future<void> googleIleKayit() async {
+    setState(() => googleYukleniyor = true);
+    try {
+      final sonuc = await GoogleGirisServis.girisYap(hesabiYenidenSec: true);
+      if (!mounted || sonuc == GoogleGirisSonuc.iptal) return;
+      // AuthControlPage Feed'e geçer; pop web'de boş ekran yapıyor.
+    } catch (e) {
+      await GoogleGirisServis.googleOturumunuKapat();
+      if (!mounted) return;
+      final mesaj = GoogleGirisServis.hataMesaji(e);
+      if (mesaj.isNotEmpty) mesajGoster(mesaj);
+    } finally {
+      if (mounted) setState(() => googleYukleniyor = false);
+    }
+  }
+
+  Future<void> appleIleKayit() async {
+    setState(() => appleYukleniyor = true);
+    try {
+      final sonuc = await AppleGirisServis.girisYap();
+      if (!mounted || sonuc == AppleGirisSonuc.iptal) return;
+      // AuthControlPage Feed'e geçer; pop web'de boş ekran yapıyor.
+    } catch (e) {
+      if (!mounted) return;
+      final mesaj = AppleGirisServis.hataMesaji(e);
+      if (mesaj.isNotEmpty) mesajGoster(mesaj);
+    } finally {
+      if (mounted) setState(() => appleYukleniyor = false);
+    }
+  }
+
   void mesajGoster(String mesaj, {VibeMesajTipi tip = VibeMesajTipi.hata}) {
     vibeSnackbarGoster(context, mesaj, tip: tip);
   }
@@ -153,138 +213,260 @@ class _RegisterPageState extends State<RegisterPage> {
   Widget build(BuildContext context) {
     final vibe = context.vibe;
 
-    return VibeGradientScaffold(
-      appBar: AppBar(
-        title: const Text('VibeLife Seni Bekliyor'),
-        backgroundColor: vibe.primaryButton.withOpacity(0.9),
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-          child: Column(
-            children: [
-              const SizedBox(height: 50),
-              _inputKutusu(
-                controller: adController,
-                hintText: 'Ad Soyad',
-                icon: Icons.person,
-              ),
-              _inputKutusu(
-                controller: kullaniciAdController,
-                hintText: 'Kullanıcı Adı',
-                icon: Icons.alternate_email,
-              ),
-              _inputKutusu(
-                controller: emailController,
-                hintText: 'E-posta',
-                icon: Icons.email,
-                keyboardType: TextInputType.emailAddress,
-              ),
-              _inputKutusu(
-                controller: sifreController,
-                hintText: 'Şifre',
-                icon: Icons.lock,
-                obscureText: true,
-              ),
-              _inputKutusu(
-                controller: sifreTekrarController,
-                hintText: 'Şifre Tekrar',
-                icon: Icons.lock_outline,
-                obscureText: true,
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 34, vertical: 2),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    CheckboxListTile(
-                      value: gizlilikOnayi,
-                      contentPadding: EdgeInsets.zero,
-                      activeColor: vibe.primaryButton,
-                      title: const Text(
-                        'Gizlilik Politikası ve KVKK metnini okudum, kabul ediyorum.',
-                        style: TextStyle(fontSize: 12),
+    final form = AuthEkranYaziOlcegi(
+      child: VibeGradientScaffold(
+        appBar: VibeGradientScaffold.seffafBaslik('Kayıt ol'),
+        body: SafeArea(
+          child: SingleChildScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            child: Column(
+              children: [
+                const SizedBox(height: 12),
+                const VibeMarkaBaslik(
+                  ikonBoyut: 72,
+                  yaziBoyut: 28,
+                  altYazi: 'Aramıza katıl',
+                ),
+                const SizedBox(height: 20),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 40),
+                  child: GoogleGirisButonu(
+                    etiket: 'Google ile kayıt ol',
+                    onPressed:
+                        (isLoading || _sosyalYukleniyor) ? null : googleIleKayit,
+                    yukleniyor: googleYukleniyor,
+                  ),
+                ),
+                if (AppleGirisServis.gorunur)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(40, 12, 40, 0),
+                    child: AppleGirisButonu(
+                      etiket: 'Apple ile kayıt ol',
+                      onPressed: (isLoading || _sosyalYukleniyor)
+                          ? null
+                          : appleIleKayit,
+                      yukleniyor: appleYukleniyor,
+                    ),
+                  ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(40, 18, 40, 8),
+                  child: Row(
+                    children: [
+                      Expanded(child: Divider(color: vibe.cardBorder)),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: Text(
+                          'veya e-posta ile',
+                          style: TextStyle(color: vibe.mutedText, fontSize: 13),
+                        ),
                       ),
-                      controlAffinity: ListTileControlAffinity.leading,
-                      onChanged: (v) {
-                        setState(() => gizlilikOnayi = v == true);
-                      },
-                    ),
-                    Wrap(
-                      spacing: 6,
-                      children: [
-                        TextButton(
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const PrivacyPolicyPage(),
-                              ),
-                            );
-                          },
-                          child: const Text('Gizlilik Politikası'),
-                        ),
-                        TextButton(
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const KvkkPage(),
-                              ),
-                            );
-                          },
-                          child: const Text('KVKK Aydınlatma'),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 40, vertical: 10),
-                child: ElevatedButton(
-                  onPressed: isLoading ? null : kayitOl,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: vibe.primaryButton,
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size(double.infinity, 55),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(30),
-                    ),
-                    elevation: 10,
-                  ),
-                  child: isLoading
-                      ? const SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 3,
-                          ),
-                        )
-                      : const Text(
-                          'KAYIT OL',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 1.5,
-                          ),
-                        ),
-                ),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text(
-                  'Zaten hesabın var mı? Giriş Yap',
-                  style: TextStyle(
-                    color: vibe.mutedText,
-                    decoration: TextDecoration.underline,
+                      Expanded(child: Divider(color: vibe.cardBorder)),
+                    ],
                   ),
                 ),
+                _inputKutusu(
+                  controller: adController,
+                  hintText: 'Ad Soyad',
+                  icon: Icons.person,
+                ),
+                _inputKutusu(
+                  controller: kullaniciAdController,
+                  hintText: 'Kullanıcı Adı',
+                  icon: Icons.alternate_email,
+                ),
+                _inputKutusu(
+                  controller: emailController,
+                  hintText: 'E-posta',
+                  icon: Icons.email,
+                  keyboardType: TextInputType.emailAddress,
+                ),
+                _dogumTarihiAlani(),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(44, 0, 44, 6),
+                  child: Text(
+                    '15 yaşından küçükler kayıt olamaz.',
+                    style: TextStyle(
+                      color: context.vibe.mutedText,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+                _inputKutusu(
+                  controller: sifreController,
+                  hintText: 'Şifre',
+                  icon: Icons.lock,
+                  obscureText: true,
+                ),
+                _inputKutusu(
+                  controller: sifreTekrarController,
+                  hintText: 'Şifre Tekrar',
+                  icon: Icons.lock_outline,
+                  obscureText: true,
+                ),
+                Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 34, vertical: 2),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      CheckboxListTile(
+                        value: gizlilikOnayi,
+                        contentPadding: EdgeInsets.zero,
+                        activeColor: vibe.primaryButton,
+                        title: const Text(
+                          'Gizlilik Politikası, KVKK Aydınlatma Metni ve Kullanım Koşulları\'nı okudum, kabul ediyorum.',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                        controlAffinity: ListTileControlAffinity.leading,
+                        onChanged: (v) {
+                          setState(() => gizlilikOnayi = v == true);
+                        },
+                      ),
+                      Wrap(
+                        spacing: 6,
+                        children: [
+                          TextButton(
+                            onPressed: () {
+                              tekSeferPush(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const PrivacyPolicyPage(),
+                                ),
+                              );
+                            },
+                            child: const Text('Gizlilik Politikası'),
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              tekSeferPush(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const KvkkPage(),
+                                ),
+                              );
+                            },
+                            child: const Text('KVKK Aydınlatma'),
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              tekSeferPush(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const TermsOfUsePage(),
+                                ),
+                              );
+                            },
+                            child: const Text('Kullanım Koşulları'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 40, vertical: 10),
+                  child: ElevatedButton(
+                    onPressed: (isLoading || _sosyalYukleniyor) ? null : kayitOl,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: vibe.primaryButton,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size(double.infinity, 55),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(30),
+                      ),
+                      elevation: 10,
+                    ),
+                    child: isLoading
+                        ? const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 3,
+                            ),
+                          )
+                        : const Text(
+                            'KAYIT OL',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 1.5,
+                            ),
+                          ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: Text(
+                    'Zaten hesabın var mı? Giriş Yap',
+                    style: TextStyle(
+                      color: vibe.mutedText,
+                      decoration: TextDecoration.underline,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    return WebAuthLanding(
+      slogan: 'Aramıza katıl, Vibel\'inle başla.',
+      form: form,
+    );
+  }
+
+  Future<void> _dogumTarihiSec() async {
+    final secilen = await YasDogrulama.dogumTarihiSec(
+      context,
+      baslangic: dogumTarihi,
+    );
+    if (secilen != null) {
+      setState(() => dogumTarihi = YasDogrulama.sadeceTarih(secilen));
+    }
+  }
+
+  Widget _dogumTarihiAlani() {
+    final vibe = context.vibe;
+    final theme = Theme.of(context);
+    final secili = dogumTarihi != null;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 10),
+      child: Material(
+        color: vibe.inputFill,
+        borderRadius: BorderRadius.circular(18),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: isLoading ? null : _dogumTarihiSec,
+          child: InputDecorator(
+            decoration: InputDecoration(
+              hintText: 'Doğum Tarihi',
+              hintStyle: TextStyle(color: vibe.mutedText),
+              filled: true,
+              fillColor: Colors.transparent,
+              prefixIcon: Icon(Icons.cake_outlined, color: vibe.mutedText),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(18),
+                borderSide: BorderSide(color: vibe.cardBorder),
               ),
-              const SizedBox(height: 24),
-            ],
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(18),
+                borderSide: BorderSide(color: vibe.cardBorder),
+              ),
+            ),
+            child: Text(
+              secili
+                  ? YasDogrulama.tarihMetni(dogumTarihi!)
+                  : 'Doğum tarihini seç',
+              style: TextStyle(
+                color: secili ? theme.colorScheme.onSurface : vibe.mutedText,
+              ),
+            ),
           ),
         ),
       ),
@@ -308,21 +490,7 @@ class _RegisterPageState extends State<RegisterPage> {
         obscureText: obscureText,
         keyboardType: keyboardType,
         style: TextStyle(color: theme.colorScheme.onSurface),
-        decoration: InputDecoration(
-          hintText: hintText,
-          hintStyle: TextStyle(color: vibe.mutedText),
-          filled: true,
-          fillColor: vibe.inputFill,
-          prefixIcon: Icon(icon, color: vibe.mutedText),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(30),
-            borderSide: BorderSide(color: vibe.cardBorder),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(30),
-            borderSide: BorderSide(color: vibe.cardBorder),
-          ),
-        ),
+        decoration: vibe.alanDekoru(hint: hintText, ikon: icon),
       ),
     );
   }

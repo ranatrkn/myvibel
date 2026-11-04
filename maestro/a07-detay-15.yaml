@@ -1,0 +1,93 @@
+appId: com.myvibel.app
+---
+# 15–18 hesap: çıkış + e-posta girişi + kısıtlı tarama (Mesajlar yok).
+- runFlow: flows/ac-uygulama.yaml
+- runFlow: flows/cikis.yaml
+- runFlow:
+    file: flows/email-giris.yaml
+    env:
+      EMAIL: ${EMAIL}
+      SIFRE: ${SIFRE}
+- runFlow: flows/ana-sayfaya-don.yaml
+- assertVisible: "Takip Edilen"
+- assertNotVisible: "Mesajlar"
+
+- tapOn:
+    text: "Akış"
+    optional: true
+- tapOn:
+    text: "Takip Edilen"
+    optional: true
+
+- runFlow: flows/sekme-kesfet.yaml
+- extendedWaitUntil:
+    visible: "Liderlik"
+    timeout: 25000
+- tapOn:
+    text: "Liderlik"
+    optional: true
+- runFlow:
+    when:
+      visible: "Seviye Liderliği.*"
+    commands:
+      - tapOn:
+          text: "Vil"
+          optional: true
+      - tapOn:
+          text: "Seviye"
+          optional: true
+      - back
+- runFlow: flows/ana-sayfaya-don.yaml
+
+- runFlow: flows/sekme-yeni.yaml
+- extendedWaitUntil:
+    visible: "Paylaş"
+    timeout: 20000
+- runFlow: flows/ana-sayfaya-don.yaml
+
+- runFlow: flows/sekme-bildirim.yaml
+- extendedWaitUntil:
+    visible: "Bildirimler"
+    timeout: 20000
+- tapOn:
+    text: "Tümünü okundu işaretle"
+    optional: true
+- runFlow: flows/ana-sayfaya-don.yaml
+
+- runFlow: flows/sekme-profil.yaml
+- extendedWaitUntil:
+    visible: "Ayarlar"
+    timeout: 25000
+- assertNotVisible: "Mesajlar"
+- tapOn:
+    text: "Beğendiklerim"
+    optional: true
+- tapOn:
+    text: "Gönderilerim.*"
+    optional: true
+- tapOn:
+    text: "Ayarlar"
+    optional: true
+- scrollUntilVisible:
+    element: "Gizli Hesap.*"
+    direction: DOWN
+    optional: true
+- tapOn:
+    text: "Koyu"
+    optional: true
+- tapOn:
+    text: "Açık"
+    optional: true
+- tapOn:
+    text: "Koyu"
+    optional: true
+- tapOn:
+    text: "Vazgeç"
+    optional: true
+- back
+- runFlow: flows/ana-sayfaya-don.yaml
+- tapOn:
+    text: "Alt menü Ana"
+    optional: true
+- assertVisible: "Takip Edilen"
+- assertNotVisible: "Mesajlar"

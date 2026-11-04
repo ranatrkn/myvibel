@@ -1,12 +1,16 @@
 // Takipçi ve takip edilen listesi sayfası.
+import 'package:myvibel/tek_sefer_navigasyon.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:vibe_life/app_theme.dart';
-import 'package:vibe_life/sosyal_servis.dart';
-import 'package:vibe_life/user_profile_page.dart';
-import 'package:vibe_life/vibe_snackbar.dart';
-import 'package:vibe_life/widgets/vibe_avatar.dart';
+import 'package:myvibel/app_theme.dart';
+import 'package:myvibel/sosyal_servis.dart';
+import 'package:myvibel/vibe_snackbar.dart';
+import 'package:myvibel/maskot_servis.dart';
+import 'package:myvibel/widgets/vil_harcama_uyarisi.dart';
+import 'package:myvibel/widgets/vibe_avatar.dart';
+import 'package:myvibel/widgets/vibe_yukleniyor.dart';
+import 'package:myvibel/widgets/vibe_gradient_scaffold.dart';
 
 // Takipçi/takip edilen sekmeli liste
 class FollowListPage extends StatefulWidget {
@@ -91,6 +95,19 @@ class _FollowListPageState extends State<FollowListPage>
   Future<void> _takipButonunaBas(String hedefUid) async {
     if (_engelIdleri.contains(hedefUid)) return;
     final mevcut = _takipDurumlari[hedefUid] ?? TakipDurumu.takipEtmiyor;
+    if (mevcut == TakipDurumu.takipEdiliyor) {
+      final vilHarcanacak =
+          await TakipServis.takipCikisVilHarcanacak(hedefUid);
+      if (vilHarcanacak) {
+        if (!mounted) return;
+        final devam = await VilHarcamaUyarisi.onayla(
+          context: context,
+          islem: VilHarcamaUyarisi.takipCik,
+          maliyet: MascotServis.vilTakipGeriAlMaliyeti,
+        );
+        if (!devam || !mounted) return;
+      }
+    }
     final mesaj = await SosyalServis.takipButonunaBas(hedefUid, mevcut);
     final yeniDurum = await SosyalServis.takipDurumuGetir(hedefUid);
     if (!mounted) return;
@@ -111,53 +128,57 @@ class _FollowListPageState extends State<FollowListPage>
         ? "@${widget.kullaniciAdi}"
         : "Bağlantılar";
 
-    return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(
-        title: Text(baslik),
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: theme.colorScheme.primary,
-          labelColor: theme.colorScheme.onSurface,
-          unselectedLabelColor: vibe.mutedText,
-          tabs: const [
-            Tab(text: "Takipçi"),
-            Tab(text: "Takip Edilen"),
-          ],
-        ),
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: _listeGorulebilir == null
-            ? const [
-                Center(child: CircularProgressIndicator()),
-                Center(child: CircularProgressIndicator()),
-              ]
-            : _listeGorulebilir == false
-                ? const [
-                    _GizliHesapTakipBilgisi(),
-                    _GizliHesapTakipBilgisi(),
-                  ]
-                : [
-                    _TakipListesi(
-                      userId: widget.userId,
-                      koleksiyon: "followers",
-                      currentUid: currentUid,
-                      engelIdleri: _engelIdleri,
-                      takipDurumlari: _takipDurumlari,
-                      onTakipDurumuYukle: _takipDurumunuYukle,
-                      onTakipButonunaBas: _takipButonunaBas,
-                    ),
-                    _TakipListesi(
-                      userId: widget.userId,
-                      koleksiyon: "following",
-                      currentUid: currentUid,
-                      engelIdleri: _engelIdleri,
-                      takipDurumlari: _takipDurumlari,
-                      onTakipDurumuYukle: _takipDurumunuYukle,
-                      onTakipButonunaBas: _takipButonunaBas,
-                    ),
-                  ],
+    return VibeGradientScaffold(
+      appBar: VibeGradientScaffold.seffafBaslik(baslik),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TabBar(
+            controller: _tabController,
+            indicatorColor: theme.colorScheme.primary,
+            labelColor: theme.colorScheme.onSurface,
+            unselectedLabelColor: vibe.mutedText,
+            tabs: const [
+              Tab(text: "Takipçi"),
+              Tab(text: "Takip Edilen"),
+            ],
+          ),
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: _listeGorulebilir == null
+                  ? const [
+                      Center(child: VibeYukleniyor()),
+                      Center(child: VibeYukleniyor()),
+                    ]
+                  : _listeGorulebilir == false
+                      ? const [
+                          _GizliHesapTakipBilgisi(),
+                          _GizliHesapTakipBilgisi(),
+                        ]
+                      : [
+                          _TakipListesi(
+                            userId: widget.userId,
+                            koleksiyon: "followers",
+                            currentUid: currentUid,
+                            engelIdleri: _engelIdleri,
+                            takipDurumlari: _takipDurumlari,
+                            onTakipDurumuYukle: _takipDurumunuYukle,
+                            onTakipButonunaBas: _takipButonunaBas,
+                          ),
+                          _TakipListesi(
+                            userId: widget.userId,
+                            koleksiyon: "following",
+                            currentUid: currentUid,
+                            engelIdleri: _engelIdleri,
+                            takipDurumlari: _takipDurumlari,
+                            onTakipDurumuYukle: _takipDurumunuYukle,
+                            onTakipButonunaBas: _takipButonunaBas,
+                          ),
+                        ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -212,11 +233,13 @@ class _TakipListesi extends StatelessWidget {
           .collection("users")
           .doc(userId)
           .collection(koleksiyon)
+          .limit(400)
           .snapshots(),
       builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
+        if (snap.connectionState == ConnectionState.waiting &&
+            !snap.hasData) {
           return Center(
-            child: CircularProgressIndicator(color: theme.colorScheme.primary),
+            child: VibeYukleniyor(renk: theme.colorScheme.primary),
           );
         }
 
@@ -321,18 +344,14 @@ class _TakipKullaniciSatiriState extends State<_TakipKullaniciSatiri> {
 
         return Container(
           margin: const EdgeInsets.only(bottom: 10),
-          decoration: vibe.cardDecoration(radius: 16),
+          decoration: vibe.satirKart(),
           child: ListTile(
             onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => UserProfilePage(userId: widget.hedefUid),
-                ),
-              );
+              profiliAc(context, widget.hedefUid);
             },
             leading: vibeAvatar(
               radius: 22,
+              userId: widget.hedefUid,
               photoUrl: photoUrl,
               avatarKey: avatarKey,
               fallbackText: kullaniciAdi,

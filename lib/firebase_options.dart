@@ -41,47 +41,52 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyDBp3y1KsRSE6M68UeKCA0iAhbE3UI9fU4',
-    appId: '1:910548158122:web:d967d1a9a05b7dda9db2d3',
-    messagingSenderId: '910548158122',
-    projectId: 'vibe-life-app',
-    authDomain: 'vibe-life-app.firebaseapp.com',
-    storageBucket: 'vibe-life-app.firebasestorage.app',
+    apiKey: 'AIzaSyDoFKkkZA86Fo5Do9ICHrS-uEzT_wvtDE8',
+    appId: '1:808611716551:web:05e410059a25cd8675cde2',
+    messagingSenderId: '808611716551',
+    projectId: 'myvibel-app',
+    authDomain: 'myvibel-app.firebaseapp.com',
+    storageBucket: 'myvibel-app.firebasestorage.app',
+    measurementId: 'G-GGTP9V24SZ',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyBrCvZUTG81x2RIssPGSTUsJbODGaclZb8',
-    appId: '1:910548158122:android:fb34c96c0e2ab77b9db2d3',
-    messagingSenderId: '910548158122',
-    projectId: 'vibe-life-app',
-    storageBucket: 'vibe-life-app.firebasestorage.app',
+    apiKey: 'AIzaSyCdQzj3Hh-upMOtUzhuiDGKS_6BGO8mJJg',
+    appId: '1:808611716551:android:21e85d9b49fc507175cde2',
+    messagingSenderId: '808611716551',
+    projectId: 'myvibel-app',
+    storageBucket: 'myvibel-app.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyDI46sKKpmS3b_FOQ8K8R2flbtDJ8Vt4Cw',
-    appId: '1:910548158122:ios:d7e0d06ef4ebdc639db2d3',
-    messagingSenderId: '910548158122',
-    projectId: 'vibe-life-app',
-    storageBucket: 'vibe-life-app.firebasestorage.app',
-    iosBundleId: 'com.vibelife.app',
+    apiKey: 'AIzaSyCo0K1NRGK-CR48I1rmSVK3WTCu4P56OOw',
+    appId: '1:808611716551:ios:50c7f8b3dde6cb2a75cde2',
+    messagingSenderId: '808611716551',
+    projectId: 'myvibel-app',
+    storageBucket: 'myvibel-app.firebasestorage.app',
+    androidClientId: '808611716551-al90nvp8tdso4ana667o291dkivq93ks.apps.googleusercontent.com',
+    iosClientId: '808611716551-02a7aahr000dvtqnveckmdloj7292hc4.apps.googleusercontent.com',
+    iosBundleId: 'com.myvibel.app',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyDI46sKKpmS3b_FOQ8K8R2flbtDJ8Vt4Cw',
-    appId: '1:910548158122:ios:d7e0d06ef4ebdc639db2d3',
-    messagingSenderId: '910548158122',
-    projectId: 'vibe-life-app',
-    storageBucket: 'vibe-life-app.firebasestorage.app',
-    iosBundleId: 'com.vibelife.app',
+    apiKey: 'AIzaSyCo0K1NRGK-CR48I1rmSVK3WTCu4P56OOw',
+    appId: '1:808611716551:ios:50c7f8b3dde6cb2a75cde2',
+    messagingSenderId: '808611716551',
+    projectId: 'myvibel-app',
+    storageBucket: 'myvibel-app.firebasestorage.app',
+    androidClientId: '808611716551-al90nvp8tdso4ana667o291dkivq93ks.apps.googleusercontent.com',
+    iosClientId: '808611716551-02a7aahr000dvtqnveckmdloj7292hc4.apps.googleusercontent.com',
+    iosBundleId: 'com.myvibel.app',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyDBp3y1KsRSE6M68UeKCA0iAhbE3UI9fU4',
-    appId: '1:910548158122:web:eb896d959e6d9a629db2d3',
-    messagingSenderId: '910548158122',
-    projectId: 'vibe-life-app',
-    authDomain: 'vibe-life-app.firebaseapp.com',
-    storageBucket: 'vibe-life-app.firebasestorage.app',
+    apiKey: 'AIzaSyDoFKkkZA86Fo5Do9ICHrS-uEzT_wvtDE8',
+    appId: '1:808611716551:web:d767fdae70aeeccc75cde2',
+    messagingSenderId: '808611716551',
+    projectId: 'myvibel-app',
+    authDomain: 'myvibel-app.firebaseapp.com',
+    storageBucket: 'myvibel-app.firebasestorage.app',
   );
 
 }

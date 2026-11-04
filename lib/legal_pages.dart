@@ -1,82 +1,125 @@
-// Gizlilik, KVKK, SSS ve destek sayfaları.
+// Gizlilik, KVKK, kullanım koşulları, SSS ve destek sayfaları.
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:vibe_life/app_theme.dart';
-import 'package:vibe_life/destek_servis.dart';
-import 'package:vibe_life/error_messages.dart';
-import 'package:vibe_life/vibe_snackbar.dart';
+import 'package:myvibel/app_theme.dart';
+import 'package:myvibel/destek_servis.dart';
+import 'package:myvibel/error_messages.dart';
+import 'package:myvibel/vibe_snackbar.dart';
+import 'package:myvibel/yasal_icerik.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+/// Sistem paylaşımı (WhatsApp, SMS, vs.); olmazsa metni panoya kopyalar.
+Future<void> arkadaslaraOner(BuildContext context) async {
+  const metin =
+      'MyVibel\'de Vibel büyütüyorum. Sen de bak:\n${VibeLegal.uygulamaDavetUrl}';
+  try {
+    await Share.share(metin, subject: 'MyVibel');
+  } catch (_) {
+    await Clipboard.setData(const ClipboardData(text: metin));
+    if (!context.mounted) return;
+    vibeSnackbarGoster(
+      context,
+      'Davet metni kopyalandı, arkadaşlarına yapıştır.',
+      tip: VibeMesajTipi.bilgi,
+    );
+  }
+}
+
+/// Yasal metnin web sürümünü tarayıcıda açar; açılmazsa linki panoya kopyalar.
+Future<void> yasalLinkiAc(BuildContext context, String url) async {
+  var acildi = false;
+  try {
+    acildi = await launchUrl(
+      Uri.parse(url),
+      mode: LaunchMode.externalApplication,
+    );
+  } catch (_) {
+    acildi = false;
+  }
+  if (acildi || !context.mounted) return;
+
+  await Clipboard.setData(ClipboardData(text: url));
+  if (!context.mounted) return;
+  vibeSnackbarGoster(
+    context,
+    'Tarayıcı açılamadı, link kopyalandı.',
+    tip: VibeMesajTipi.bilgi,
+  );
+}
 
 // Yasal sabitler (URL, sürüm)
 class VibeLegal {
-  static const privacyPolicyUrl = 'https://vibe-life-app.web.app/privacy.html';
-  static const kvkkPolicyUrl = 'https://vibe-life-app.web.app/kvkk.html';
-  static const appVersionLabel = '1.0.0';
+  static const privacyPolicyUrl = 'https://myvibel.com/privacy.html';
+  static const kvkkPolicyUrl = 'https://myvibel.com/kvkk.html';
+  static const termsUrl = 'https://myvibel.com/terms.html';
+  static const cocukGuvenligiUrl =
+      'https://myvibel.com/cocuk-guvenligi.html';
+  static const uygulamaDavetUrl = 'https://myvibel.com/app/';
+  static const appVersionLabel = YasalIcerik.surum;
 }
 
-// Gizlilik politikası metin sayfası
-class PrivacyPolicyPage extends StatelessWidget {
-  const PrivacyPolicyPage({super.key});
+class _YasalMetinSayfasi extends StatelessWidget {
+  const _YasalMetinSayfasi({
+    required this.baslik,
+    required this.metin,
+    this.altLink,
+  });
+
+  final String baslik;
+  final String metin;
+  final ({String etiket, String url})? altLink;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final vibe = context.vibe;
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Gizlilik Politikasi')),
+      appBar: AppBar(
+        title: Text(baslik),
+        actions: [
+          if (altLink != null)
+            TextButton(
+              onPressed: () => yasalLinkiAc(context, altLink!.url),
+              child: Text(altLink!.etiket),
+            ),
+        ],
+      ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'VibeLife Gizlilik Politikasi',
+              'Son güncelleme: ${YasalIcerik.guncellemeTarihi} · Sürüm ${YasalIcerik.surum}',
+              style: TextStyle(color: vibe.faintText, fontSize: 12),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              metin.trim(),
               style: TextStyle(
-                color: theme.colorScheme.onSurface,
-                fontWeight: FontWeight.bold,
-                fontSize: 18,
+                color: vibe.mutedText,
+                height: 1.55,
+                fontSize: 14,
               ),
             ),
-            const SizedBox(height: 10),
-            Text(
-              'Toplanan veriler: e-posta, profil bilgileri, gonderiler, yorumlar, mesajlar, bildirim tokeni ve uygulama ici maskot istatistikleri.',
-              style: TextStyle(color: vibe.mutedText),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Veriler Firebase altyapisinda saklanir ve uygulama islevleri, guvenlik ve destek amaciyla kullanilir.',
-              style: TextStyle(color: vibe.mutedText),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Hesap silme islemi uygulama icinden yapildiginda kullanici verileri silme akisina dahil edilir.',
-              style: TextStyle(color: vibe.mutedText),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Destek ve KVKK talepleri uygulama icindeki «Destek ve Geri Bildirim» alanindan VibeLife ekibine iletilir.',
-              style: TextStyle(color: vibe.mutedText),
-            ),
-            const SizedBox(height: 18),
-            ListTile(
-              tileColor: vibe.inputFill,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+            if (altLink != null) ...[
+              const SizedBox(height: 20),
+              ListTile(
+                tileColor: vibe.inputFill,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                title: const Text('Web sitesinde aç'),
+                subtitle: Text(
+                  altLink!.url,
+                  style: TextStyle(color: theme.colorScheme.onSurface),
+                ),
+                trailing: const Icon(Icons.open_in_new_rounded),
+                onTap: () => yasalLinkiAc(context, altLink!.url),
               ),
-              title: const Text('Gizlilik Politikasi URL'),
-              subtitle: const Text(VibeLegal.privacyPolicyUrl),
-              trailing: const Icon(Icons.copy),
-              onTap: () async {
-                await Clipboard.setData(
-                  const ClipboardData(text: VibeLegal.privacyPolicyUrl),
-                );
-                if (!context.mounted) return;
-                vibeSnackbarGoster(
-                  context,
-                  'Gizlilik politikasi linki kopyalandi.',
-                  tip: VibeMesajTipi.basari,
-                );
-              },
-            ),
+            ],
           ],
         ),
       ),
@@ -84,65 +127,88 @@ class PrivacyPolicyPage extends StatelessWidget {
   }
 }
 
-// KVKK aydınlatma metni sayfası
-class KvkkPage extends StatelessWidget {
-  const KvkkPage({super.key});
+class PrivacyPolicyPage extends StatelessWidget {
+  const PrivacyPolicyPage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final vibe = context.vibe;
-    return Scaffold(
-      appBar: AppBar(title: const Text('KVKK Aydinlatma')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Text(
-          'VibeLife, 6698 sayili KVKK kapsaminda veri sorumlusu olarak; kimlik (ad-soyad, kullanici adi), iletisim (e-posta), icerik (gonderi, yorum, mesaj) ve teknik verileri (bildirim tokeni) hizmetin sunulmasi, guvenlik, moderasyon ve iletisim amaclariyla isler.\n\n'
-          'Veriler, Firebase altyapisinda saklanir. Kullanici; hesap silme, veri duzeltme ve erisim taleplerini uygulama ici araclar veya «Destek ve Geri Bildirim» formu uzerinden VibeLife ekibine iletebilir.',
-          style: TextStyle(color: vibe.mutedText, height: 1.5),
-        ),
+    return const _YasalMetinSayfasi(
+      baslik: 'Gizlilik Politikası',
+      metin: YasalIcerik.gizlilikMetni,
+      altLink: (
+        etiket: 'Web sürümü',
+        url: VibeLegal.privacyPolicyUrl,
       ),
     );
   }
 }
 
-// Sık sorulan sorular sayfası
+class KvkkPage extends StatelessWidget {
+  const KvkkPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const _YasalMetinSayfasi(
+      baslik: YasalIcerik.kvkkBaslik,
+      metin: YasalIcerik.kvkkMetni,
+      altLink: (
+        etiket: 'Web sürümü',
+        url: VibeLegal.kvkkPolicyUrl,
+      ),
+    );
+  }
+}
+
+class TermsOfUsePage extends StatelessWidget {
+  const TermsOfUsePage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const _YasalMetinSayfasi(
+      baslik: YasalIcerik.kullanimKosullariBaslik,
+      metin: YasalIcerik.kullanimKosullariMetni,
+      altLink: (
+        etiket: 'Web sürümü',
+        url: VibeLegal.termsUrl,
+      ),
+    );
+  }
+}
+
+class CocukGuvenligiPage extends StatelessWidget {
+  const CocukGuvenligiPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const _YasalMetinSayfasi(
+      baslik: YasalIcerik.cocukGuvenligiBaslik,
+      metin: YasalIcerik.cocukGuvenligiMetni,
+      altLink: (
+        etiket: 'Web sürümü',
+        url: VibeLegal.cocukGuvenligiUrl,
+      ),
+    );
+  }
+}
+
 class HelpFaqPage extends StatelessWidget {
   const HelpFaqPage({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Yardim / SSS')),
+      appBar: AppBar(title: const Text('Yardım / SSS')),
       body: ListView(
         padding: const EdgeInsets.all(16),
-        children: const [
-          _FaqTile(
-            q: 'Maskot nasil calisir?',
-            a: 'Maskot sosyal etkilesimlerle mutluluk kazanir, enerji tuketir ve uyuyarak enerji toplar.',
-          ),
-          _FaqTile(
-            q: 'Enerji ve mutluluk nasil duser?',
-            a: 'Enerji yalnizca sosyal etkilesimlerle duser. Mutluluk etkilesimsiz kalma suresine gore duser. Enerji bitince etkilesimler kilitlenir.',
-          ),
-          _FaqTile(
-            q: 'Uyku sistemi nasil isliyor?',
-            a: 'Enerji %50 ve altindayken maskot uyutulabilir. Maskot 4 saat uyur, dakika basina enerji artar. Enerji yeterliyse erken uyandirma secenegi acilir.',
-          ),
-          _FaqTile(
-            q: 'Gizli hesap ne yapar?',
-            a: 'Takipci olmayan kullanicilar gonderileri ve takip listelerini goremez.',
-          ),
-          _FaqTile(
-            q: 'Bir gonderiyi nasil sikayet ederim?',
-            a: 'Gonderi kartindaki menu uzerinden «Sikayet Et» secenegini kullan. Genel destek ve KVKK talepleri icin profil ayarlarindaki Destek ve Geri Bildirim alanini kullan.',
-          ),
+        children: [
+          for (final item in YasalIcerik.sss)
+            _FaqTile(q: item.soru, a: item.cevap),
         ],
       ),
     );
   }
 }
 
-// Sürüm notları sayfası
 class ChangelogPage extends StatelessWidget {
   const ChangelogPage({super.key});
 
@@ -150,7 +216,7 @@ class ChangelogPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final vibe = context.vibe;
     return Scaffold(
-      appBar: AppBar(title: const Text('Surum Notlari')),
+      appBar: AppBar(title: const Text('Sürüm Notları')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -160,7 +226,7 @@ class ChangelogPage extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Text(
-            '- Maskot uyku/mutluluk sistemi guncellendi\n- Snackbar tasarimi standartlastirildi\n- Gizli hesap gorunurluk kurallari iyilestirildi\n- Profil ve maskot deneyimi sadeleştirildi\n- Uygulama ici destek formu eklendi',
+            YasalIcerik.surumNotlari.trim(),
             style: TextStyle(color: vibe.mutedText, height: 1.5),
           ),
         ],
@@ -169,9 +235,10 @@ class ChangelogPage extends StatelessWidget {
   }
 }
 
-// Uygulama içi destek ve geri bildirim formu
 class ContactPage extends StatefulWidget {
-  const ContactPage({super.key});
+  const ContactPage({super.key, this.ilkKategori});
+
+  final String? ilkKategori;
 
   @override
   State<ContactPage> createState() => _ContactPageState();
@@ -180,9 +247,18 @@ class ContactPage extends StatefulWidget {
 class _ContactPageState extends State<ContactPage> {
   final _konuController = TextEditingController();
   final _mesajController = TextEditingController();
-  String _kategori = DestekServis.kategoriler.keys.first;
+  late String _kategori;
   bool _gonderiliyor = false;
   bool _gonderildi = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final ilk = widget.ilkKategori;
+    _kategori = (ilk != null && DestekServis.kategoriler.containsKey(ilk))
+        ? ilk
+        : DestekServis.kategoriler.keys.first;
+  }
 
   @override
   void dispose() {
@@ -207,11 +283,14 @@ class _ContactPageState extends State<ContactPage> {
         _gonderildi = true;
         _konuController.clear();
         _mesajController.clear();
-        _kategori = DestekServis.kategoriler.keys.first;
+        _kategori = widget.ilkKategori != null &&
+                DestekServis.kategoriler.containsKey(widget.ilkKategori)
+            ? widget.ilkKategori!
+            : DestekServis.kategoriler.keys.first;
       });
       vibeSnackbarGoster(
         context,
-        'Talebin VibeLife ekibine iletildi.',
+        'Talebin ${YasalIcerik.uygulamaAdi} ekibine iletildi.',
         tip: VibeMesajTipi.basari,
       );
     } catch (e) {
@@ -250,7 +329,7 @@ class _ContactPageState extends State<ContactPage> {
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        'VibeLife ekibine yaz',
+                        '${YasalIcerik.uygulamaAdi} ekibine yaz',
                         style: TextStyle(
                           color: theme.colorScheme.onSurface,
                           fontWeight: FontWeight.w600,
@@ -262,8 +341,8 @@ class _ContactPageState extends State<ContactPage> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Hesap, teknik sorun, KVKK veya önerilerini buradan iletebilirsin. '
-                  'Gerekirse uygulama içinden bilgilendirileceksin.\n\n'
+                  'Hesap, teknik sorun veya önerilerini buradan iletebilirsin. '
+                  'KVKK başvuruları web sitesinden yapılır.\n\n'
                   'Bir gönderi veya kullanıcıyı şikayet etmek için ilgili kartın menüsündeki '
                   '«Şikayet Et» seçeneğini kullan.',
                   style: TextStyle(color: vibe.mutedText, height: 1.45),
@@ -286,13 +365,25 @@ class _ContactPageState extends State<ContactPage> {
                   SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'Son talebin alındı. VibeLife ekibi inceleyecek.',
+                      'Son talebin alındı. ${YasalIcerik.uygulamaAdi} ekibi inceleyecek.',
                     ),
                   ),
                 ],
               ),
             ),
           ],
+          const SizedBox(height: 12),
+          ListTile(
+            tileColor: vibe.inputFill,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            leading: const Icon(Icons.gavel_outlined),
+            title: const Text('KVKK başvurusu'),
+            subtitle: const Text('Aydınlatma metni ve başvuru web sitesinde'),
+            trailing: const Icon(Icons.open_in_new_rounded),
+            onTap: () => yasalLinkiAc(context, VibeLegal.kvkkPolicyUrl),
+          ),
           const SizedBox(height: 20),
           Text('Kategori', style: TextStyle(color: vibe.mutedText)),
           const SizedBox(height: 6),
@@ -382,7 +473,6 @@ class _ContactPageState extends State<ContactPage> {
   }
 }
 
-// Genişletilebilir SSS satırı
 class _FaqTile extends StatelessWidget {
   const _FaqTile({required this.q, required this.a});
   final String q;
@@ -395,7 +485,10 @@ class _FaqTile extends StatelessWidget {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          child: Text(a),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(a),
+          ),
         ),
       ],
     );

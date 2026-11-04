@@ -4,19 +4,96 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
-import 'package:vibe_life/haftalik_gorev_servis.dart';
-import 'package:vibe_life/icerik_filtre_servis.dart';
-import 'package:vibe_life/maskot_servis.dart';
-import 'package:vibe_life/sosyal/bildirim_servis.dart';
-import 'package:vibe_life/sosyal/etiket_servis.dart';
-import 'package:vibe_life/sosyal/sosyal_core.dart';
+import 'package:myvibel/haftalik_gorev_servis.dart';
+import 'package:myvibel/icerik_filtre_servis.dart';
+import 'package:myvibel/maskot_servis.dart';
+import 'package:myvibel/sosyal/bildirim_servis.dart';
+import 'package:myvibel/sosyal/etiket_servis.dart';
+import 'package:myvibel/sosyal/sosyal_core.dart';
+import 'package:myvibel/widgets/vibe_avatar.dart';
+
+class BegenenKayit {
+  final String userId;
+  final String kullaniciAdi;
+  final String adSoyad;
+  final String photoUrl;
+  final String avatarKey;
+
+  const BegenenKayit({
+    required this.userId,
+    required this.kullaniciAdi,
+    required this.adSoyad,
+    required this.photoUrl,
+    required this.avatarKey,
+  });
+}
+
+/// Gönderi başına tek seferlik beğeni ödülü ve geri çekme ücreti durumu.
+class BegeniOdulDurumu {
+  final bool odulAlindi;
+  final bool geriAlindi;
+
+  const BegeniOdulDurumu({required this.odulAlindi, required this.geriAlindi});
+}
+
+class BegenenSayfa {
+  final List<BegenenKayit> kayitlar;
+  final DocumentSnapshot<Map<String, dynamic>>? sonBelge;
+  final bool devamVar;
+
+  const BegenenSayfa({
+    required this.kayitlar,
+    required this.sonBelge,
+    required this.devamVar,
+  });
+}
 
 // Beğeni ve yorum etkileşim servisi
 class BegeniYorumServis {
-  static int _sayacDeger(dynamic value, int varsayilan) {
-    if (value is int) return value;
-    if (value is num) return value.toInt();
-    return varsayilan;
+  static const begenenSayfaBoyutu = 30;
+  static final Map<String, BegeniOdulDurumu> _odulOnbellek = {};
+
+  static Future<DocumentSnapshot<Map<String, dynamic>>> _onbellektenOku(
+    DocumentReference<Map<String, dynamic>> ref,
+  ) async {
+    try {
+      final snap = await ref.get(const GetOptions(source: Source.cache));
+      if (snap.exists) return snap;
+    } catch (_) {}
+    return ref.get();
+  }
+
+  static String _odulAnahtar(String uid, String postId) => '$uid|$postId';
+
+  static DocumentReference<Map<String, dynamic>> _begeniOdulRef(
+    String uid,
+    String postId,
+  ) =>
+      SosyalCore.db
+          .collection('users')
+          .doc(uid)
+          .collection('begeniOdulleri')
+          .doc(postId);
+
+  static BegeniOdulDurumu? begeniOdulDurumuOnbellek({
+    required String uid,
+    required String postId,
+  }) =>
+      _odulOnbellek[_odulAnahtar(uid, postId)];
+
+  static Future<BegeniOdulDurumu> begeniOdulDurumu({
+    required String uid,
+    required String postId,
+  }) async {
+    final onbellek = _odulOnbellek[_odulAnahtar(uid, postId)];
+    if (onbellek != null) return onbellek;
+    final snap = await _begeniOdulRef(uid, postId).get();
+    final durum = BegeniOdulDurumu(
+      odulAlindi: snap.exists,
+      geriAlindi: snap.data()?['geriAlindi'] == true,
+    );
+    _odulOnbellek[_odulAnahtar(uid, postId)] = durum;
+    return durum;
   }
 
   /// Gönderi silinince tüm kullanıcıların likedPosts kayıtlarını temizler.
@@ -24,7 +101,7 @@ class BegeniYorumServis {
     if (postId.isEmpty) return;
 
     try {
-      final postRef = SosyalCore.db.collection('posts').doc(postId);
+      final postRef = SosyalCore.gonderiRef(postId);
       final likeler = await postRef.collection('likes').get();
       if (likeler.docs.isEmpty) return;
 
@@ -51,8 +128,9 @@ class BegeniYorumServis {
     }
   }
 
-  /// Artık var olmayan gönderilere ait likedPosts kayıtlarını siler.
+  /// Artık var olmayan veya erişilemeyen gönderilere ait likedPosts kayıtlarını siler.
   static Future<void> gecersizBegeniKayitlariniTemizle(String uid) async {
+    if (uid.isEmpty) return;
     final userRef = SosyalCore.db.collection('users').doc(uid);
     final likedSnap = await userRef.collection('likedPosts').get();
     if (likedSnap.docs.isEmpty) return;
@@ -61,9 +139,8 @@ class BegeniYorumServis {
     var sayac = 0;
 
     for (final liked in likedSnap.docs) {
-      final postSnap =
-          await SosyalCore.db.collection('posts').doc(liked.id).get();
-      if (postSnap.exists) continue;
+      final sil = await _begeniKaydiSilinmeliMi(liked.id);
+      if (!sil) continue;
 
       batch.delete(liked.reference);
       sayac++;
@@ -75,6 +152,36 @@ class BegeniYorumServis {
     }
 
     if (sayac > 0) await batch.commit();
+  }
+
+  /// Tek bir erişilemeyen beğeni kaydını kaldırır.
+  static Future<void> erisilemeyenBegeniKaydiniSil({
+    required String uid,
+    required String postId,
+  }) async {
+    if (uid.isEmpty || postId.isEmpty) return;
+    if (!await _begeniKaydiSilinmeliMi(postId)) return;
+
+    try {
+      await SosyalCore.db
+          .collection('users')
+          .doc(uid)
+          .collection('likedPosts')
+          .doc(postId)
+          .delete();
+    } catch (e) {
+      debugPrint('erisilemeyenBegeniKaydiniSil ($postId): $e');
+    }
+  }
+
+  static Future<bool> _begeniKaydiSilinmeliMi(String postId) async {
+    try {
+      final postSnap = await SosyalCore.gonderiRef(postId).get();
+      return !postSnap.exists;
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') return true;
+      rethrow;
+    }
   }
 
   /// Engellenen kullanıcının gönderilerine verilen beğenileri kaldırır.
@@ -170,7 +277,7 @@ class BegeniYorumServis {
       if (owner.isNotEmpty) continue;
 
       final postSnap =
-          await SosyalCore.db.collection('posts').doc(doc.id).get();
+          await SosyalCore.gonderiRef(doc.id).get();
       if (postSnap.data()?['userId']?.toString() == hedefUid) {
         bulunan[doc.id] = doc;
       }
@@ -186,7 +293,7 @@ class BegeniYorumServis {
   }) async {
     if (postId.isEmpty || uid.isEmpty) return false;
 
-    final postRef = SosyalCore.db.collection('posts').doc(postId);
+    final postRef = SosyalCore.gonderiRef(postId);
     final likeRef = postRef.collection('likes').doc(uid);
     final likedPostRef =
         SosyalCore.db.collection('users').doc(uid).collection('likedPosts').doc(postId);
@@ -233,6 +340,7 @@ class BegeniYorumServis {
           uid: uid,
           postId: postId,
           puanAlindi: puanAlindi,
+          vilZorunlu: false,
         );
       } catch (e) {
         debugPrint('engel begeni puan geri alimi ($postId): $e');
@@ -242,11 +350,12 @@ class BegeniYorumServis {
     return likeVardi || likedPostVardi;
   }
 
-  /// Beğeni kaldırıldıktan sonra kullanıcı puan/sayaç geri alımı (ayrı yazım).
+  /// Beğeni kaldırıldıktan sonra kullanıcı puan/sayaç/vil geri alımı (ayrı yazım).
   static Future<void> _begeniKullaniciGeriAlimi({
     required String uid,
     required String postId,
     required bool puanAlindi,
+    bool vilZorunlu = true,
   }) async {
     final userRef = SosyalCore.db.collection('users').doc(uid);
     await SosyalCore.db.runTransaction((transaction) async {
@@ -258,18 +367,26 @@ class BegeniYorumServis {
           : 0;
       if (begeniInt <= 0) return;
 
+      final guncelleme = <String, dynamic>{
+        'begeniSayisi': FieldValue.increment(-1),
+        'sonBegeniPuanPostId': postId,
+      };
       if (puanAlindi && puanInt >= 2) {
-        transaction.update(userRef, {
-          'puan': FieldValue.increment(-2),
-          'begeniSayisi': FieldValue.increment(-1),
-          'sonBegeniPuanPostId': postId,
-        });
-      } else {
-        transaction.update(userRef, {
-          'begeniSayisi': FieldValue.increment(-1),
-          'sonBegeniPuanPostId': postId,
-        });
+        guncelleme['puan'] = FieldValue.increment(-2);
       }
+      if (puanAlindi) {
+        MascotServis.sosyalGeriAlVilEkle(
+          guncelleme: guncelleme,
+          robotHam: data['robot'],
+          maliyet: MascotServis.sosyalGeriAlVilMaliyeti,
+          yetersizMesaji: MascotServis.sosyalGeriAlVilYetersizMesaji(
+            'Beğeniyi geri çekmek',
+            MascotServis.sosyalGeriAlVilMaliyeti,
+          ),
+          zorunlu: vilZorunlu,
+        );
+      }
+      transaction.update(userRef, guncelleme);
     });
   }
 
@@ -278,139 +395,145 @@ class BegeniYorumServis {
     required String postId,
     required String postOwnerId,
     required String currentUserId,
+    required bool begen,
   }) async {
     if (postId.isEmpty || currentUserId.isEmpty) {
       throw 'Geçersiz beğeni isteği.';
     }
 
-    final postRef = SosyalCore.db.collection('posts').doc(postId);
-    final postSnap = await postRef.get();
-    if (!postSnap.exists) {
-      throw 'Gönderi bulunamadı.';
-    }
-
-    final postData = postSnap.data() ?? {};
-    final gercekOwnerId =
-        postData['userId']?.toString().trim() ?? postOwnerId.trim();
+    final postRef = SosyalCore.gonderiRef(postId);
+    final gercekOwnerId = postOwnerId.trim();
     final kendiGonderisi = SosyalCore.kendiGonderisiMi(
       postOwnerId: gercekOwnerId,
       currentUserId: currentUserId,
     );
 
     final likeRef = postRef.collection('likes').doc(currentUserId);
-    final likeSnap = await likeRef.get();
-
-    if (!kendiGonderisi &&
-        gercekOwnerId.isNotEmpty &&
-        !likeSnap.exists &&
-        await SosyalCore.engellendiMi(
-            kaynakUid: currentUserId, hedefUid: gercekOwnerId)) {
-      throw 'Bu kullanıcı ile etkileşim kuramazsın.';
-    }
-
-    if (!likeSnap.exists) {
-      await SosyalCore.aksiyonHizLimitiKontrol(
-        uid: currentUserId,
-        aksiyon: 'begeni',
-        minAralikMs: SosyalCore.begeniMinAralikMs,
-        mesaj: 'Cok hizli begeni yapiyorsun. Lutfen biraz bekle.',
-      );
-      if (!kendiGonderisi) {
-        await MascotServis.etkilesimEngelliyseAt(
-          currentUserId,
-          aksiyonTipi: 'begeni',
-        );
-      }
-    }
-
     final userRef = SosyalCore.db.collection('users').doc(currentUserId);
     final likedPostRef = userRef.collection('likedPosts').doc(postId);
+    final odulRef = _begeniOdulRef(currentUserId, postId);
+    final begenildi = begen;
 
-    var unlikePuanAlindi = false;
-    if (likeSnap.exists) {
-      final likedPostDoc = await likedPostRef.get();
-      unlikePuanAlindi = likedPostDoc.data()?['puanAlindi'] == true;
+    final durumlar = await Future.wait<Object?>([
+      likeRef.get(),
+      likedPostRef.get(),
+      kendiGonderisi
+          ? Future<Object?>.value(null)
+          : begeniOdulDurumu(uid: currentUserId, postId: postId),
+    ]);
+    final likeVar = (durumlar[0] as DocumentSnapshot).exists;
+    final likedPostVar = (durumlar[1] as DocumentSnapshot).exists;
+    final odulDurumu = durumlar[2] as BegeniOdulDurumu?;
+
+    // Sayaçlar sıfırlanınca likes silinip likedPosts kalabiliyor; set update sayılır.
+    if (!likeVar && likedPostVar) {
+      await likedPostRef.delete();
+    }
+    if (begenildi && likeVar) return true;
+    if (!begenildi && !likeVar) return false;
+
+    final odulVerilecek =
+        begenildi && !kendiGonderisi && !(odulDurumu?.odulAlindi ?? false);
+    final geriAlimUcretli =
+        !begenildi && !kendiGonderisi && !(odulDurumu?.geriAlindi ?? false);
+
+    if (geriAlimUcretli) {
+      await MascotServis.sosyalGeriAlVilOnKontrol(
+        uid: currentUserId,
+        maliyet: MascotServis.sosyalGeriAlVilMaliyeti,
+        yetersizMesaji: MascotServis.sosyalGeriAlVilYetersizMesaji(
+          'Beğeniyi geri çekmek',
+          MascotServis.sosyalGeriAlVilMaliyeti,
+        ),
+      );
     }
 
-    final begenildi =
-        await SosyalCore.db.runTransaction<bool>((transaction) async {
-      final likeSnapshot = await transaction.get(likeRef);
-      final likedPostSnapshot = await transaction.get(likedPostRef);
-      final postSnapshot = await transaction.get(postRef);
-      if (!postSnapshot.exists) {
-        throw 'Gönderi bulunamadı.';
-      }
-
-      if (!likeSnapshot.exists && !kendiGonderisi) {
-        final userSnapshot = await transaction.get(userRef);
-        MascotServis.etkilesimEngeliVeriden(
-          userSnapshot.data(),
-          aksiyonTipi: 'begeni',
-        );
-      }
-
-      if (likeSnapshot.exists) {
-        transaction.delete(likeRef);
-        if (likedPostSnapshot.exists) {
-          transaction.delete(likedPostRef);
-        }
-
-        final postGuncelleme = <String, dynamic>{
-          'begeniSayisi': FieldValue.increment(-1),
-        };
-        if (!kendiGonderisi) {
-          postGuncelleme['skor'] = FieldValue.increment(-3);
-        }
-        transaction.update(postRef, postGuncelleme);
-        return false;
-      }
-
-      final guncelPost = postSnapshot.data() ?? {};
-      final mevcutBegeni = _sayacDeger(guncelPost['begeniSayisi'], 0);
-      final mevcutYorum = _sayacDeger(guncelPost['yorumSayisi'], 0);
-      transaction.set(likeRef, {
+    final batch = SosyalCore.db.batch();
+    if (begenildi) {
+      batch.set(likeRef, {
         'userId': currentUserId,
         'createdAt': FieldValue.serverTimestamp(),
       });
-      transaction.set(likedPostRef, {
+      batch.set(likedPostRef, {
         'postId': postId,
         'postOwnerId': gercekOwnerId,
-        'kullaniciAdi': guncelPost['kullaniciAdi'] ?? '',
-        'metin': guncelPost['metin'] ?? '',
-        'photoUrl': guncelPost['photoUrl'] ?? '',
-        'avatarKey': guncelPost['avatarKey'] ?? '',
-        'ownerHesapGizli': guncelPost['ownerHesapGizli'] == true,
-        'raporNedeniyleGizli': guncelPost['raporNedeniyleGizli'] == true,
-        'begeniSayisi': mevcutBegeni + 1,
-        'yorumSayisi': mevcutYorum,
-        'puanAlindi': !kendiGonderisi,
+        'puanAlindi': odulVerilecek,
         'createdAt': FieldValue.serverTimestamp(),
       });
-
       final postGuncelleme = <String, dynamic>{
         'begeniSayisi': FieldValue.increment(1),
       };
       if (!kendiGonderisi) {
         postGuncelleme['skor'] = FieldValue.increment(3);
       }
-      transaction.update(postRef, postGuncelleme);
-
-      if (!kendiGonderisi) {
-        transaction.update(userRef, {
+      batch.update(postRef, postGuncelleme);
+      if (odulVerilecek) {
+        batch.set(odulRef, {
+          'geriAlindi': false,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+        batch.update(userRef, {
           'puan': FieldValue.increment(2),
           'begeniSayisi': FieldValue.increment(1),
           'sonBegeniPuanPostId': postId,
         });
+      } else if (!kendiGonderisi) {
+        batch.update(userRef, {
+          'begeniSayisi': FieldValue.increment(1),
+          'sonBegeniPuanPostId': postId,
+        });
       }
-      return true;
-    });
+    } else {
+      batch.delete(likeRef);
+      batch.delete(likedPostRef);
+      final postGuncelleme = <String, dynamic>{
+        'begeniSayisi': FieldValue.increment(-1),
+      };
+      if (!kendiGonderisi) {
+        postGuncelleme['skor'] = FieldValue.increment(-3);
+      }
+      batch.update(postRef, postGuncelleme);
+      if (geriAlimUcretli) {
+        if (odulDurumu?.odulAlindi ?? false) {
+          batch.update(odulRef, {
+            'geriAlindi': true,
+            'guncellendi': FieldValue.serverTimestamp(),
+          });
+        } else {
+          batch.set(odulRef, {
+            'geriAlindi': true,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+        }
+      }
+    }
+    await batch.commit();
+
+    if (odulVerilecek) {
+      _odulOnbellek[_odulAnahtar(currentUserId, postId)] =
+          const BegeniOdulDurumu(odulAlindi: true, geriAlindi: false);
+    } else if (geriAlimUcretli) {
+      _odulOnbellek[_odulAnahtar(currentUserId, postId)] =
+          const BegeniOdulDurumu(odulAlindi: true, geriAlindi: true);
+    }
+
+    if (odulVerilecek) {
+      try {
+        await MascotServis.sosyalOdulKaydet(
+          currentUserId,
+          MascotServis.vilBegeni,
+        );
+      } catch (e) {
+        debugPrint('begeni maskot odul: $e');
+      }
+    }
 
     if (!begenildi && !kendiGonderisi) {
       try {
         await _begeniKullaniciGeriAlimi(
           uid: currentUserId,
           postId: postId,
-          puanAlindi: unlikePuanAlindi,
+          puanAlindi: geriAlimUcretli,
         );
       } catch (e) {
         debugPrint('begeni kullanici geri alimi ($postId): $e');
@@ -424,10 +547,6 @@ class BegeniYorumServis {
       debugPrint('begeni hiz limiti kaydi: $e');
     }
 
-    if (begenildi && !kendiGonderisi) {
-      unawaited(MascotServis.sosyalOdulKaydet(currentUserId, MascotServis.vilBegeni));
-    }
-
     if (begenildi &&
         gercekOwnerId.isNotEmpty &&
         gercekOwnerId != currentUserId) {
@@ -438,7 +557,6 @@ class BegeniYorumServis {
           gonderenUid: currentUserId,
           postId: postId,
           metin: 'gönderini beğendi',
-          postOzetiniAtla: true,
         );
       } catch (e) {
         debugPrint('begeni bildirimi gonderilemedi: $e');
@@ -447,6 +565,8 @@ class BegeniYorumServis {
 
     if (begenildi && !kendiGonderisi) {
       unawaited(MascotServis.sosyalAksiyon(currentUserId, 'begeni'));
+    }
+    if (odulVerilecek) {
       unawaited(
         HaftalikGorevServis.aksiyonKaydet(currentUserId, GorevAksiyon.begeni)
             .then((sonuc) {
@@ -460,24 +580,18 @@ class BegeniYorumServis {
     return begenildi;
   }
 
-  // Gönderiye yorum ekler
+  // Gönderiye yorum veya yanıt ekler
   static Future<void> yorumEkle({
     required String postId,
     required String postOwnerId,
     required String currentUserId,
     required String metin,
+    String? parentId,
   }) async {
     final kendiGonderisi = SosyalCore.kendiGonderisiMi(
       postOwnerId: postOwnerId,
       currentUserId: currentUserId,
     );
-
-    if (!kendiGonderisi &&
-        postOwnerId.isNotEmpty &&
-        await SosyalCore.engellendiMi(
-            kaynakUid: currentUserId, hedefUid: postOwnerId)) {
-      throw 'Bu kullanıcı ile etkileşim kuramazsın.';
-    }
 
     IcerikFiltreServis.uygunsuzsaAt(metin.trim());
 
@@ -488,76 +602,131 @@ class BegeniYorumServis {
       mesaj: 'Cok hizli yorum yapiyorsun. Lutfen biraz bekle.',
     );
 
-    if (!kendiGonderisi) {
-      await MascotServis.etkilesimEngelliyseAt(
-        currentUserId,
-        aksiyonTipi: 'yorum',
-      );
-    }
-
-    final userDoc =
-        await SosyalCore.db.collection('users').doc(currentUserId).get();
-    final userData = userDoc.data() ?? {};
-    final kullaniciAdi = userDoc.data()?['kullaniciAdi'] ?? 'Vibe Kullanıcısı';
-    final photoUrl = (userData['photoUrl'] ?? '').toString();
-    final avatarKey = (userData['avatarKey'] ?? '').toString();
-    final mentionUidleri = await EtiketServis.bahsetmeUidleriniCoz(metin);
-
-    final postRef = SosyalCore.db.collection('posts').doc(postId);
+    final postRef = SosyalCore.gonderiRef(postId);
     final commentRef = postRef.collection('comments').doc();
     final userRef = SosyalCore.db.collection('users').doc(currentUserId);
+    final istenenParentId = (parentId ?? '').trim();
 
-    await SosyalCore.db.runTransaction((transaction) async {
-      if (!kendiGonderisi) {
-        final userSnapshot = await transaction.get(userRef);
-        MascotServis.etkilesimEngeliVeriden(
-          userSnapshot.data(),
-          aksiyonTipi: 'yorum',
-        );
+    // Okumalar paralel: sıralı beklemek yorumu ~3 sn geciktiriyordu.
+    final onOkumalar = await Future.wait<Object?>([
+      !kendiGonderisi && postOwnerId.isNotEmpty
+          ? SosyalCore.engellendiMi(
+              kaynakUid: currentUserId, hedefUid: postOwnerId)
+          : Future<Object?>.value(false),
+      _onbellektenOku(userRef),
+      EtiketServis.bahsetmeUidleriniCoz(metin),
+      istenenParentId.isNotEmpty
+          ? postRef.collection('comments').doc(istenenParentId).get()
+          : Future<Object?>.value(null),
+    ]);
+    if (onOkumalar[0] == true) {
+      throw 'Bu kullanıcı ile etkileşim kuramazsın.';
+    }
+    final userData =
+        (onOkumalar[1] as DocumentSnapshot<Map<String, dynamic>>).data() ??
+            <String, dynamic>{};
+    if (!kendiGonderisi) {
+      MascotServis.etkilesimEngeliVeriden(userData, aksiyonTipi: 'yorum');
+    }
+    final kullaniciAdi = userData['kullaniciAdi'] ?? 'Vibe Kullanıcısı';
+    final avatarKey = (userData['avatarKey'] ?? '').toString();
+    final photoUrl = vibeDenormalizePhotoUrl(
+      avatarKey: avatarKey,
+      photoUrl: userData['photoUrl']?.toString(),
+    );
+    final mentionUidleri = onOkumalar[2] as Map<String, String>;
+
+    String? kokParentId;
+    String? yanitUserId;
+    String? yanitKullaniciAdi;
+    if (istenenParentId.isNotEmpty) {
+      final parentSnap =
+          onOkumalar[3] as DocumentSnapshot<Map<String, dynamic>>;
+      if (!parentSnap.exists) {
+        throw 'Yanıtlanacak yorum bulunamadı.';
       }
+      final parentData = parentSnap.data() ?? {};
+      kokParentId = parentSnap.id;
+      yanitUserId = (parentData['userId'] ?? '').toString();
+      yanitKullaniciAdi = (parentData['kullaniciAdi'] ?? '').toString();
+    }
 
-      transaction.set(commentRef, {
-        'userId': currentUserId,
-        'kullaniciAdi': kullaniciAdi,
-        'photoUrl': photoUrl,
-        'avatarKey': avatarKey,
-        'metin': metin,
-        'bahsetmeler': EtiketServis.bahsetmeleriAyikla(metin),
-        'mentionUidleri': mentionUidleri,
-        'sikayetSayisi': 0,
-        'raporNedeniyleGizli': false,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
-
-      final postGuncelleme = <String, dynamic>{
+    final batch = SosyalCore.db.batch();
+    if (!kendiGonderisi) {
+      batch.update(userRef, {
+        'puan': FieldValue.increment(3),
         'yorumSayisi': FieldValue.increment(1),
-        'sonYorumId': commentRef.id,
-      };
-      if (!kendiGonderisi) {
-        postGuncelleme['skor'] = FieldValue.increment(5);
-      }
-      transaction.update(postRef, postGuncelleme);
+        'sonYorumPuanPostId': postId,
+        'sonYorumPuanCommentId': commentRef.id,
+      });
+    }
 
-      if (!kendiGonderisi) {
-        transaction.update(userRef, {
-          'puan': FieldValue.increment(3),
-          'yorumSayisi': FieldValue.increment(1),
-          'sonYorumPuanPostId': postId,
-          'sonYorumPuanCommentId': commentRef.id,
-        });
+    final yorumVerisi = <String, dynamic>{
+      'userId': currentUserId,
+      'kullaniciAdi': kullaniciAdi,
+      'photoUrl': photoUrl,
+      'avatarKey': avatarKey,
+      'metin': metin,
+      'bahsetmeler': EtiketServis.bahsetmeleriAyikla(metin),
+      'mentionUidleri': mentionUidleri,
+      'sikayetSayisi': 0,
+      'raporNedeniyleGizli': false,
+      'createdAt': FieldValue.serverTimestamp(),
+    };
+    if (kokParentId != null && kokParentId.isNotEmpty) {
+      yorumVerisi['parentId'] = kokParentId;
+      yorumVerisi['yanitUserId'] = yanitUserId ?? '';
+      yorumVerisi['yanitKullaniciAdi'] = yanitKullaniciAdi ?? '';
+    }
+    batch.set(commentRef, yorumVerisi);
+
+    final postGuncelleme = <String, dynamic>{
+      'yorumSayisi': FieldValue.increment(1),
+      'sonYorumId': commentRef.id,
+    };
+    if (!kendiGonderisi) {
+      postGuncelleme['skor'] = FieldValue.increment(5);
+    }
+    batch.update(postRef, postGuncelleme);
+    await batch.commit();
+
+    if (!kendiGonderisi) {
+      try {
+        await MascotServis.sosyalOdulKaydet(
+          currentUserId,
+          MascotServis.vilYorum,
+        );
+      } catch (e) {
+        debugPrint('yorum maskot odul: $e');
       }
-    });
+    }
 
     await SosyalCore.aksiyonHizLimitiKaydet(
         uid: currentUserId, aksiyon: 'yorum');
 
-    if (postOwnerId.isNotEmpty && postOwnerId != currentUserId) {
+    if (yanitUserId != null &&
+        yanitUserId.isNotEmpty &&
+        yanitUserId != currentUserId) {
+      await BildirimServis.bildirimEkle(
+        hedefUid: yanitUserId,
+        tip: 'comment_reply',
+        gonderenUid: currentUserId,
+        postId: postId,
+        metin: 'yorumuna yanıt verdi',
+        yorumMetin: metin,
+      );
+    }
+
+    if (postOwnerId.isNotEmpty &&
+        postOwnerId != currentUserId &&
+        postOwnerId != yanitUserId) {
       await BildirimServis.bildirimEkle(
         hedefUid: postOwnerId,
         tip: 'comment',
         gonderenUid: currentUserId,
         postId: postId,
         metin: 'gönderine yorum yaptı',
+        yorumMetin: metin,
       );
     }
 
@@ -571,7 +740,6 @@ class BegeniYorumServis {
     }
 
     if (!kendiGonderisi) {
-      unawaited(MascotServis.sosyalOdulKaydet(currentUserId, MascotServis.vilYorum));
       unawaited(MascotServis.sosyalAksiyon(currentUserId, 'yorum'));
       unawaited(
         HaftalikGorevServis.aksiyonKaydet(currentUserId, GorevAksiyon.yorum)
@@ -584,12 +752,154 @@ class BegeniYorumServis {
     }
   }
 
-  // Kendi gönderisini ve alt koleksiyonlarını siler
+  // Yorumu siler: yorum sahibi veya gönderi sahibi.
+  static Future<void> yorumSil({
+    required String postId,
+    required String commentId,
+  }) async {
+    final current = FirebaseAuth.instance.currentUser;
+    if (current == null) throw 'Oturum bulunamadı.';
+    if (postId.isEmpty || commentId.isEmpty) throw 'Geçersiz yorum.';
+
+    final postRef = SosyalCore.gonderiRef(postId);
+    final commentRef = postRef.collection('comments').doc(commentId);
+    final userRef = SosyalCore.db.collection('users').doc(current.uid);
+
+    final commentSnap = await commentRef.get();
+    if (!commentSnap.exists) throw 'Yorum bulunamadı.';
+    final yorumSahibiId = (commentSnap.data()?['userId'] ?? '').toString();
+    final kendiYorumu = yorumSahibiId == current.uid;
+
+    final postSnap = await postRef.get();
+    if (!postSnap.exists) throw 'Gönderi bulunamadı.';
+    final postOwnerId = (postSnap.data()?['userId'] ?? '').toString();
+    final gonderiSahibi = postOwnerId.isNotEmpty && postOwnerId == current.uid;
+    if (!kendiYorumu && !gonderiSahibi) {
+      throw 'Bu yorumu silemezsin.';
+    }
+
+    final odulAlindi = kendiYorumu && postOwnerId.isNotEmpty && postOwnerId != current.uid;
+    final kokMu = (commentSnap.data()?['parentId'] ?? '').toString().trim().isEmpty;
+
+    var yanitDocs = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+    if (kokMu) {
+      final yanitSnap = await postRef
+          .collection('comments')
+          .where('parentId', isEqualTo: commentId)
+          .limit(40)
+          .get();
+      yanitDocs = yanitSnap.docs;
+    }
+
+    if (odulAlindi) {
+      await MascotServis.sosyalGeriAlVilOnKontrol(
+        uid: current.uid,
+        maliyet: MascotServis.sosyalGeriAlVilMaliyeti,
+        yetersizMesaji: MascotServis.sosyalGeriAlVilYetersizMesaji(
+          'Yorum silmek',
+          MascotServis.sosyalGeriAlVilMaliyeti,
+        ),
+      );
+    }
+
+    Future<void> yorumSilTxn({required bool kullaniciOdulGeriAl}) async {
+      await SosyalCore.db.runTransaction((tx) async {
+        final yorumSnap = await tx.get(commentRef);
+        if (!yorumSnap.exists) return;
+        final yorumUid = (yorumSnap.data()?['userId'] ?? '').toString();
+
+        final gonderiSnap = await tx.get(postRef);
+        if (!gonderiSnap.exists) throw 'Gönderi bulunamadı.';
+        final ownerId = (gonderiSnap.data()?['userId'] ?? '').toString();
+        final sahibiMi = ownerId.isNotEmpty && ownerId == current.uid;
+        if (yorumUid != current.uid && !sahibiMi) {
+          throw 'Bu yorumu silemezsin.';
+        }
+
+        final yanitSnaps = <DocumentSnapshot<Map<String, dynamic>>>[];
+        for (final yanit in yanitDocs) {
+          yanitSnaps.add(await tx.get(yanit.reference));
+        }
+
+        Map<String, dynamic> userData = const {};
+        if (kullaniciOdulGeriAl && odulAlindi) {
+          final userSnap = await tx.get(userRef);
+          userData = userSnap.data() ?? <String, dynamic>{};
+        }
+
+        var silinen = 0;
+        var skorAdet = 0;
+        void sil(DocumentSnapshot<Map<String, dynamic>> snap) {
+          if (!snap.exists) return;
+          final uid = (snap.data()?['userId'] ?? '').toString();
+          tx.delete(snap.reference);
+          silinen += 1;
+          if (ownerId.isEmpty || uid != ownerId) {
+            skorAdet += 1;
+          }
+        }
+
+        sil(yorumSnap);
+        for (final yanitSnap in yanitSnaps) {
+          sil(yanitSnap);
+        }
+        if (silinen <= 0) return;
+
+        final postGuncelleme = <String, dynamic>{
+          'yorumSayisi': FieldValue.increment(-silinen),
+          'sonYorumId': commentId,
+        };
+        if (skorAdet > 0) {
+          postGuncelleme['skor'] = FieldValue.increment(-5 * skorAdet);
+        }
+        tx.update(postRef, postGuncelleme);
+
+        if (!kullaniciOdulGeriAl || !odulAlindi) return;
+
+        final puanInt =
+            userData['puan'] is num ? (userData['puan'] as num).toInt() : 0;
+        final yorumInt = userData['yorumSayisi'] is num
+            ? (userData['yorumSayisi'] as num).toInt()
+            : 0;
+        if (yorumInt <= 0) return;
+
+        final guncelleme = <String, dynamic>{
+          'yorumSayisi': FieldValue.increment(-1),
+          'sonYorumPuanPostId': postId,
+          'sonYorumPuanCommentId': commentId,
+        };
+        if (puanInt >= 3) {
+          guncelleme['puan'] = FieldValue.increment(-3);
+        }
+        MascotServis.sosyalGeriAlVilEkle(
+          guncelleme: guncelleme,
+          robotHam: userData['robot'],
+          maliyet: MascotServis.sosyalGeriAlVilMaliyeti,
+          yetersizMesaji: MascotServis.sosyalGeriAlVilYetersizMesaji(
+            'Yorum silmek',
+            MascotServis.sosyalGeriAlVilMaliyeti,
+          ),
+        );
+        tx.update(userRef, guncelleme);
+      });
+    }
+
+    try {
+      await yorumSilTxn(kullaniciOdulGeriAl: true);
+    } on FirebaseException catch (e) {
+      if (e.code != 'permission-denied') rethrow;
+      // Vil/puan geri alma takılırsa yorum yine silinsin.
+      debugPrint('yorumSil odul geri al permission-denied, yalin silme: $e');
+      await yorumSilTxn(kullaniciOdulGeriAl: false);
+    }
+  }
+
+  // Kendi gönderisini, beğenileri ve yorumları aynı işlemde siler.
   static Future<void> gonderiSil(String postId) async {
     final current = FirebaseAuth.instance.currentUser;
     if (current == null) throw 'Oturum bulunamadı.';
 
-    final postRef = SosyalCore.db.collection('posts').doc(postId);
+    final postRef = SosyalCore.gonderiRef(postId);
     final userRef = SosyalCore.db.collection('users').doc(current.uid);
     final postDoc = await postRef.get();
     if (!postDoc.exists) throw 'Gönderi bulunamadı.';
@@ -597,60 +907,189 @@ class BegeniYorumServis {
       throw 'Bu gönderiyi silemezsin.';
     }
 
-    await postBegeniKayitlariniTemizle(postId);
-
-    try {
-      await SosyalCore.altKoleksiyonuSil(postRef.collection('likes'));
-    } catch (e) {
-      debugPrint('gonderiSil likes cleanup failed: $e');
-    }
-    try {
-      await SosyalCore.altKoleksiyonuSil(postRef.collection('comments'));
-    } catch (e) {
-      debugPrint('gonderiSil comments cleanup failed: $e');
+    final onKontrolUser = await userRef.get();
+    final onRobot = onKontrolUser.data()?['robot'];
+    final onMascot = MascotServis.tryParse(onRobot);
+    if (onMascot != null &&
+        MascotServis.gonderiSilVilGerekir(onMascot.seviye) &&
+        !MascotServis.gonderiSilVilYeterli(onMascot)) {
+      throw 'Gönderi silmek için ${MascotServis.gonderiSilVilMaliyeti} vil gerekli.';
     }
 
-    await SosyalCore.db.runTransaction((tx) async {
-      final postSnap = await tx.get(postRef);
-      if (!postSnap.exists) return;
-      if ((postSnap.data()?['userId'] ?? '') != current.uid) {
-        throw 'Bu gönderiyi silemezsin.';
-      }
+    final likeSnap = await postRef.collection('likes').get();
+    final commentSnap = await postRef.collection('comments').get();
+    final likeRefs = likeSnap.docs.map((d) => d.reference).toList();
+    final commentRefs = commentSnap.docs.map((d) => d.reference).toList();
+    final baskaBegenenler = likeSnap.docs
+        .map((d) => d.id)
+        .where((uid) => uid.isNotEmpty && uid != current.uid)
+        .toList();
 
-      final userSnap = await tx.get(userRef);
-      final userData = userSnap.data() ?? <String, dynamic>{};
-      final robotHam = userData['robot'];
-      final mascot = MascotServis.tryParse(robotHam);
-      if (mascot != null &&
-          MascotServis.gonderiSilVilGerekir(mascot.seviye) &&
-          !MascotServis.gonderiSilVilYeterli(mascot)) {
-        throw 'Gönderi silmek için ${MascotServis.gonderiSilVilMaliyeti} vil gerekli.';
-      }
+    // Firestore işlem limiti ~500 yazma.
+    if (likeRefs.length + commentRefs.length + 3 > 490) {
+      throw 'Bu gönderide çok fazla etkileşim var, şu an silinemedi.';
+    }
 
-      final mevcutPuan = userData['puan'];
-      final puanInt = mevcutPuan is num ? mevcutPuan.toInt() : 0;
-      final sonGonderiPuanPostId =
-          userData['sonGonderiPuanPostId']?.toString() ?? '';
-      final puanDusus =
-          sonGonderiPuanPostId == postId ? (puanInt >= 10 ? 10 : puanInt) : 0;
+    Future<void> gonderiSilTxn({required bool kullaniciGuncelle}) async {
+      await SosyalCore.db.runTransaction((tx) async {
+        final postSnap = await tx.get(postRef);
+        if (!postSnap.exists) return;
+        if ((postSnap.data()?['userId'] ?? '') != current.uid) {
+          throw 'Bu gönderiyi silemezsin.';
+        }
 
-      tx.delete(postRef);
-      final userGuncelleme = <String, dynamic>{
-        'gonderiSayisi': FieldValue.increment(-1),
-        'sonGonderiPuanPostId': postId,
-      };
-      if (puanDusus > 0) {
-        userGuncelleme['puan'] = FieldValue.increment(-puanDusus);
-      }
-      if (mascot != null && MascotServis.gonderiSilVilGerekir(mascot.seviye)) {
-        final robot = MascotServis.gonderiSilIcinVilHarca(
-          Map<String, dynamic>.from(
-            robotHam is Map ? Map<String, dynamic>.from(robotHam) : <String, dynamic>{},
-          ),
+        Map<String, dynamic> userData = const {};
+        MascotDurum? mascot;
+        if (kullaniciGuncelle) {
+          final userSnap = await tx.get(userRef);
+          userData = userSnap.data() ?? <String, dynamic>{};
+          final robotHam = userData['robot'];
+          mascot = MascotServis.tryParse(robotHam);
+          if (mascot != null &&
+              MascotServis.gonderiSilVilGerekir(mascot.seviye) &&
+              !MascotServis.gonderiSilVilYeterli(mascot)) {
+            throw 'Gönderi silmek için ${MascotServis.gonderiSilVilMaliyeti} vil gerekli.';
+          }
+        }
+
+        for (final ref in likeRefs) {
+          tx.delete(ref);
+        }
+        for (final ref in commentRefs) {
+          tx.delete(ref);
+        }
+        tx.delete(userRef.collection('likedPosts').doc(postId));
+        tx.delete(postRef);
+
+        if (!kullaniciGuncelle) return;
+
+        final mevcutPuan = userData['puan'];
+        final puanInt = mevcutPuan is num ? mevcutPuan.toInt() : 0;
+        final sonGonderiPuanPostId =
+            userData['sonGonderiPuanPostId']?.toString() ?? '';
+        final puanDusus =
+            sonGonderiPuanPostId == postId ? (puanInt >= 10 ? 10 : puanInt) : 0;
+
+        final userGuncelleme = <String, dynamic>{
+          'gonderiSayisi': FieldValue.increment(-1),
+          'sonGonderiPuanPostId': postId,
+        };
+        if (puanDusus > 0) {
+          userGuncelleme['puan'] = FieldValue.increment(-puanDusus);
+        }
+        final robotHam = userData['robot'];
+        if (mascot != null && MascotServis.gonderiSilVilGerekir(mascot.seviye)) {
+          final robot = MascotServis.gonderiSilIcinVilHarca(
+            Map<String, dynamic>.from(
+              robotHam is Map
+                  ? Map<String, dynamic>.from(robotHam)
+                  : <String, dynamic>{},
+            ),
+          );
+          userGuncelleme['robot'] = robot;
+        }
+        tx.update(userRef, userGuncelleme);
+      });
+    }
+
+    try {
+      await gonderiSilTxn(kullaniciGuncelle: true);
+    } on FirebaseException catch (e) {
+      if (e.code != 'permission-denied') rethrow;
+      debugPrint('gonderiSil kullanici guncelleme permission-denied, yalin silme: $e');
+      await gonderiSilTxn(kullaniciGuncelle: false);
+    }
+
+    if (baskaBegenenler.isEmpty) return;
+    try {
+      var batch = SosyalCore.db.batch();
+      var sayac = 0;
+      for (final uid in baskaBegenenler) {
+        batch.delete(
+          SosyalCore.db
+              .collection('users')
+              .doc(uid)
+              .collection('likedPosts')
+              .doc(postId),
         );
-        userGuncelleme['robot'] = robot;
+        sayac++;
+        if (sayac >= 400) {
+          await batch.commit();
+          batch = SosyalCore.db.batch();
+          sayac = 0;
+        }
       }
-      tx.update(userRef, userGuncelleme);
-    });
+      if (sayac > 0) await batch.commit();
+    } catch (e) {
+      debugPrint('gonderiSil likedPosts temizlik: $e');
+    }
+  }
+
+  static Future<BegenenSayfa> begenenleriGetir({
+    required String postId,
+    DocumentSnapshot<Map<String, dynamic>>? baslangic,
+  }) async {
+    if (postId.isEmpty) {
+      return const BegenenSayfa(
+        kayitlar: [],
+        sonBelge: null,
+        devamVar: false,
+      );
+    }
+
+    Query<Map<String, dynamic>> sorgu = SosyalCore.gonderiRef(postId)
+        .collection('likes')
+        .orderBy('createdAt', descending: true)
+        .limit(begenenSayfaBoyutu + 1);
+    if (baslangic != null) {
+      sorgu = sorgu.startAfterDocument(baslangic);
+    }
+
+    final snap = await sorgu.get();
+    final devamVar = snap.docs.length > begenenSayfaBoyutu;
+    final sayfa = devamVar
+        ? snap.docs.sublist(0, begenenSayfaBoyutu)
+        : snap.docs;
+
+    final uidler = <String>[];
+    for (final doc in sayfa) {
+      final uid = (doc.data()['userId'] ?? doc.id).toString();
+      if (uid.isNotEmpty) uidler.add(uid);
+    }
+
+    final userSnaps = uidler.isEmpty
+        ? const <DocumentSnapshot<Map<String, dynamic>>>[]
+        : await Future.wait(
+            uidler.map(
+              (uid) => SosyalCore.db.collection('users').doc(uid).get(),
+            ),
+          );
+    final users = <String, Map<String, dynamic>>{};
+    for (final userSnap in userSnaps) {
+      if (userSnap.exists) {
+        users[userSnap.id] = userSnap.data() ?? {};
+      }
+    }
+
+    final kayitlar = <BegenenKayit>[];
+    for (final uid in uidler) {
+      final u = users[uid] ?? {};
+      final kullaniciAdi = (u['kullaniciAdi'] ?? 'kullanici').toString();
+      kayitlar.add(
+        BegenenKayit(
+          userId: uid,
+          kullaniciAdi: kullaniciAdi,
+          adSoyad: (u['adSoyad'] ?? kullaniciAdi).toString(),
+          photoUrl: (u['photoUrl'] ?? '').toString(),
+          avatarKey: (u['avatarKey'] ?? '').toString(),
+        ),
+      );
+    }
+
+    return BegenenSayfa(
+      kayitlar: kayitlar,
+      sonBelge: sayfa.isEmpty ? null : sayfa.last,
+      devamVar: devamVar,
+    );
   }
 }

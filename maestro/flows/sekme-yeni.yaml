@@ -1,0 +1,14 @@
+appId: com.myvibel.app
+---
+- tapOn:
+    text: "Alt menü Yeni gönderi"
+    optional: true
+- runFlow:
+    when:
+      notVisible: "Paylaş"
+    commands:
+      - tapOn:
+          text: "Alt menü Yeni gönderi"
+          optional: true
+- waitForAnimationToEnd:
+    timeout: 2500

@@ -1,6 +1,6 @@
 // Özelleştirilmiş snackbar mesajları.
 import 'package:flutter/material.dart';
-import 'package:vibe_life/app_theme.dart';
+import 'package:myvibel/app_theme.dart';
 
 // Snackbar mesaj türleri
 enum VibeMesajTipi { hata, uyari, bilgi, basari }

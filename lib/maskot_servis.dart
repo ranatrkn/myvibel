@@ -1,6 +1,12 @@
 // Maskot enerji, mutluluk, uyku ve gelişim mantığı.
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:myvibel/maskot_bakim_sozleri.dart';
+import 'package:myvibel/maskot_bildirim_servis.dart';
+import 'package:myvibel/rety_renk.dart';
 
 // Maskot animasyon durumları
 enum MascotGorselDurum { normal, mutlu, uzgun, uyku, yorgun }
@@ -20,6 +26,8 @@ class MascotDurum {
     required this.uykuBitisMs,
     required this.sonAktiviteMs,
     required this.sonEnerjiDususMs,
+    required this.sonToklukPozitifMs,
+    this.renk = RetyRenk.varsayilan,
   });
 
   final String isim;
@@ -36,6 +44,8 @@ class MascotDurum {
   final int uykuBitisMs;
   final int sonAktiviteMs;
   final int sonEnerjiDususMs;
+  final int sonToklukPozitifMs;
+  final RetyRenk renk;
 
   int get gerekliGelisim =>
       MascotServis.gerekliGelisimPuani(seviye); // Seviye atlama eşiği
@@ -48,23 +58,11 @@ class MascotDurum {
 
   bool get uyuyor => MascotServis.uyuyorMu(this); // Uyku durumu
 
+  bool get aclikOlumRiski =>
+      MascotServis.toklukAktif(seviye) && tokluk <= 0;
+
   MascotGorselDurum get gorselDurum =>
       MascotServis.gorselDurum(this); // Animasyon durumu
-}
-
-// Maskot geliştirme işlemi sonucu
-class MascotGelistirSonuc {
-  const MascotGelistirSonuc({
-    required this.seviyeAtladi,
-    required this.eskiSeviye,
-    required this.yeniSeviye,
-    required this.yeniSeviyeOdulleri,
-  });
-
-  final bool seviyeAtladi;
-  final int eskiSeviye;
-  final int yeniSeviye;
-  final List<int> yeniSeviyeOdulleri;
 }
 
 // Zaman senkronizasyonu sonucu
@@ -78,15 +76,66 @@ class MascotSenkronSonuc {
   final List<String> mesajlar;
 }
 
+/// İki kişinin birbirinin Vibel'ine en az bir kez yemek vermesiyle oluşan bağ.
+class RetyBagKaydi {
+  const RetyBagKaydi({
+    required this.otherUid,
+    required this.benimMs,
+    required this.onunMs,
+    required this.ilkMs,
+    this.takipKesildiMs = 0,
+  });
+
+  final String otherUid;
+  final int benimMs;
+  final int onunMs;
+  final int ilkMs;
+  final int takipKesildiMs;
+
+  bool get bagVar => benimMs > 0 && onunMs > 0;
+
+  int get sonMs => benimMs >= onunMs ? benimMs : onunMs;
+
+  bool get takipKesilmeSuresiDoldu {
+    if (takipKesildiMs <= 0) return false;
+    return DateTime.now().millisecondsSinceEpoch - takipKesildiMs >=
+        MascotServis.bagTakipKesilmeSureMs;
+  }
+
+  bool get parlak {
+    if (!bagVar || takipKesilmeSuresiDoldu) return false;
+    final sinir =
+        DateTime.now().millisecondsSinceEpoch - MascotServis.bagSolmaMs;
+    return benimMs >= sinir && onunMs >= sinir;
+  }
+
+  factory RetyBagKaydi.fromMap(String otherUid, Map<String, dynamic>? raw) {
+    int oku(dynamic v) {
+      if (v is int) return v;
+      if (v is num) return v.toInt();
+      return 0;
+    }
+
+    return RetyBagKaydi(
+      otherUid: otherUid,
+      benimMs: oku(raw?['benimMs']),
+      onunMs: oku(raw?['onunMs']),
+      ilkMs: oku(raw?['ilkMs']),
+      takipKesildiMs: oku(raw?['takipKesildiMs']),
+    );
+  }
+}
+
 // Maskot oyun mekaniği servisi
 class MascotServis {
   MascotServis._();
 
-  static const gelistirmeMaliyeti = 20; // Eski geliştir butonu (kullanılmıyor)
+  static const varsayilanIsim = 'Vibel';
   static const odaAcilisSeviyesi = 6;
   static const toklukAcilisSeviyesi = 6;
   static const enerjiAcilisSeviyesi = 11;
   static const mutlulukAcilisSeviyesi = 21;
+  static const gorevAcilisSeviyesi = 11;
   static const etkilesimEnerjiKilitEsigi = 10;
   static const uyuMaxEnerji = 50;
   static const uyuErkenUyandirmaMinEnerji = 30;
@@ -95,13 +144,21 @@ class MascotServis {
   static const vilYorum = 3;
   static const vilBegeni = 2;
   static const vilTakip = 5;
-  static const gonderiSilVilMaliyeti = 5;
+  static const gonderiSilVilMaliyeti = 3;
+  static const sosyalGeriAlVilMaliyeti = 2;
+  static const vilTakipGeriAlMaliyeti = 3;
   static const yemekVilMaliyeti = 15;
+  static const arkadasYemekVilMaliyeti = 20;
+  /// Karşılıklı yemek 30 gün içinde değilse rozet solar; silinmez.
+  static const bagSolmaMs = 30 * 24 * 60 * 60 * 1000;
+  /// Takipten çıkınca bağın silinmesi için tanınan süre.
+  static const bagTakipKesilmeSureMs = 3 * 24 * 60 * 60 * 1000;
   static const yemekGelisimPuani = 15;
   static const uykuGelisimPuani = 40;
   static const yemekToklukArtisi = 20;
   static const yemekEnerjiArtisi = 8; // 5 yemek = %40 enerji
-  static const aclikEnerjiBosalmaDakika = 120;
+  /// Açken (tokluk ≤ 25) enerjinin 100→0 inme süresi.
+  static const aclikEnerjiBosalmaDakika = 360;
   static const etkilesimEnerjiGonderi = 5;
   static const etkilesimEnerjiYorum = 3;
   static const etkilesimEnerjiBegeni = 1;
@@ -113,9 +170,13 @@ class MascotServis {
   static const mutlulukEtkilesimBegeni = 2;
   static const mutlulukGelisimBonusCarpani = 1.15;
   /// Uygulama kapalıyken tokluğun sıfıra inme süresi (dakika).
-  static const toklukUygulamaDisiDakika = 60;
+  /// 300 dk = yaklaşık 5 saatte tam boşalma.
+  static const toklukUygulamaDisiDakika = 300;
   /// Uygulama açıkken etkileşim yoksa tokluk düşüşü (dakika).
-  static const toklukEtkilesimsizDakika = 60;
+  /// Uygulama dışı hızla aynı tutulur; davranış daha öngörülebilir olur.
+  static const toklukEtkilesimsizDakika = 300;
+  /// Tokluk 0 olduktan sonra yumurtaya dönüş süresi.
+  static const aclikOlumSureMs = 3 * 24 * 60 * 60 * 1000;
   static const mutlulukUygulamaDisiDakika = 180;
   static const mutlulukEtkilesimsizDakika = 360;
   static const uyanincaMutlulukBonus = 5; // Uyanınca mutluluk bonusu
@@ -135,6 +196,61 @@ class MascotServis {
     await _sosyalOdulUygula(uid, puan);
   }
 
+  static Map<String, dynamic> sosyalOdulRobotUygula(
+    Map<String, dynamic> userData,
+    int miktar,
+  ) {
+    final robot = _robotHaritasi(userData['robot']);
+    var seviye = _int(robot['seviye'], 1);
+
+    if (seviye < toklukAcilisSeviyesi) {
+      var gelisimPuani = _int(robot['gelisimPuani'], 0) + miktar;
+      var gerekli = gerekliGelisimPuani(seviye);
+      // Rules: tek yazımda en fazla +1 seviye. Çoklu atlama permission-denied yapar.
+      if (gelisimPuani >= gerekli && seviye < toklukAcilisSeviyesi) {
+        gelisimPuani -= gerekli;
+        seviye += 1;
+        robot['gelisimPuani'] = gelisimPuani;
+        robot['seviye'] = seviye;
+        _seviyeOdulleriniIsle(robot, seviye);
+        _fazStatlariniHizala(robot, seviye);
+      } else {
+        robot['gelisimPuani'] = gelisimPuani;
+        robot['seviye'] = seviye;
+      }
+    } else {
+      robot['etkilesimPuani'] = _int(robot['etkilesimPuani'], 0) + miktar;
+    }
+    return robot;
+  }
+
+  static void sosyalOdulKullaniciAlaninaEkle({
+    required Map<String, dynamic> guncelleme,
+    required Map<String, dynamic>? userData,
+    required int miktar,
+  }) {
+    if (!enabled || userData == null || miktar <= 0) return;
+    guncelleme.addAll(sosyalOdulYazmaAlanlari(userData, miktar));
+  }
+
+  /// Gönderi/beğeni/yorum/takip ile aynı yazıma eklenir (ayrı vil yazımı düşmesin).
+  static Map<String, dynamic> sosyalOdulYazmaAlanlari(
+    Map<String, dynamic>? userData,
+    int miktar,
+  ) {
+    if (!enabled || userData == null || miktar <= 0) return {};
+    final hamRobot = userData['robot'];
+    final onceki = _robotHaritasi(hamRobot);
+    if (hamRobot is Map && _int(onceki['seviye'], 1) >= toklukAcilisSeviyesi) {
+      return {'robot.etkilesimPuani': FieldValue.increment(miktar)};
+    }
+    final robot = sosyalOdulRobotUygula(userData, miktar);
+    if (hamRobot is! Map) {
+      return {'robot': robot};
+    }
+    return _robotNoktaliFark(onceki, robot);
+  }
+
   static Future<void> _sosyalOdulUygula(String uid, int miktar) async {
     if (!enabled || uid.isEmpty || miktar <= 0) return;
     final ref = _db.collection('users').doc(uid);
@@ -143,41 +259,84 @@ class MascotServis {
         final snap = await tx.get(ref);
         if (!snap.exists) return;
         final data = snap.data() ?? <String, dynamic>{};
-        final robot = _robotHaritasi(data['robot']);
-        var seviye = _int(robot['seviye'], 1);
-
-        if (seviye < toklukAcilisSeviyesi) {
-          var gelisimPuani = _int(robot['gelisimPuani'], 0) + miktar;
-          var gerekli = gerekliGelisimPuani(seviye);
-          var seviyeAtladi = false;
-          while (gelisimPuani >= gerekli) {
-            gelisimPuani -= gerekli;
-            seviye += 1;
-            seviyeAtladi = true;
-            gerekli = gerekliGelisimPuani(seviye);
-          }
-          robot['gelisimPuani'] = gelisimPuani;
-          robot['seviye'] = seviye;
-          if (seviyeAtladi) {
-            _seviyeOdulleriniIsle(robot, seviye);
-            _fazStatlariniHizala(robot, seviye);
-          }
-        } else {
-          robot['etkilesimPuani'] =
-              _int(robot['etkilesimPuani'], 0) + miktar;
+        final hamRobot = data['robot'];
+        final onceki = _robotHaritasi(hamRobot);
+        final seviye = _int(onceki['seviye'], 1);
+        if (hamRobot is Map && seviye >= toklukAcilisSeviyesi) {
+          tx.update(ref, {
+            'robot.etkilesimPuani': FieldValue.increment(miktar),
+          });
+          return;
         }
-
-        tx.update(ref, {'robot': robot});
+        final robot = sosyalOdulRobotUygula(data, miktar);
+        if (hamRobot is! Map) {
+          tx.update(ref, {'robot': robot});
+          return;
+        }
+        final yaz = _robotNoktaliFark(onceki, robot);
+        if (yaz.isEmpty) return;
+        tx.update(ref, yaz);
       });
     } catch (e) {
       debugPrint('Maskot sosyal odul hatasi: $e');
     }
   }
 
+  static bool _robotDegerAyni(dynamic a, dynamic b) {
+    if (identical(a, b)) return true;
+    if (a is num && b is num) return a == b;
+    if (a is List && b is List) {
+      if (a.length != b.length) return false;
+      for (var i = 0; i < a.length; i++) {
+        if (!_robotDegerAyni(a[i], b[i])) return false;
+      }
+      return true;
+    }
+    return a == b;
+  }
+
+  /// Tam robot map yazmak web/mobilde fazla alanı "değişmiş" gösterip
+  /// permission-denied üretebiliyor; yalnızca farkı noktalı yaz.
+  static Map<String, dynamic> _robotNoktaliFark(
+    Map<String, dynamic> onceki,
+    Map<String, dynamic> sonraki,
+  ) {
+    const alanlar = [
+      'gelisimPuani',
+      'seviye',
+      'etkilesimPuani',
+      'kazanilanSeviyeOdulleri',
+      'tokluk',
+      'enerji',
+      'mutluluk',
+      'isim',
+      'renk',
+      'sonUygulamaMs',
+      'sonEtkilesimMs',
+      'sonMutlulukTickMs',
+      'sonToklukPozitifMs',
+      'sonEnerjiDususMs',
+      'sonToklukTickMs',
+      'sonAktiviteMs',
+      'uykuBitisMs',
+      'uykuBaslangicMs',
+      'uykuBaslangicEnerji',
+    ];
+    final yaz = <String, dynamic>{};
+    for (final alan in alanlar) {
+      if (!_robotDegerAyni(sonraki[alan], onceki[alan])) {
+        if (sonraki.containsKey(alan)) {
+          yaz['robot.$alan'] = sonraki[alan];
+        }
+      }
+    }
+    return yaz;
+  }
+
   static void _vilHarca(Map<String, dynamic> robot, int maliyet) {
     final mevcut = _int(robot['etkilesimPuani'], 0);
     if (mevcut < maliyet) {
-      throw 'Yeterli vil yok ($maliyet gerekli, $mevcut var).';
+      throw 'Yeterli vil yok.';
     }
     robot['etkilesimPuani'] = mevcut - maliyet;
   }
@@ -246,11 +405,23 @@ class MascotServis {
   static bool mutlulukAktif(int seviye) => seviye >= mutlulukAcilisSeviyesi;
 
   static bool gunlukGorevlerAcik(int seviye) =>
-      seviye >= mutlulukAcilisSeviyesi;
+      seviye >= gorevAcilisSeviyesi;
 
   static bool yemekSistemiAcik(int seviye) => seviye >= toklukAcilisSeviyesi;
 
   static bool vilCuzdaniAcik(int seviye) => seviye >= toklukAcilisSeviyesi;
+
+  static Future<bool> mevcutKullaniciVilCuzdaniAcik() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return false;
+    try {
+      final snap = await _db.collection('users').doc(uid).get();
+      final mascot = tryParse(snap.data()?['robot']);
+      return mascot != null && vilCuzdaniAcik(mascot.seviye);
+    } catch (_) {
+      return false;
+    }
+  }
 
   static bool gonderiSilVilGerekir(int seviye) => vilCuzdaniAcik(seviye);
 
@@ -266,6 +437,51 @@ class MascotServis {
     if (!gonderiSilVilGerekir(seviye)) return robot;
     _vilHarca(robot, gonderiSilVilMaliyeti);
     return robot;
+  }
+
+  static bool sosyalGeriAlVilGerekir(int seviye) => vilCuzdaniAcik(seviye);
+
+  static bool sosyalGeriAlVilYeterli(MascotDurum? robot, int maliyet) {
+    if (robot == null || !sosyalGeriAlVilGerekir(robot.seviye)) return true;
+    return robot.vil >= maliyet;
+  }
+
+  static String sosyalGeriAlVilYetersizMesaji(String islem, int maliyet) =>
+      '$islem için $maliyet vil gerekli.';
+
+  static Future<void> sosyalGeriAlVilOnKontrol({
+    required String uid,
+    required int maliyet,
+    required String yetersizMesaji,
+  }) async {
+    if (uid.isEmpty || maliyet <= 0) return;
+    final snap = await _db.collection('users').doc(uid).get();
+    if (!sosyalGeriAlVilYeterli(tryParse(snap.data()?['robot']), maliyet)) {
+      throw yetersizMesaji;
+    }
+  }
+
+  /// Seviye 6+ ise [guncelleme] içine vil düşüren `robot` yazar; yetersizse fırlatır.
+  static void sosyalGeriAlVilEkle({
+    required Map<String, dynamic> guncelleme,
+    required dynamic robotHam,
+    required int maliyet,
+    required String yetersizMesaji,
+    bool zorunlu = true,
+  }) {
+    final mascot = tryParse(robotHam);
+    if (mascot == null || !sosyalGeriAlVilGerekir(mascot.seviye)) return;
+    if (mascot.vil < maliyet) {
+      if (zorunlu) throw yetersizMesaji;
+      return;
+    }
+    final robot = Map<String, dynamic>.from(
+      robotHam is Map
+          ? Map<String, dynamic>.from(robotHam)
+          : <String, dynamic>{},
+    );
+    _vilHarca(robot, maliyet);
+    guncelleme['robot'] = robot;
   }
 
   static bool uyuSistemiAcik(int seviye) => seviye >= enerjiAcilisSeviyesi;
@@ -289,10 +505,9 @@ class MascotServis {
   static const _odulSeviyeleri = [2, 3, 4, 5, 7, 10];
 
   static const _gelisimEsikleri = [
-    50, 75, 100, 150, // 1→5 yumurta
-    200, 250, 300, 350, 400, // 5→10 bebek
-    500, 600, 700, 800, 900, 1000, 1150, 1300, 1450, 1600, // 10→20 çocuk
-    2000, // 20+ yetişkin
+    50, 75, 100, 150, 200, // 1→6
+    120, 150, 180, 200, 300, // 6→11
+    450, 500, 550, 600, 700, 800, 900, 1000, 1200, // 11→20
   ];
 
   static int gerekliGelisimPuani(int seviye) {
@@ -300,7 +515,11 @@ class MascotServis {
     if (seviye <= _gelisimEsikleri.length) {
       return _gelisimEsikleri[seviye - 1];
     }
-    return _gelisimEsikleri.last;
+    if (seviye < 30) return 1200;
+    if (seviye < 40) return 1400;
+    if (seviye < 50) return 1600;
+    if (seviye < 60) return 1800;
+    return 2000;
   }
 
   static int _int(dynamic value, int varsayilan) {
@@ -310,19 +529,84 @@ class MascotServis {
       final parsed = int.tryParse(value.trim());
       if (parsed != null) return parsed;
     }
+    if (value is DateTime) return value.millisecondsSinceEpoch;
+    if (value is Timestamp) return value.millisecondsSinceEpoch;
     return varsayilan;
   }
 
-  static int _clampStat(int value) => value.clamp(0, 100);
+  /// Tokluk saati: yoksa "şimdi"ye sıfırlama (kapalı süre kaybolmasın).
+  static int _toklukSaatiMs(Map<String, dynamic> robot, int simdiMs) {
+    for (final alan in [
+      'sonToklukTickMs',
+      'sonUygulamaMs',
+      'sonAktiviteMs',
+      'sonToklukPozitifMs',
+    ]) {
+      final ms = _int(robot[alan], 0);
+      if (ms > 0 && ms <= simdiMs) return ms;
+    }
+    return simdiMs;
+  }
+
+  static int _hesaplananTokluk(Map<String, dynamic> robot, int simdiMs) {
+    final seviye = _int(robot['seviye'], 1);
+    final kayitli = _clampStat(_int(robot['tokluk'], 80));
+    if (!toklukAktif(seviye)) return kayitli;
+    if (_int(robot['uykuBitisMs'], 0) > simdiMs) return kayitli;
+    final tick = _toklukSaatiMs(robot, simdiMs);
+    if (simdiMs <= tick) return kayitli;
+    final dusus = _mutlulukDususMiktari(
+      gecenMs: simdiMs - tick,
+      tamBosalmaDakika: toklukUygulamaDisiDakika,
+    );
+    return _clampStat(kayitli - dusus);
+  }
+
+  static String _isimOku(dynamic value) {
+    final isim = (value ?? '').toString().trim();
+    if (isim.isEmpty || isim == 'Mini Vibe' || isim == 'Rety') {
+      return varsayilanIsim;
+    }
+    return isim;
+  }
+
+  static int _clampStat(int value) => value.clamp(0, 100).toInt();
+
+  static void _robotSayilariSabitle(Map<String, dynamic> robot) {
+    const alanlar = [
+      'seviye',
+      'gelisimPuani',
+      'etkilesimPuani',
+      'tokluk',
+      'enerji',
+      'mutluluk',
+      'uykuBitisMs',
+      'uykuBaslangicMs',
+      'uykuBaslangicEnerji',
+      'sonToklukTickMs',
+      'sonUygulamaMs',
+      'sonAktiviteMs',
+      'sonToklukPozitifMs',
+      'sonEtkilesimMs',
+      'sonMutlulukTickMs',
+      'sonEnerjiDususMs',
+    ];
+    for (final alan in alanlar) {
+      if (robot.containsKey(alan)) {
+        robot[alan] = _int(robot[alan], 0);
+      }
+    }
+    if (robot['isim'] != null) {
+      robot['isim'] = robot['isim'].toString().trim();
+    }
+  }
 
   static int _simdiMs() => DateTime.now().millisecondsSinceEpoch;
 
   // Firestore verisini MascotDurum'a çevirir
-  /// Firestore'dan gelen ham `robot` alanını okur; seviye yoksa null döner.
+  /// Firestore'dan gelen ham `robot` alanını okur; harita yoksa null.
   static MascotDurum? tryParse(dynamic raw) {
     if (raw is! Map) return null;
-    final map = Map<String, dynamic>.from(raw);
-    if (map['seviye'] == null) return null;
     return parse(raw);
   }
 
@@ -340,11 +624,11 @@ class MascotServis {
     final simdi = _simdiMs();
 
     return MascotDurum(
-      isim: (map['isim'] ?? 'Mini Vibe').toString(),
+      isim: _isimOku(map['isim']),
       seviye: _int(map['seviye'], 1),
       gelisimPuani: _int(map['gelisimPuani'], 0),
       etkilesimPuani: _int(map['etkilesimPuani'], 0),
-      tokluk: _clampStat(_int(map['tokluk'], 80)),
+      tokluk: _hesaplananTokluk(map, simdi),
       enerji: _clampStat(_int(map['enerji'], 70)),
       mutluluk: _clampStat(_int(map['mutluluk'], 65)),
       sonBakim: sonBakim,
@@ -352,6 +636,8 @@ class MascotServis {
       uykuBitisMs: _int(map['uykuBitisMs'], 0),
       sonAktiviteMs: _int(map['sonAktiviteMs'], simdi),
       sonEnerjiDususMs: _int(map['sonEnerjiDususMs'], simdi),
+      sonToklukPozitifMs: _int(map['sonToklukPozitifMs'], simdi),
+      renk: RetyRenk.oku(map['renk']),
     );
   }
 
@@ -367,10 +653,10 @@ class MascotServis {
 
   static String? uyandirEngelMesaji(MascotDurum robot) {
     if (!uyuyorMu(robot)) return null;
-    if (!odaAcik(robot.seviye)) return 'Maskot odası henüz açık değil.';
+    if (!odaAcik(robot.seviye)) return 'Vibel odası 6. seviyede açılır.';
     if (uyuSistemiAcik(robot.seviye) &&
         robot.enerji <= uyuErkenUyandirmaMinEnerji) {
-      return 'Enerji %$uyuErkenUyandirmaMinEnerji altındayken erken uyandırılamaz.';
+      return '${robot.isim} çok yorgun, biraz daha dinlenmeli.';
     }
     return null;
   }
@@ -476,42 +762,41 @@ class MascotServis {
   // Maskot ruh hali mesajını döndürür
   static String ruhHaliMesaji(MascotDurum robot) {
     if (robot.seviye < toklukAcilisSeviyesi) {
-      return 'Seninle vibe kasıyorum!';
+      return MaskotBakimSozleri.donen(MaskotBakimSozleri.yumurtaKutuCumleleri);
     }
     if (odaAcik(robot.seviye) && robot.uyuyor) {
-      return '${robot.isim} dinleniyor...';
+      return MaskotBakimSozleri.donen(
+        MaskotBakimSozleri.uyuyorKutuCumleleri(robot.isim),
+      );
     }
-    if (enerjiAktif(robot.seviye) && robot.enerji <= etkilesimEnerjiKilitEsigi) {
-      return 'Çok yoruldum, biraz uyumam lazım...';
+    // Açlık notu her zaman tokluk barına göre. Tokken aç cümlesi yok.
+    if (toklukAktif(robot.seviye) &&
+        robot.tokluk <= MaskotBakimSozleri.toklukEsik) {
+      return MaskotBakimSozleri.toklukKutuNotu(robot.tokluk);
     }
-    if (toklukAktif(robot.seviye) && robot.tokluk <= 25) {
-      if (robot.vil < yemekVilMaliyeti) {
-        return 'Vil lazım, yemek alalım mı?';
-      }
-      return 'Acıktım, birlikte yemek zamanı mı?';
+    if (enerjiAktif(robot.seviye) &&
+        robot.enerji <= MaskotBakimSozleri.enerjiEsik) {
+      return MaskotBakimSozleri.donen(MaskotBakimSozleri.uykuKutuCumleleri);
     }
     if (mutlulukAktif(robot.seviye) && robot.mutluluk <= 30) {
-      return 'Seni özledim, birlikte takılalım mı?';
+      return 'Seni özledim. Birlikte takılalım mı?';
     }
     if (mutlulukAktif(robot.seviye) &&
         robot.mutluluk >= 80 &&
         robot.tokluk >= 60 &&
         robot.enerji >= 50) {
-      return 'Harika hissediyorum! Vibe\'ım zirvede!';
+      return 'Harika hissediyorum!';
     }
-    if (robot.seviye < enerjiAcilisSeviyesi) {
-      return 'Vil ile yemek ver, birlikte büyüyelim.';
+    if (toklukAktif(robot.seviye)) {
+      return MaskotBakimSozleri.toklukKutuNotu(robot.tokluk);
     }
     if (robot.seviye < mutlulukAcilisSeviyesi) {
-      if (robot.enerji <= uyuMaxEnerji) {
-        return 'Enerjini toplamak için maskotu uyut (0→100: 1 saat).';
+      if (enerjiAktif(robot.seviye) && robot.enerji <= uyuMaxEnerji) {
+        return 'Yorgunum. Uyutursan enerji dolar (yaklaşık 1 saat).';
       }
-      if (robot.tokluk <= 25) {
-        return 'Açken enerji daha hızlı düşer. Önce yemek ver!';
-      }
-      return 'Paylaşım vil kazandırır; vil ile yemek al, tokluğu doldur.';
+      return 'Gönderi, yorum ve beğeniler vil kazandırır; vil ile bana yemek al.';
     }
-    return 'Seninle güçlü bir bağ kurduk!';
+    return 'Seninle güçlüyüz. Birlikte büyümeye devam.';
   }
 
   static bool senkronMesajBasariMi(String mesaj) {
@@ -519,7 +804,9 @@ class MascotServis {
   }
 
   static bool senkronMesajBilgiMi(String mesaj) {
-    return mesaj.contains('uyuyor') || mesaj == 'Maskotun seni çok özledi';
+    return mesaj.contains('uyuyor') ||
+        mesaj == 'Maskotun seni çok özledi' ||
+        mesaj.contains('dinleniyor');
   }
 
   static String seviyeOdulAciklamasi(int seviye) {
@@ -527,11 +814,11 @@ class MascotServis {
       case 2:
         return 'Daha fazla ruh hali mesajı açıldı';
       case 3:
-        return 'Maskot bağları güçlendi';
+        return 'Vibel ile bağın güçlendi';
       case 4:
         return 'Bakım etkisi güçlendi';
       case 5:
-        return 'Yeni maskot görünümü';
+        return 'Az kaldı: 6. seviyede yemek ve vil açılır';
       case 6:
         return 'Vil cüzdanın ve yemek sistemi açıldı!';
       case 11:
@@ -549,7 +836,8 @@ class MascotServis {
     }
     final simdi = _simdiMs();
     return {
-      'isim': 'Mini Vibe',
+      'isim': varsayilanIsim,
+      'renk': RetyRenk.varsayilan.id,
       'seviye': 1,
       'gelisimPuani': 0,
       'etkilesimPuani': 0,
@@ -558,6 +846,7 @@ class MascotServis {
       'mutluluk': 65,
       'sonUygulamaMs': simdi,
       'sonEtkilesimMs': simdi,
+      'sonToklukPozitifMs': simdi,
       'sonMutlulukTickMs': simdi,
       'sonEnerjiDususMs': simdi,
     };
@@ -635,45 +924,35 @@ class MascotServis {
     required bool uygulamaAcildi,
   }) {
     var tokluk = _clampStat(_int(robot['tokluk'], 80));
-    var sonUygulama =
-        _int(robot['sonUygulamaMs'] ?? robot['sonAktiviteMs'], simdiMs);
-    var sonEtkilesim =
-        _int(robot['sonEtkilesimMs'] ?? robot['sonAktiviteMs'], sonUygulama);
-    var tick = _int(robot['sonToklukTickMs'], sonUygulama);
+    var tick = _toklukSaatiMs(robot, simdiMs);
+    final uykuBitis = _int(robot['uykuBitisMs'], 0);
+    final uykuBaslangic = _int(robot['uykuBaslangicMs'], 0);
 
-    if (uygulamaAcildi && simdiMs > sonUygulama) {
-      final awayGecenMs = simdiMs - sonUygulama;
-      final awayDusus = _mutlulukDususMiktari(
-        gecenMs: awayGecenMs,
+    // Uyurken tokluk düşmez; uyanınca uyku süresi birikmiş borç olarak
+    // tek seferde kesilmesin diye referans zaman uyku bitişine çekilir.
+    if (uykuBitis > simdiMs) {
+      return tokluk;
+    }
+    if (uykuBaslangic > 0 && uykuBitis > 0 && simdiMs >= uykuBitis) {
+      if (tick < uykuBitis) tick = uykuBitis;
+    }
+
+    if (simdiMs > tick) {
+      final dusus = _mutlulukDususMiktari(
+        gecenMs: simdiMs - tick,
         tamBosalmaDakika: toklukUygulamaDisiDakika,
       );
-      if (awayDusus > 0) {
-        tokluk = _clampStat(tokluk - awayDusus);
-      }
-      sonUygulama = simdiMs;
-      robot['sonUygulamaMs'] = simdiMs;
-    }
-
-    final pasifBaslangic =
-        sonEtkilesim > sonUygulama ? sonEtkilesim : sonUygulama;
-    final pasifFrom = tick > pasifBaslangic ? tick : pasifBaslangic;
-    if (simdiMs > pasifFrom) {
-      final pasifGecenMs = simdiMs - pasifFrom;
-      final pasifDusus = _mutlulukDususMiktari(
-        gecenMs: pasifGecenMs,
-        tamBosalmaDakika: toklukEtkilesimsizDakika,
-      );
-      if (pasifDusus > 0) {
-        tokluk = _clampStat(tokluk - pasifDusus);
-        tick = pasifFrom +
-            _mutlulukDususTuketilenMs(
-              dususMiktari: pasifDusus,
-              tamBosalmaDakika: toklukEtkilesimsizDakika,
-            );
+      if (dusus > 0) {
+        tokluk = _clampStat(tokluk - dusus);
+        tick += _mutlulukDususTuketilenMs(
+          dususMiktari: dusus,
+          tamBosalmaDakika: toklukUygulamaDisiDakika,
+        );
       }
     }
 
-    robot['sonToklukTickMs'] = simdiMs;
+    robot['sonToklukTickMs'] = tick;
+    robot['sonUygulamaMs'] = simdiMs;
     return tokluk;
   }
 
@@ -720,7 +999,7 @@ class MascotServis {
         _int(robot['sonEtkilesimMs'] ?? robot['sonAktiviteMs'], sonUygulama);
     var tick = _int(robot['sonMutlulukTickMs'], sonUygulama);
 
-    if (uygulamaAcildi && simdiMs > sonUygulama) {
+    if (simdiMs > sonUygulama) {
       final awayGecenMs = simdiMs - sonUygulama;
       final awayDusus = _mutlulukDususMiktari(
         gecenMs: awayGecenMs,
@@ -763,9 +1042,11 @@ class MascotServis {
   }
 
   static void _robotUyandir(Map<String, dynamic> robot) {
+    final simdi = _simdiMs();
     robot['uykuBitisMs'] = 0;
     robot['uykuBaslangicMs'] = 0;
     robot['uykuBaslangicEnerji'] = 0;
+    robot['sonToklukTickMs'] = simdi;
     robot['mutluluk'] =
         _clampStat(_int(robot['mutluluk'], 50) + uyanincaMutlulukBonus);
   }
@@ -785,12 +1066,12 @@ class MascotServis {
 
     if (simdiMs >= uykuBitis) {
       _robotUyandir(robot);
-      mesajlar.add('${robot['isim'] ?? 'Maskot'} uyandı!');
+      mesajlar.add('${robot['isim'] ?? 'Vibel'} uyandı!');
       return mesajlar;
     }
 
     if (uygulamaAcildi) {
-      mesajlar.add('${robot['isim'] ?? 'Maskot'} dinleniyor...');
+      mesajlar.add('${robot['isim'] ?? 'Vibel'} dinleniyor...');
     }
     return mesajlar;
   }
@@ -800,6 +1081,7 @@ class MascotServis {
     int simdiMs, {
     bool uygulamaAcildi = false,
     bool etkilesimKaydedildi = false,
+    bool aclikOlumuUygula = true,
   }) {
     _sonBakimTemizle(robot);
     final mesajlar = <String>[];
@@ -817,6 +1099,21 @@ class MascotServis {
         simdiMs: simdiMs,
         uygulamaAcildi: uygulamaAcildi,
       );
+      if (!robot.containsKey('sonToklukPozitifMs')) {
+        robot['sonToklukPozitifMs'] = simdiMs;
+      }
+      if (tokluk > 0) {
+        robot['sonToklukPozitifMs'] = simdiMs;
+      } else {
+        final sonPozitif = _int(robot['sonToklukPozitifMs'], simdiMs);
+        if (aclikOlumuUygula &&
+            simdiMs - sonPozitif >= aclikOlumSureMs) {
+          final isim = (robot['isim'] ?? varsayilanIsim).toString();
+          _acliktanYumurtayaDon(robot, simdiMs);
+          mesajlar.add('$isim uzun süre aç kaldı ve yumurtaya döndü.');
+          return mesajlar;
+        }
+      }
     }
 
     if (mutlulukAktif(seviye)) {
@@ -831,7 +1128,7 @@ class MascotServis {
       }
       final mutlulukDususu = oncekiMutluluk - mutluluk;
       if (uygulamaAcildi && mutlulukDususu >= 5) {
-        mesajlar.add('${robot['isim'] ?? 'Maskot'} seni özledi');
+        mesajlar.add('${robot['isim'] ?? 'Vibel'} seni özledi');
       }
     } else if (etkilesimKaydedildi) {
       _etkilesimKaydet(robot, simdiMs);
@@ -872,7 +1169,7 @@ class MascotServis {
     final halaUyuyor = uykuBitis > simdiMs;
 
     if (uygulamaAcildi && halaUyuyor) {
-      mesajlar.add('${robot['isim'] ?? 'Maskot'} dinleniyor...');
+      mesajlar.add('${robot['isim'] ?? 'Vibel'} dinleniyor...');
     }
 
     if (uykuBitis > 0) {
@@ -887,13 +1184,13 @@ class MascotServis {
         _robotUyandir(robot);
         mutluluk = _int(robot['mutluluk'], mutluluk);
         _gelisimVeSeviyeUygula(robot, uykuGelisimPuani);
-        mesajlar.add('${robot['isim'] ?? 'Maskot'} enerjisi doldu, uyandı!');
+        mesajlar.add('${robot['isim'] ?? 'Vibel'} enerjisi doldu, uyandı!');
       } else if (simdiMs >= uykuBitis) {
         robot['enerji'] = enerji;
         _robotUyandir(robot);
         mutluluk = _int(robot['mutluluk'], mutluluk);
         _gelisimVeSeviyeUygula(robot, uykuGelisimPuani);
-        mesajlar.add('${robot['isim'] ?? 'Maskot'} uyandı!');
+        mesajlar.add('${robot['isim'] ?? 'Vibel'} uyandı!');
       } else {
         robot['enerji'] = enerji;
         robot['tokluk'] = tokluk;
@@ -908,9 +1205,33 @@ class MascotServis {
     return mesajlar;
   }
 
+  static void _acliktanYumurtayaDon(Map<String, dynamic> robot, int simdiMs) {
+    final isim = _isimOku(robot['isim']);
+    final vil = _int(robot['etkilesimPuani'], 0);
+    robot
+      ..['isim'] = isim
+      ..['seviye'] = 1
+      ..['gelisimPuani'] = 0
+      ..['etkilesimPuani'] = vil
+      ..['tokluk'] = 80
+      ..['enerji'] = 70
+      ..['mutluluk'] = 65
+      ..['uykuBitisMs'] = 0
+      ..['uykuBaslangicMs'] = 0
+      ..['uykuBaslangicEnerji'] = 0
+      ..['kazanilanSeviyeOdulleri'] = <int>[]
+      ..['sonToklukPozitifMs'] = simdiMs
+      ..['sonUygulamaMs'] = simdiMs
+      ..['sonEtkilesimMs'] = simdiMs
+      ..['sonToklukTickMs'] = simdiMs
+      ..['sonMutlulukTickMs'] = simdiMs
+      ..['sonEnerjiDususMs'] = simdiMs
+      ..['sonAktiviteMs'] = simdiMs;
+  }
+
   static void _uykuEngeli(Map<String, dynamic> robot) {
     if (_int(robot['uykuBitisMs'], 0) > _simdiMs()) {
-      throw '${robot['isim'] ?? 'Maskot'} uyuyor. Maskot uyanana kadar bu işlem kapalı.';
+      throw '${robot['isim'] ?? 'Vibel'} uyuyor. Uyanana kadar bu işlem kapalı.';
     }
   }
 
@@ -944,15 +1265,25 @@ class MascotServis {
       return await _db.runTransaction((tx) async {
         final snap = await tx.get(ref);
         if (!snap.exists) return null;
-        final robot = _robotHaritasi(snap.data()?['robot']);
+        final hamRobot = snap.data()?['robot'];
+        final robot = _robotHaritasi(hamRobot);
         final seviye = _int(robot['seviye'], 1);
         _fazStatlariniHizala(robot, seviye);
+        if (hamRobot is! Map) {
+          tx.update(ref, {'robot': robot});
+          return MascotSenkronSonuc(robot: parse(robot), mesajlar: const []);
+        }
         if (!odaAcik(seviye)) {
           return MascotSenkronSonuc(robot: parse(robot), mesajlar: const []);
         }
+        final onceki = Map<String, dynamic>.from(robot);
         final mesajlar =
             _zamanGuncelle(robot, _simdiMs(), uygulamaAcildi: true);
-        tx.update(ref, {'robot': robot});
+        final yaz = _robotNoktaliFark(onceki, robot);
+        if (yaz.isNotEmpty) {
+          tx.update(ref, yaz);
+        }
+        _bakimBildirimleriniYenile(robot);
         return MascotSenkronSonuc(
           robot: parse(robot),
           mesajlar: mesajlar,
@@ -962,6 +1293,32 @@ class MascotServis {
       debugPrint('Maskot senkronizasyon hatası: $e');
       return null;
     }
+  }
+
+  static void _bakimBildirimleriniYenile(Map<String, dynamic> robot) {
+    unawaited(MaskotBildirimServis.planlaHaritadan(robot));
+  }
+
+  static bool _robotOynanisAyni(
+    Map<String, dynamic> a,
+    Map<String, dynamic> b,
+  ) {
+    const alanlar = [
+      'enerji',
+      'mutluluk',
+      'tokluk',
+      'seviye',
+      'gelisimPuani',
+      'etkilesimPuani',
+      'uykuBitisMs',
+      'uykuBaslangicMs',
+      'uykuBaslangicEnerji',
+      'isim',
+    ];
+    for (final alan in alanlar) {
+      if (a[alan] != b[alan]) return false;
+    }
+    return true;
   }
 
   /// Uygulama açıkken dakikalık mutluluk düşüşü (etkileşimsiz 4 saat kuralı).
@@ -975,86 +1332,24 @@ class MascotServis {
         if (!snap.exists) return;
         final robot = _robotHaritasi(snap.data()?['robot']);
         if (!odaAcik(_int(robot['seviye'], 1))) return;
+        final onceki = Map<String, dynamic>.from(robot);
         _zamanGuncelle(robot, _simdiMs());
-        tx.update(ref, {'robot': robot});
+        if (_robotOynanisAyni(onceki, robot)) return;
+        final yaz = _robotNoktaliFark(onceki, robot);
+        if (yaz.isEmpty) return;
+        tx.update(ref, yaz);
+        _bakimBildirimleriniYenile(robot);
       });
     } catch (e) {
       debugPrint('Maskot dakika senkron hatası: $e');
     }
   }
 
-  /// @deprecated Otomatik gelisim etkilesimden gelir; gelistir butonu kaldirildi.
-  static Future<MascotGelistirSonuc> gelistir(String uid) async {
-    if (!enabled) {
-      // Maskot devre dışıyken geliştirilemez; boş bir sonuç dönülür.
-      return const MascotGelistirSonuc(
-        seviyeAtladi: false,
-        eskiSeviye: 1,
-        yeniSeviye: 1,
-        yeniSeviyeOdulleri: [],
-      );
-    }
-    final ref = _db.collection('users').doc(uid);
-    return _db.runTransaction((tx) async {
-      final snap = await tx.get(ref);
-      final data = snap.data() ?? {};
-      final puan = _int(data['puan'], 0);
-      if (puan < gelistirmeMaliyeti) {
-        throw 'Geliştirmek için en az $gelistirmeMaliyeti puan gerekir.';
-      }
-
-      final robot = _robotHaritasi(data['robot']);
-      final simdi = _simdiMs();
-      _zamanGuncelle(robot, simdi, etkilesimKaydedildi: true);
-      _uykuEngeli(robot);
-      _etkilesimEngeli(
-        parse(robot),
-        aksiyonTipi: 'gonderi',
-        enerjiMaliyeti: 0,
-      );
-
-      var seviye = _int(robot['seviye'], 1);
-      final eskiSeviye = seviye;
-      var gelisimPuani = _int(robot['gelisimPuani'], 0);
-      gelisimPuani += gelistirmeMaliyeti;
-
-      var gerekli = gerekliGelisimPuani(seviye);
-      var seviyeAtladi = false;
-      while (gelisimPuani >= gerekli) {
-        gelisimPuani -= gerekli;
-        seviye += 1;
-        seviyeAtladi = true;
-        gerekli = gerekliGelisimPuani(seviye);
-      }
-
-      robot['seviye'] = seviye;
-      robot['gelisimPuani'] = gelisimPuani;
-      if (odaAcik(seviye)) {
-        robot['mutluluk'] = _clampStat(_int(robot['mutluluk'], 50) + 8);
-      }
-
-      final yeniOduller =
-          seviyeAtladi ? _seviyeOdulleriniIsle(robot, seviye) : <int>[];
-
-      tx.update(ref, {
-        'puan': FieldValue.increment(-gelistirmeMaliyeti),
-        'robot': robot,
-      });
-
-      return MascotGelistirSonuc(
-        seviyeAtladi: seviyeAtladi,
-        eskiSeviye: eskiSeviye,
-        yeniSeviye: seviye,
-        yeniSeviyeOdulleri: yeniOduller,
-      );
-    });
-  }
-
   // Maskot ismini günceller
   static Future<String> isimGuncelle(String uid, String yeniIsim) async {
     final temiz = yeniIsim.trim();
     if (temiz.isEmpty || temiz.length > 24) {
-      throw 'Maskot ismi 1-24 karakter olmalı.';
+      throw 'Vibel ismi 1-24 karakter olmalı.';
     }
     if (!enabled) {
       // Maskot devre dışı — DB güncellemesi yapılmaz, fakat çağırana başarılı dönüş verilir.
@@ -1064,61 +1359,73 @@ class MascotServis {
     return temiz;
   }
 
+  /// Vibel görünüm rengini kaydeder.
+  static Future<void> renkGuncelle(RetyRenk renk) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) throw 'Oturum bulunamadı.';
+    if (!enabled) return;
+    try {
+      // Noktalı alan: tüm robot haritasını yeniden yazmadan sadece renk.
+      await _db.collection('users').doc(uid).update({
+        'robot.renk': renk.id,
+      });
+    } catch (e, st) {
+      debugPrint('renkGuncelle hata: $e\n$st');
+      rethrow;
+    }
+  }
+
   // Uyuyan maskotu erken uyandırır
   static Future<String> uyandir(String uid) async {
-    if (!enabled) return 'Maskot sistemi devre dışı.';
+    if (!enabled) return 'Vibel sistemi şu an kapalı.';
     final ref = _db.collection('users').doc(uid);
     return _db.runTransaction((tx) async {
       final snap = await tx.get(ref);
       final robot = _robotHaritasi(snap.data()?['robot']);
       final seviye = _int(robot['seviye'], 1);
       if (!odaAcik(seviye)) {
-        throw 'Maskot odası henüz açık değil.';
+        throw 'Vibel odası 6. seviyede açılır.';
       }
       final simdi = _simdiMs();
       _zamanGuncelle(robot, simdi, etkilesimKaydedildi: true);
 
       if (_int(robot['uykuBitisMs'], 0) <= simdi) {
-        throw 'Maskot zaten uyanık.';
+        throw '${robot['isim'] ?? 'Vibel'} zaten uyanık.';
       }
 
       if (uyuSistemiAcik(seviye)) {
         final enerji = _int(robot['enerji'], 50);
         if (enerji <= uyuErkenUyandirmaMinEnerji) {
-          throw 'Enerji %$uyuErkenUyandirmaMinEnerji altındayken erken uyandırılamaz.';
+          throw '${robot['isim'] ?? 'Vibel'} çok yorgun, biraz daha dinlenmeli.';
         }
       }
 
       _robotUyandir(robot);
       tx.update(ref, {'robot': robot});
-      return '${robot['isim'] ?? 'Maskot'} uyandı!';
+      _bakimBildirimleriniYenile(robot);
+      return '${robot['isim'] ?? 'Vibel'} uyandı!';
     });
   }
 
   // Maskotu uyutmaya başlatır
   static Future<String> uyuYap(String uid) async {
-    if (!enabled) return 'Maskot sistemi devre dışı.';
+    if (!enabled) return 'Vibel sistemi şu an kapalı.';
     final ref = _db.collection('users').doc(uid);
     return _db.runTransaction((tx) async {
       final snap = await tx.get(ref);
       final robot = _robotHaritasi(snap.data()?['robot']);
       if (!uyuSistemiAcik(_int(robot['seviye'], 1))) {
-        throw 'Uyku ${enerjiAcilisSeviyesi}. seviyede açılır.';
+        throw 'Uyku $enerjiAcilisSeviyesi. seviyede açılır.';
       }
       final simdi = _simdiMs();
       _zamanGuncelle(robot, simdi, etkilesimKaydedildi: true);
 
       final enerji = _int(robot['enerji'], 70);
       if (enerji > uyuMaxEnerji) {
-        throw 'Enerji %51 ve üzerindeyken maskot uyuyamaz.';
+        throw '${robot['isim'] ?? 'Vibel'} henüz uykulu değil. Yorulunca uyutabilirsin.';
       }
       if (_int(robot['uykuBitisMs'], 0) > simdi) {
-        throw 'Maskot zaten uyuyor.';
-      }
-
-      if (toklukAktif(_int(robot['seviye'], 1))) {
-        robot['tokluk'] =
-            _clampStat(_int(robot['tokluk'], 80) - 18);
+        throw '${robot['isim'] ?? 'Vibel'} zaten uyuyor.';
       }
 
       robot['uykuBaslangicEnerji'] = enerji;
@@ -1127,9 +1434,8 @@ class MascotServis {
       robot['uykuBitisMs'] = simdi + uykuMs;
 
       tx.update(ref, {'robot': robot});
-      final sureMetni = _uykuSureMetni(enerji);
-      return 'Maskot uyumaya başladı. Enerji %100 olunca uyanacak '
-          '(tahmini $sureMetni). $uykuGelisimPuani gelişim kazanacaksın.';
+      _bakimBildirimleriniYenile(robot);
+      return '${robot['isim'] ?? 'Vibel'} uyumaya başladı. Enerjisi dolunca uyanacak.';
     });
   }
 
@@ -1144,6 +1450,7 @@ class MascotServis {
         if (!snap.exists) return;
         final robot = _robotHaritasi(snap.data()?['robot']);
         if (!odaAcik(_int(robot['seviye'], 1))) return;
+        final onceki = Map<String, dynamic>.from(robot);
         final simdi = _simdiMs();
         _zamanGuncelle(robot, simdi, etkilesimKaydedildi: true);
         if (_int(robot['uykuBitisMs'], 0) > simdi) return;
@@ -1177,72 +1484,393 @@ class MascotServis {
           }
         }
 
-        tx.update(ref, {'robot': robot});
+        final yaz = _robotNoktaliFark(onceki, robot);
+        if (yaz.isEmpty) return;
+        tx.update(ref, yaz);
       });
     } catch (e) {
       debugPrint('Maskot sosyal aksiyon hatası ($tip): $e');
     }
   }
 
+  /// Ekrandaki robot haritasına yemeği uygular. Ağ beklemez.
+  static ({String mesaj, Map<String, dynamic> robot, Map<String, dynamic> yaz})
+      yemekHesapla(dynamic ham) {
+    final robot = _robotHaritasi(ham);
+    final seviye = _int(robot['seviye'], 1);
+    if (!yemekSistemiAcik(seviye)) {
+      throw '$odaAcilisSeviyesi. seviye olana kadar yemek verilemez.';
+    }
+
+    final simdi = _simdiMs();
+    _uykuEngeli(robot);
+
+    final oncekiTokluk = _hesaplananTokluk(robot, simdi);
+    if (oncekiTokluk >= 100) {
+      throw 'Tokluk zaten dolu. Biraz bekleyip tekrar dene.';
+    }
+
+    _vilHarca(robot, yemekVilMaliyeti);
+
+    _gelisimVeSeviyeUygula(robot, yemekGelisimPuani);
+    final yeniSeviye = _int(robot['seviye'], 1);
+    final seviyeAtladi = yeniSeviye > seviye;
+
+    final yeniTokluk = _clampStat(oncekiTokluk + yemekToklukArtisi);
+    robot['tokluk'] = yeniTokluk;
+    robot['sonToklukTickMs'] = simdi;
+    robot['sonUygulamaMs'] = simdi;
+    if (yeniTokluk > 0) {
+      robot['sonToklukPozitifMs'] = simdi;
+    }
+    if (enerjiAktif(seviye)) {
+      robot['enerji'] = _clampStat(
+        _int(robot['enerji'], 70) + yemekEnerjiArtisi,
+      );
+    }
+    robot['mutluluk'] = _clampStat(_int(robot['mutluluk'], 65) + 5);
+    _robotSayilariSabitle(robot);
+
+    final yaz = <String, dynamic>{
+      'robot.etkilesimPuani': _int(robot['etkilesimPuani'], 0),
+      'robot.tokluk': yeniTokluk,
+      'robot.sonToklukTickMs': simdi,
+      'robot.sonUygulamaMs': simdi,
+      'robot.sonToklukPozitifMs': simdi,
+      'robot.gelisimPuani': _int(robot['gelisimPuani'], 0),
+      'robot.mutluluk': _int(robot['mutluluk'], 65),
+    };
+    if (enerjiAktif(seviye)) {
+      yaz['robot.enerji'] = _int(robot['enerji'], 70);
+    }
+    if (seviyeAtladi) {
+      yaz['robot.seviye'] = yeniSeviye;
+    }
+
+    final mesaj = seviyeAtladi ? 'Lezzetli! Seviye atlandı!' : 'Lezzetli!';
+    return (mesaj: mesaj, robot: robot, yaz: yaz);
+  }
+
   // Bebek beslenmesiyle gelişim puanı artırır
-  static Future<String> yemekVer(String uid) async {
-    if (!enabled) return 'Maskot sistemi devre dışı.';
+  static Future<String> yemekVer(
+    String uid, {
+    Map<String, dynamic>? anlikRobot,
+  }) async {
+    if (!enabled) return 'Vibel sistemi şu an kapalı.';
     if (uid.isEmpty) return 'Kullanıcı bulunamadı.';
 
     final ref = _db.collection('users').doc(uid);
-    return _db.runTransaction((tx) async {
-      final snap = await tx.get(ref);
-      if (!snap.exists) {
+    try {
+      Map<String, dynamic> ham = anlikRobot ?? {};
+      if (anlikRobot == null) {
+        final snap = await ref.get();
+        if (!snap.exists) throw 'Kullanıcı kaydı bulunamadı.';
+        final veri = snap.data()?['robot'];
+        if (veri is Map) ham = Map<String, dynamic>.from(veri);
+      }
+      final sonuc = yemekHesapla(ham);
+      await ref.update(sonuc.yaz);
+      _bakimBildirimleriniYenile(sonuc.robot);
+      return sonuc.mesaj;
+    } on FirebaseException catch (e) {
+      debugPrint('Yemek FirebaseException code=${e.code} message=${e.message}');
+      throw 'Yemek kaydı reddedildi (${e.code}).';
+    } catch (e) {
+      debugPrint('Yemek beklenmeyen hata: $e');
+      rethrow;
+    }
+  }
+
+  static String _utcGunAnahtari(int ms) {
+    final d = DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true);
+    return '${d.year.toString().padLeft(4, '0')}-'
+        '${d.month.toString().padLeft(2, '0')}-'
+        '${d.day.toString().padLeft(2, '0')}';
+  }
+
+  static int utcGeceYarisiKalanMs([int? simdiMs]) {
+    final simdi = simdiMs ?? _simdiMs();
+    final d = DateTime.fromMillisecondsSinceEpoch(simdi, isUtc: true);
+    final next = DateTime.utc(d.year, d.month, d.day + 1);
+    return next.millisecondsSinceEpoch - simdi;
+  }
+
+  static int arkadasYemekKalanMs({
+    required Map<String, dynamic> feederRobot,
+    required String hedefUid,
+  }) {
+    if (hedefUid.isEmpty) return 0;
+    final kayit = feederRobot['sonArkadasYemek'];
+    if (kayit is! Map || kayit[hedefUid] == null) return 0;
+    final sonMs = _int(kayit[hedefUid], 0);
+    if (sonMs <= 0) return 0;
+    final simdi = _simdiMs();
+    if (_utcGunAnahtari(sonMs) != _utcGunAnahtari(simdi)) return 0;
+    return utcGeceYarisiKalanMs(simdi);
+  }
+
+  static String arkadasYemekBeklemeMetni(int kalanMs) {
+    if (kalanMs <= 0) return '';
+    final tekrar = DateTime.now().add(Duration(milliseconds: kalanMs));
+    final hh = tekrar.hour.toString().padLeft(2, '0');
+    final mm = tekrar.minute.toString().padLeft(2, '0');
+    return 'Bugün verdin. Tekrar $hh:$mm\'te.';
+  }
+
+  static Future<bool> karsilikliTakipVarMi({
+    required String uid1,
+    required String uid2,
+  }) async {
+    if (uid1.isEmpty || uid2.isEmpty || uid1 == uid2) return false;
+    final a = await _db
+        .collection('users')
+        .doc(uid1)
+        .collection('following')
+        .doc(uid2)
+        .get();
+    if (!a.exists) return false;
+    final b = await _db
+        .collection('users')
+        .doc(uid2)
+        .collection('following')
+        .doc(uid1)
+        .get();
+    return b.exists;
+  }
+
+  static Future<bool> _karsilikliTakipVarMi({
+    required String uid1,
+    required String uid2,
+  }) =>
+      karsilikliTakipVarMi(uid1: uid1, uid2: uid2);
+
+  /// Karşılıklı takipteki arkadaş, vil harcayarak hedef maskotu doyurur.
+  static Future<String> arkadasYemekVer(String hedefUid) async {
+    if (!enabled) return 'Vibel sistemi şu an kapalı.';
+    final current = FirebaseAuth.instance.currentUser;
+    if (current == null) throw 'Oturum bulunamadı.';
+    if (hedefUid.isEmpty || hedefUid == current.uid) {
+      throw 'Bu Vibel\'e yemek veremezsin.';
+    }
+
+    final karsilikli = await _karsilikliTakipVarMi(
+      uid1: current.uid,
+      uid2: hedefUid,
+    );
+    if (!karsilikli) {
+      throw 'Yalnızca karşılıklı takipte yemek verebilirsin.';
+    }
+
+    final feederRef = _db.collection('users').doc(current.uid);
+    final hedefRef = _db.collection('users').doc(hedefUid);
+    final bagARef = feederRef.collection('retyBaglari').doc(hedefUid);
+    final bagBRef = hedefRef.collection('retyBaglari').doc(current.uid);
+
+    Map<String, dynamic> hedefRobot = {};
+    final simdi = await _db.runTransaction<int>((txn) async {
+      final feederSnap = await txn.get(feederRef);
+      final hedefSnap = await txn.get(hedefRef);
+      if (!feederSnap.exists || !hedefSnap.exists) {
         throw 'Kullanıcı kaydı bulunamadı.';
       }
 
-      final robot = _robotHaritasi(snap.data()?['robot']);
-      final seviye = _int(robot['seviye'], 1);
-      if (!yemekSistemiAcik(seviye)) {
-        throw '$odaAcilisSeviyesi. seviye olana kadar yemek verilemez.';
+      final feederRobot = _robotHaritasi(feederSnap.data()?['robot']);
+      hedefRobot = _robotHaritasi(hedefSnap.data()?['robot']);
+      final hedefSeviye = _int(hedefRobot['seviye'], 1);
+      if (!yemekSistemiAcik(hedefSeviye)) {
+        throw 'Bu Vibel henüz yumurta; yemek 6. seviyede açılır.';
       }
 
-      final simdi = _simdiMs();
-      _zamanGuncelle(robot, simdi, etkilesimKaydedildi: true);
-      _uykuEngeli(robot);
+      final simdiMs = _simdiMs();
+      if (_int(hedefRobot['uykuBitisMs'], 0) > simdiMs) {
+        final isim = _isimOku(hedefRobot['isim']);
+        throw '$isim uyuyor. Uyanınca yemek verebilirsin.';
+      }
 
-      final oncekiTokluk = _int(robot['tokluk'], 80);
+      final oncekiTokluk = _int(hedefRobot['tokluk'], 80);
+      if (oncekiTokluk <= 0) {
+        final sonPozitif = _int(hedefRobot['sonToklukPozitifMs'], simdiMs);
+        if (simdiMs - sonPozitif >= aclikOlumSureMs) {
+          throw 'Bu Vibel açlıktan yumurtaya döndü. Artık yemek verilemez.';
+        }
+      }
       if (oncekiTokluk >= 100) {
-        throw 'Tokluk zaten dolu. Biraz bekleyip tekrar dene.';
+        throw 'Tokluk zaten dolu.';
       }
 
-      _vilHarca(robot, yemekVilMaliyeti);
-
-      final yeniOduller =
-          _gelisimVeSeviyeUygula(robot, yemekGelisimPuani);
-      final seviyeAtladi = _int(robot['seviye'], 1) > seviye;
-
-      final yeniTokluk =
-          _clampStat(oncekiTokluk + yemekToklukArtisi);
-      robot['tokluk'] = yeniTokluk;
-      if (enerjiAktif(seviye)) {
-        robot['enerji'] = _clampStat(
-          _int(robot['enerji'], 70) + yemekEnerjiArtisi,
-        );
+      final yemekKaydi = feederRobot['sonArkadasYemek'];
+      if (yemekKaydi is Map && yemekKaydi[hedefUid] != null) {
+        final sonMs = _int(yemekKaydi[hedefUid], 0);
+        if (sonMs > 0 &&
+            _utcGunAnahtari(sonMs) == _utcGunAnahtari(simdiMs)) {
+          throw MascotServis.arkadasYemekBeklemeMetni(
+            utcGeceYarisiKalanMs(simdiMs),
+          );
+        }
       }
-      robot['mutluluk'] = _clampStat(_int(robot['mutluluk'], 65) + 5);
 
-      tx.update(ref, {'robot': robot});
+      _vilHarca(feederRobot, arkadasYemekVilMaliyeti);
 
-      final toklukMesaji = yeniTokluk >= 100
-          ? 'Tokluk doldu'
-          : 'Tokluk %$yeniTokluk (+$yemekToklukArtisi)';
+      final kayit = yemekKaydi is Map
+          ? Map<String, dynamic>.from(yemekKaydi)
+          : <String, dynamic>{};
+      kayit[hedefUid] = simdiMs;
+      feederRobot['sonArkadasYemek'] = kayit;
 
-      if (seviyeAtladi) {
-        final odulMetni = yeniOduller.isNotEmpty
-            ? ' Yeni ödüller: ${yeniOduller.join(', ')}.'
-            : '';
-        return 'Lezzetli! ($yemekVilMaliyeti vil) '
-            '$toklukMesaji, $yemekGelisimPuani gelişim kazandın. '
-            'Seviye atlandı!$odulMetni';
+      final hedefYaz = Map<String, dynamic>.from(hedefRobot);
+      hedefYaz['tokluk'] = _clampStat(oncekiTokluk + yemekToklukArtisi);
+      hedefYaz['mutluluk'] = _clampStat(_int(hedefRobot['mutluluk'], 65) + 3);
+      hedefYaz['sonToklukPozitifMs'] = simdiMs;
+      hedefYaz['sonToklukTickMs'] = simdiMs;
+
+      txn.update(feederRef, {'robot': feederRobot});
+      txn.update(hedefRef, {'robot': hedefYaz});
+      return simdiMs;
+    });
+
+    try {
+      await Future.wait([
+        bagARef.set({'benimMs': simdi}, SetOptions(merge: true)),
+        bagBRef.set({'onunMs': simdi}, SetOptions(merge: true)),
+      ]);
+      unawaited(bagTakibiYenilendi(hedefUid));
+    } catch (e) {
+      debugPrint('Rety bagi yazilamadi: $e');
+    }
+
+    final isim = _isimOku(hedefRobot['isim']);
+    return '$isim doydu.';
+  }
+
+  static DocumentReference<Map<String, dynamic>> _bagRef(
+    String uid,
+    String otherUid,
+  ) =>
+      _db.collection('users').doc(uid).collection('retyBaglari').doc(otherUid);
+
+  static final Set<String> _bagSilmeAnahtarlari = {};
+
+  static String _bagAnahtar(String a, String b) {
+    final ilk = a.compareTo(b) <= 0 ? a : b;
+    final son = a.compareTo(b) <= 0 ? b : a;
+    return '$ilk|$son';
+  }
+
+  /// Takipten çıkınca 3 günlük silme süresini başlatır (süre zaten varsa dokunmaz).
+  static Future<void> bagTakibiKesildi(String otherUid) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || uid.isEmpty || otherUid.isEmpty || uid == otherUid) {
+      return;
+    }
+    try {
+      final benim = await _bagRef(uid, otherUid).get();
+      if (!benim.exists) return;
+      final kayit = RetyBagKaydi.fromMap(otherUid, benim.data());
+      if (!kayit.bagVar || kayit.takipKesildiMs > 0) return;
+
+      final simdi = DateTime.now().millisecondsSinceEpoch;
+      await Future.wait([
+        _bagRef(uid, otherUid).update({'takipKesildiMs': simdi}),
+        _bagRef(otherUid, uid).update({'takipKesildiMs': simdi}),
+      ]);
+    } catch (e) {
+      debugPrint('Rety bagi takip kesme yazilamadi: $e');
+    }
+  }
+
+  /// Karşılıklı takip geri gelince silme süresini iptal eder.
+  static Future<void> bagTakibiYenilendi(String otherUid) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || uid.isEmpty || otherUid.isEmpty || uid == otherUid) {
+      return;
+    }
+    try {
+      final karsilikli = await karsilikliTakipVarMi(uid1: uid, uid2: otherUid);
+      if (!karsilikli) return;
+
+      final benim = await _bagRef(uid, otherUid).get();
+      if (!benim.exists) return;
+      final kayit = RetyBagKaydi.fromMap(otherUid, benim.data());
+      if (kayit.takipKesildiMs <= 0) return;
+      if (kayit.takipKesilmeSuresiDoldu) {
+        await _suresiDolanBagiSil(uid, otherUid);
+        return;
       }
-      return 'Lezzetli! ($yemekVilMaliyeti vil) '
-          '$toklukMesaji, $yemekGelisimPuani gelişim kazandın.';
+
+      await Future.wait([
+        _bagRef(uid, otherUid).update({
+          'takipKesildiMs': FieldValue.delete(),
+        }),
+        _bagRef(otherUid, uid).update({
+          'takipKesildiMs': FieldValue.delete(),
+        }),
+      ]);
+    } catch (e) {
+      debugPrint('Rety bagi takip yenileme yazilamadi: $e');
+    }
+  }
+
+  static Future<void> _suresiDolanBagiSil(String uid, String otherUid) async {
+    final anahtar = _bagAnahtar(uid, otherUid);
+    if (_bagSilmeAnahtarlari.contains(anahtar)) return;
+    _bagSilmeAnahtarlari.add(anahtar);
+    try {
+      await Future.wait([
+        _bagRef(uid, otherUid).delete(),
+        _bagRef(otherUid, uid).delete(),
+      ]);
+    } catch (e) {
+      _bagSilmeAnahtarlari.remove(anahtar);
+      debugPrint('Rety bagi silinemedi: $e');
+    }
+  }
+
+  static void _suresiDolanBagiTemizle(String uid, RetyBagKaydi kayit) {
+    if (!kayit.takipKesilmeSuresiDoldu) return;
+    unawaited(_suresiDolanBagiSil(uid, kayit.otherUid));
+  }
+
+  /// Karşı profildeki rozet: yalnızca oturum sahibinin kendi alt koleksiyonu.
+  static Stream<RetyBagKaydi?> bagStream(String otherUid) {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || uid.isEmpty || uid == otherUid) {
+      return Stream<RetyBagKaydi?>.value(null);
+    }
+    return _bagRef(uid, otherUid).snapshots().map((doc) {
+      if (!doc.exists) return RetyBagKaydi.fromMap(otherUid, null);
+      final kayit = RetyBagKaydi.fromMap(otherUid, doc.data());
+      _suresiDolanBagiTemizle(uid, kayit);
+      if (kayit.takipKesilmeSuresiDoldu) {
+        return RetyBagKaydi.fromMap(otherUid, null);
+      }
+      return kayit;
+    });
+  }
+
+  /// Kendi profildeki özel bağ listesi.
+  static Stream<List<RetyBagKaydi>> benimBaglarStream() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || uid.isEmpty) {
+      return Stream<List<RetyBagKaydi>>.value(const []);
+    }
+    return _db
+        .collection('users')
+        .doc(uid)
+        .collection('retyBaglari')
+        .snapshots()
+        .map((snap) {
+      final liste = <RetyBagKaydi>[];
+      for (final d in snap.docs) {
+        final kayit = RetyBagKaydi.fromMap(d.id, d.data());
+        if (!kayit.bagVar) continue;
+        if (kayit.takipKesilmeSuresiDoldu) {
+          _suresiDolanBagiTemizle(uid, kayit);
+          continue;
+        }
+        liste.add(kayit);
+      }
+      liste.sort((a, b) => b.sonMs.compareTo(a.sonMs));
+      return liste;
     });
   }
 }

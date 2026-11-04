@@ -1,0 +1,10 @@
+rules_version = '2';
+
+// MyVibel Storage kullanmıyor; kova yanlışlıkla açık kalmasın diye her şeyi reddet.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

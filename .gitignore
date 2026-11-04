@@ -1,5 +1,10 @@
 # Miscellaneous
 *.class
+.tmp-auth*.json
+_auth_tmp.json
+*_auth*.json
+*serviceAccount*.json
+serviceAccountKey.json
 *.log
 *.pyc
 *.swp
@@ -9,6 +14,14 @@
 .history
 .svn/
 migrate_working_dir/
+_root_check.html
+aa_screen_check.png
+aa_ui.xml
+report.xml
+maestro-*-report.xml
+node_modules/
+.firebase/
+
 
 # IntelliJ related
 *.iml
@@ -42,3 +55,6 @@ app.*.map.json
 **/*.jks
 **/*.keystore
 android/KEYSTORE_CREDENTIALS.txt
+
+# Geçici kural test ortamý
+tmp-kural-test/

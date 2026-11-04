@@ -1,0 +1,43 @@
+appId: com.myvibel.app
+---
+- runFlow:
+    when:
+      visible: "Gizli Hesap.*"
+    commands:
+      - back
+- scrollUntilVisible:
+    element: "Ayarlar"
+    direction: UP
+    optional: true
+- tapOn:
+    text: "Ayarlar"
+    optional: true
+- runFlow:
+    when:
+      notVisible: "Gizli Hesap.*"
+    commands:
+      - launchApp:
+          appId: com.myvibel.app
+          clearState: false
+          stopApp: false
+      - tapOn:
+          text: "Alt menü Profil"
+          optional: true
+      - scrollUntilVisible:
+          element: "Ayarlar"
+          direction: UP
+          optional: true
+      - tapOn:
+          text: "Ayarlar"
+          optional: true
+- runFlow:
+    when:
+      notVisible: "Gizli Hesap.*"
+    commands:
+      - tapOn:
+          text: "Ayarlar"
+          optional: true
+      - scrollUntilVisible:
+          element: "Gizli Hesap.*"
+          direction: DOWN
+          optional: true

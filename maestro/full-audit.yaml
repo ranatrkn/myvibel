@@ -1,0 +1,398 @@
+appId: com.myvibel.app
+---
+# Koyu tema + açık tema uçtan uca tarama.
+# Google hesabı değiştirme ve Hesap Sil onayı yok.
+- runFlow: flows/launch.yaml
+- tapOn:
+    text: "Tamam"
+    optional: true
+
+# ========== KOYU TEMA ==========
+- tapOn: "Alt menü Profil"
+- extendedWaitUntil:
+    visible: "Beğendiklerim"
+    timeout: 25000
+- tapOn: "Ayarlar"
+- extendedWaitUntil:
+    visible: "Gizli Hesap.*"
+    timeout: 15000
+- tapOn: "Koyu"
+- back
+
+# Ana / Akış
+- tapOn: "Alt menü Ana"
+- extendedWaitUntil:
+    visible: "Takip Edilen"
+    timeout: 20000
+- tapOn:
+    text: "Akış"
+    optional: true
+- tapOn:
+    text: "Takip Edilen"
+    optional: true
+
+# Gönderi paylaş (alıntı ekranında buton: Alıntıyı paylaş)
+- tapOn: "Alt menü Yeni gönderi"
+- runFlow: flows/yeni-gonderi-hazir.yaml
+- tapOn: "Gönderi metni"
+- inputText: "MaestroQA audit koyu"
+- hideKeyboard
+- tapOn: "Paylaş|Alıntıyı paylaş"
+- waitForAnimationToEnd:
+    timeout: 4000
+- runFlow:
+    when:
+      visible: "Paylaş|Alıntıyı paylaş"
+    commands:
+      - tapOn: "Paylaş|Alıntıyı paylaş"
+
+- tapOn: "Alt menü Ana"
+- extendedWaitUntil:
+    visible: "Takip Edilen"
+    timeout: 30000
+
+# Beğeni + yorum + yanıt
+- tapOn:
+    text: "Gönderiyi beğen"
+    index: 0
+    optional: true
+- tapOn:
+    text: "Yorumları aç"
+    index: 0
+    optional: true
+- runFlow:
+    when:
+      visible: "Yorumlar.*"
+    commands:
+      - tapOn: "Yorum yaz..."
+      - inputText: "MaestroQA yorum koyu"
+      - hideKeyboard
+      - tapOn: "Yorum gönder"
+      - waitForAnimationToEnd:
+          timeout: 4000
+      - tapOn:
+          text: "Yorumu yanıtla"
+          index: 0
+          optional: true
+      - runFlow:
+          when:
+            visible: "Yanıt yaz.*|Yorum yaz.*"
+          commands:
+            - tapOn:
+                text: "Yanıt yaz.*|Yorum yaz..."
+                optional: true
+            - inputText: "MaestroQA yanit"
+            - hideKeyboard
+            - tapOn:
+                text: "Yorum gönder"
+                optional: true
+      - back
+
+- tapOn:
+    text: "Gönderiyi alıntıla"
+    index: 0
+    optional: true
+- runFlow:
+    when:
+      visible: "Alıntılı Gönderi|Alıntıyı paylaş"
+    commands:
+      - tapOn:
+          text: "Alıntıyı kaldır"
+          optional: true
+      - tapOn: "Alt menü Ana"
+
+- tapOn:
+    text: "Gönderiyi ilet"
+    index: 0
+    optional: true
+- runFlow:
+    when:
+      visible: "İlet.*|Gönderiyi İlet.*"
+    commands:
+      - back
+
+# Mesajlar — önce Ana'ya dön (yorum/alıntı ekranında ikon görünmez)
+- runFlow: flows/ana-sayfaya-don.yaml
+- tapOn: "Alt menü Ana"
+- extendedWaitUntil:
+    visible: "Takip Edilen"
+    timeout: 20000
+- tapOn: "Mesajlar"
+- extendedWaitUntil:
+    visible: "Sohbetlerde ara.*"
+    timeout: 20000
+- tapOn: "Yeni sohbet"
+- waitForAnimationToEnd:
+    timeout: 3000
+- runFlow:
+    when:
+      visible: "Yeni Sohbet.*|Kullanıcı ara.*"
+    commands:
+      - tapOn:
+          text: "Kullanıcı ara.*"
+          optional: true
+      - inputText: "ttt"
+      - waitForAnimationToEnd:
+          timeout: 5000
+      - tapOn:
+          text: "ttt"
+          optional: true
+      - hideKeyboard
+      - back
+- back
+
+# Keşfet + ttt profil
+- tapOn: "Alt menü Keşfet"
+- extendedWaitUntil:
+    visible: "Liderlik"
+    timeout: 30000
+- tapOn: "Liderlik"
+- waitForAnimationToEnd:
+    timeout: 3000
+- back
+- tapOn:
+    text: "Kullanıcı veya etiket ara"
+    optional: true
+- runFlow:
+    when:
+      visible: "Kullanıcı veya etiket ara"
+    commands:
+      - inputText: "ttt"
+      - waitForAnimationToEnd:
+          timeout: 5000
+      - tapOn:
+          text: "ttt"
+          optional: true
+- runFlow:
+    when:
+      visible: "Mesaj Gönder|Takip Et|Takip Ediliyor"
+    commands:
+      - tapOn:
+          text: "Mesaj Gönder"
+          optional: true
+      - runFlow:
+          when:
+            visible: "Mesaj yaz.*"
+          commands:
+            - tapOn: "Mesaj yaz.*"
+            - inputText: "MaestroQA mesaj koyu"
+            - hideKeyboard
+            - tapOn:
+                text: "Gönder|Mesaj gönder"
+                optional: true
+            - back
+      - tapOn:
+          text: "Takip Et"
+          optional: true
+      - back
+
+# Bildirim
+- tapOn: "Alt menü Bildirimler"
+- extendedWaitUntil:
+    visible: "Bildirimler"
+    timeout: 20000
+- tapOn:
+    text: "Tümünü okundu işaretle"
+    optional: true
+
+# Profil
+- tapOn: "Alt menü Profil"
+- extendedWaitUntil:
+    visible: "Beğendiklerim"
+    timeout: 25000
+- tapOn: "Gönderilerim.*"
+- tapOn: "Beğendiklerim"
+- tapOn: "Gönderilerim.*"
+- tapOn:
+    text: "Izgara görünümü|Liste görünümü|Profil görünümünü değiştir"
+    optional: true
+- tapOn: "Takipçi listesi"
+- waitForAnimationToEnd:
+    timeout: 2000
+- back
+- tapOn: "Takip edilen listesi"
+- waitForAnimationToEnd:
+    timeout: 2000
+- back
+- tapOn: "Liderlik tablosu"
+- waitForAnimationToEnd:
+    timeout: 2000
+- back
+- tapOn: "Profili düzenle"
+- runFlow:
+    when:
+      visible: "Profili Düzenle.*"
+    commands:
+      - tapOn: "Vazgeç"
+- tapOn: "Arkadaşlık bağları"
+- runFlow:
+    when:
+      visible: "Arkadaşlık bağları"
+    commands:
+      - back
+- tapOn:
+    text: "Vibel odası"
+    optional: true
+- runFlow:
+    when:
+      visible: ".*odası"
+    commands:
+      - tapOn:
+          text: "Uyandır"
+          optional: true
+      - tapOn:
+          text: "Yemek.*"
+          optional: true
+      - tapOn:
+          text: "Tekrar gösterme"
+          optional: true
+      - tapOn:
+          text: "Kapat"
+          optional: true
+      - back
+
+# Ayarlar koyu
+- tapOn: "Ayarlar"
+- extendedWaitUntil:
+    visible: "Gizli Hesap.*"
+    timeout: 15000
+- tapOn: "Vibel İsmini Değiştir"
+- tapOn:
+    text: "Vazgeç"
+    optional: true
+- tapOn: "Ayarlar"
+- tapOn: "Engellenenler"
+- back
+- tapOn: "Ayarlar"
+- scrollUntilVisible:
+    element: "Kullanım Koşulları"
+    direction: DOWN
+    optional: true
+- tapOn: "Kullanım Koşulları"
+- back
+- tapOn: "Ayarlar"
+- scrollUntilVisible:
+    element: "Gizlilik Politikası"
+    direction: DOWN
+    optional: true
+- tapOn: "Gizlilik Politikası"
+- back
+- tapOn: "Ayarlar"
+- scrollUntilVisible:
+    element: "Yardım / SSS"
+    direction: DOWN
+    optional: true
+- tapOn: "Yardım / SSS"
+- back
+- tapOn: "Ayarlar"
+- scrollUntilVisible:
+    element: "Sürüm Notları"
+    direction: DOWN
+    optional: true
+- runFlow:
+    when:
+      visible: "Sürüm Notları"
+    commands:
+      - tapOn: "Sürüm Notları"
+      - back
+      - tapOn:
+          text: "Ayarlar"
+          optional: true
+- tapOn: "Ayarlar"
+- scrollUntilVisible:
+    element: "Destek ve Geri Bildirim"
+    direction: DOWN
+    optional: true
+- tapOn: "Destek ve Geri Bildirim"
+- back
+- tapOn: "Ayarlar"
+- scrollUntilVisible:
+    element: "Hesabı Sil"
+    direction: DOWN
+    optional: true
+- tapOn: "Hesabı Sil"
+- tapOn:
+    text: "Vazgeç"
+    optional: true
+
+# ========== AÇIK TEMA ==========
+- tapOn: "Ayarlar"
+- extendedWaitUntil:
+    visible: "Gizli Hesap.*"
+    timeout: 15000
+- tapOn: "Açık"
+- back
+
+- tapOn: "Alt menü Ana"
+- extendedWaitUntil:
+    visible: "Takip Edilen"
+    timeout: 20000
+- tapOn:
+    text: "Akış"
+    optional: true
+- tapOn: "Alt menü Yeni gönderi"
+- runFlow: flows/yeni-gonderi-hazir.yaml
+- tapOn: "Gönderi metni"
+- inputText: "MaestroQA audit acik"
+- hideKeyboard
+- tapOn: "Paylaş|Alıntıyı paylaş"
+- waitForAnimationToEnd:
+    timeout: 4000
+- tapOn: "Alt menü Ana"
+- tapOn:
+    text: "Gönderiyi beğen"
+    index: 0
+    optional: true
+- tapOn:
+    text: "Yorumları aç"
+    index: 0
+    optional: true
+- runFlow:
+    when:
+      visible: "Yorumlar.*"
+    commands:
+      - tapOn: "Yorum yaz..."
+      - inputText: "MaestroQA yorum acik"
+      - hideKeyboard
+      - tapOn: "Yorum gönder"
+      - back
+- tapOn: "Mesajlar"
+- waitForAnimationToEnd:
+    timeout: 3000
+- back
+- tapOn: "Alt menü Keşfet"
+- extendedWaitUntil:
+    visible: "Liderlik"
+    timeout: 25000
+- tapOn: "Alt menü Bildirimler"
+- extendedWaitUntil:
+    visible: "Bildirimler"
+    timeout: 20000
+- tapOn: "Alt menü Profil"
+- extendedWaitUntil:
+    visible: "Beğendiklerim"
+    timeout: 25000
+- tapOn:
+    text: "Vibel odası"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+- back
+- tapOn: "Ayarlar"
+- extendedWaitUntil:
+    visible: "Gizli Hesap.*"
+    timeout: 15000
+- tapOn: "Kullanım Koşulları"
+- back
+- tapOn: "Ayarlar"
+- tapOn: "Gizlilik Politikası"
+- back
+- tapOn: "Ayarlar"
+- tapOn: "Yardım / SSS"
+- back
+- tapOn: "Ayarlar"
+# Temayı koyuya geri al
+- tapOn: "Koyu"
+- back
+- tapOn: "Alt menü Ana"
+- assertVisible: "Takip Edilen"

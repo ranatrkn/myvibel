@@ -1,5 +1,5 @@
-name: vibe_life
-description: "A new Flutter project."
+name: myvibel
+description: "MyVibel — sosyal paylaşım, Vibel maskot ve 15+ yaş deneyimi."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -30,6 +30,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
     
   lottie: ^3.1.0 
   cupertino_icons: ^1.0.6
@@ -40,6 +42,15 @@ dependencies:
   firebase_crashlytics: ^4.1.0
   firebase_app_check: ^0.3.1
   cached_network_image: ^3.4.0
+  google_sign_in: 6.2.2
+  flutter_local_notifications: ^18.0.1
+  timezone: ^0.10.0
+  url_launcher: ^6.3.1
+  share_plus: ^10.0.0
+  sign_in_with_apple: ^7.0.1
+  crypto: ^3.0.3
+  http: ^1.2.2
+  google_mobile_ads: ^5.2.0
 
 
 
@@ -60,7 +71,14 @@ dev_dependencies:
 flutter_launcher_icons:
   android: true
   ios: true
-  image_path: assets/icon/VibeLife_ikon.png
+  image_path: assets/icon/myvibel_launcher.png
+  adaptive_icon_background: "#1A002E"
+  adaptive_icon_foreground: assets/icon/myvibel_launcher.png
+  web:
+    generate: true
+    image_path: assets/icon/myvibel_launcher.png
+    background_color: "#1A002E"
+    theme_color: "#1A002E"
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -76,6 +94,26 @@ flutter:
   assets:
     - assets/animations/
     - assets/avatars/
+    - assets/badges/
+    - assets/icon/
+
+  fonts:
+    - family: Outfit
+      fonts:
+        - asset: assets/fonts/Outfit-Variable.ttf
+          weight: 100
+        - asset: assets/fonts/Outfit-Variable.ttf
+          weight: 400
+        - asset: assets/fonts/Outfit-Variable.ttf
+          weight: 500
+        - asset: assets/fonts/Outfit-Variable.ttf
+          weight: 600
+        - asset: assets/fonts/Outfit-Variable.ttf
+          weight: 700
+        - asset: assets/fonts/Outfit-Variable.ttf
+          weight: 800
+        - asset: assets/fonts/Outfit-Variable.ttf
+          weight: 900
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg

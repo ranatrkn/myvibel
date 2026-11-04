@@ -1,0 +1,22 @@
+---
+description: Her kod değişikliğinden sonra APK kur ve Maestro smoke testi çalıştır
+alwaysApply: true
+---
+
+# Deploy ve test akışı
+
+Kod değişikliği yaptıktan sonra kullanıcıya sormadan:
+
+1. Debug APK derle ve bağlı Android cihaza kur (sormadan, otomatik):
+   ```powershell
+   flutter build apk --debug
+   adb -s VG55GULZ7LQSIV6T install -r build\app\outputs\flutter-apk\app-debug.apk
+   ```
+   `flutter install` kullanma (release APK kurabilir). İmza uyuşmazlığında önce kaldır: `adb -s VG55GULZ7LQSIV6T uninstall com.myvibel.app`
+
+2. İsteğe bağlı smoke test:
+   `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-maestro-smoke.ps1 -DeviceId VG55GULZ7LQSIV6T -SkipBuild`
+
+3. Firestore rules değiştiyse `firebase deploy --only firestore:rules` çalıştır (sormadan).
+
+4. Kurulum sonucunu kısaca özetle; kullanıcıya «kurayım mı?» diye sorma.

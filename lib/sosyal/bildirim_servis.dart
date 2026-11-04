@@ -1,7 +1,7 @@
 // Kullanıcı bildirimlerini oluşturma ve yönetme servisi
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
-import 'package:vibe_life/sosyal/sosyal_core.dart';
+import 'package:myvibel/sosyal/sosyal_core.dart';
 
 // Bildirim CRUD ve okunma durumu işlemleri
 class BildirimServis {
@@ -14,6 +14,7 @@ class BildirimServis {
     String? chatId,
     String? metin,
     String? postMetin,
+    String? yorumMetin,
     bool postOzetiniAtla = false,
   }) async {
     if (hedefUid.isEmpty || gonderenUid.isEmpty || hedefUid == gonderenUid) {
@@ -38,7 +39,7 @@ class BildirimServis {
         postId != null &&
         postId.isNotEmpty) {
       // Gönderi metninden kısa özet oluştur
-      final postDoc = await SosyalCore.db.collection("posts").doc(postId).get();
+      final postDoc = await SosyalCore.gonderiRef(postId).get();
       final ham = postDoc.data()?["metin"]?.toString() ?? "";
       gonderiOzeti = ham.length > 60 ? "${ham.substring(0, 60)}..." : ham;
     }
@@ -54,10 +55,17 @@ class BildirimServis {
       "postId": postId ?? "",
       "chatId": chatId ?? "",
       "postMetin": gonderiOzeti,
+      "yorumMetin": _kisaMetin(yorumMetin),
       "metin": metin ?? "",
       "okundu": false,
       "createdAt": FieldValue.serverTimestamp(),
     });
+  }
+
+  static String _kisaMetin(String? ham, {int limit = 80}) {
+    final metin = (ham ?? '').trim().replaceAll(RegExp(r'\s+'), ' ');
+    if (metin.length <= limit) return metin;
+    return '${metin.substring(0, limit)}...';
   }
 
   // Tek bildirimi siler
@@ -68,6 +76,35 @@ class BildirimServis {
         .collection("notifications")
         .doc(bildirimId)
         .delete();
+  }
+
+  // Seçili bildirimleri toplu siler
+  static Future<void> bildirimleriSil(
+    String uid,
+    Iterable<String> bildirimIdleri,
+  ) async {
+    final ids = bildirimIdleri.where((id) => id.isNotEmpty).toSet();
+    if (ids.isEmpty) return;
+
+    var batch = SosyalCore.db.batch();
+    var sayac = 0;
+
+    for (final id in ids) {
+      batch.delete(
+        SosyalCore.db
+            .collection("users")
+            .doc(uid)
+            .collection("notifications")
+            .doc(id),
+      );
+      sayac++;
+      if (sayac >= 400) {
+        await batch.commit();
+        batch = SosyalCore.db.batch();
+        sayac = 0;
+      }
+    }
+    if (sayac > 0) await batch.commit();
   }
 
   // Belirli takip isteği bildirimlerini siler

@@ -2,10 +2,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:vibe_life/app_theme.dart';
-import 'package:vibe_life/sosyal_servis.dart';
-import 'package:vibe_life/widgets/bahsetme_yardimci.dart';
-import 'package:vibe_life/widgets/vibe_avatar.dart';
+import 'package:flutter/services.dart';
+import 'package:myvibel/app_theme.dart';
+import 'package:myvibel/sosyal_servis.dart';
+import 'package:myvibel/yas_hesap_kontrol.dart';
+import 'package:myvibel/widgets/bahsetme_yardimci.dart';
+import 'package:myvibel/widgets/vibe_avatar.dart';
+import 'package:myvibel/widgets/web_shell.dart';
 
 // @ yazınca kullanıcı önerisi gösteren TextField
 class BahsetmeMetinAlani extends StatefulWidget {
@@ -18,6 +21,10 @@ class BahsetmeMetinAlani extends StatefulWidget {
   final String? haricUid;
   final ValueChanged<String>? onChanged;
   final ScrollViewKeyboardDismissBehavior? keyboardDismissBehavior;
+  final FocusNode? focusNode;
+
+  /// Masaüstü web: Enter gönderir, Shift+Enter alt satır.
+  final VoidCallback? enterIleGonder;
 
   const BahsetmeMetinAlani({
     super.key,
@@ -30,6 +37,8 @@ class BahsetmeMetinAlani extends StatefulWidget {
     this.haricUid,
     this.onChanged,
     this.keyboardDismissBehavior,
+    this.focusNode,
+    this.enterIleGonder,
   });
 
   @override
@@ -70,6 +79,15 @@ class _BahsetmeMetinAlaniState extends State<BahsetmeMetinAlani> {
     );
 
     if (!mounted) return;
+
+    if (YasHesapKontrol.maybeOf(context)?.kullaniciOnerisiAcik == false) {
+      setState(() {
+        _aktifSorgu = null;
+        _oneriler = [];
+        _oneriYukleniyor = false;
+      });
+      return;
+    }
 
     if (sorgu == null || sorgu.onEk.isEmpty) {
       setState(() {
@@ -165,6 +183,7 @@ class _BahsetmeMetinAlaniState extends State<BahsetmeMetinAlani> {
                         dense: true,
                         leading: vibeAvatar(
                           radius: 18,
+                          userId: (k["uid"] ?? "").toString(),
                           photoUrl: (k["photoUrl"] ?? "").toString(),
                           avatarKey: (k["avatarKey"] ?? "").toString(),
                           fallbackText: adSoyad,
@@ -195,6 +214,7 @@ class _BahsetmeMetinAlaniState extends State<BahsetmeMetinAlani> {
           Expanded(
             child: TextField(
               controller: widget.controller,
+              focusNode: widget.focusNode,
               style: widget.style,
               expands: true,
               maxLines: null,
@@ -205,15 +225,65 @@ class _BahsetmeMetinAlaniState extends State<BahsetmeMetinAlani> {
             ),
           )
         else
-          TextField(
-            controller: widget.controller,
-            style: widget.style,
-            maxLines: widget.maxLines,
-            maxLength: widget.maxLength,
-            onChanged: (_) => _metinDegisti(),
-            decoration: widget.decoration,
+          _enterSarmala(
+            TextField(
+              controller: widget.controller,
+              focusNode: widget.focusNode,
+              style: widget.style,
+              maxLines: widget.maxLines,
+              maxLength: widget.maxLength,
+              onChanged: (_) => _metinDegisti(),
+              decoration: widget.decoration,
+            ),
           ),
       ],
     );
   }
+
+  Widget _enterSarmala(Widget alan) {
+    final gonder = widget.enterIleGonder;
+    if (gonder == null || !webMasaustuMu(context)) return alan;
+    return Focus(
+      canRequestFocus: false,
+      skipTraversal: true,
+      onKeyEvent: (node, event) {
+        if (event is! KeyDownEvent ||
+            (event.logicalKey != LogicalKeyboardKey.enter &&
+                event.logicalKey != LogicalKeyboardKey.numpadEnter)) {
+          return KeyEventResult.ignored;
+        }
+        if (HardwareKeyboard.instance.isShiftPressed) {
+          // Web textarea Shift+Enter'da çift satır ekleyebiliyor; tek satırı biz ekleriz.
+          _satirEkle();
+          return KeyEventResult.handled;
+        }
+        if (oneriSecimiAcik) {
+          _kullaniciSec(
+            (_oneriler.first["kullaniciAdi"] ?? "kullanici").toString(),
+          );
+        } else {
+          gonder();
+        }
+        return KeyEventResult.handled;
+      },
+      child: alan,
+    );
+  }
+
+  void _satirEkle() {
+    final c = widget.controller;
+    final metin = c.text;
+    final secim = c.selection;
+    final bas = secim.isValid ? secim.start : metin.length;
+    final son = secim.isValid ? secim.end : metin.length;
+    final limit = widget.maxLength;
+    if (limit != null && metin.length - (son - bas) + 1 > limit) return;
+    c.value = TextEditingValue(
+      text: metin.replaceRange(bas, son, '\n'),
+      selection: TextSelection.collapsed(offset: bas + 1),
+    );
+    _metinDegisti();
+  }
+
+  bool get oneriSecimiAcik => _aktifSorgu != null && _oneriler.isNotEmpty;
 }

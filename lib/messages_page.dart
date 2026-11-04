@@ -1,18 +1,42 @@
 // DM sohbet listesi, yeni sohbet başlatma ve birebir mesajlaşma ekranı
+import 'dart:async';
+
+import 'package:myvibel/tek_sefer_navigasyon.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:vibe_life/app_theme.dart';
-import 'package:vibe_life/error_messages.dart';
-import 'package:vibe_life/gonderi_detay_sayfasi.dart';
-import 'package:vibe_life/sosyal_servis.dart';
-import 'package:vibe_life/vibe_snackbar.dart';
-import 'package:vibe_life/widgets/vibe_avatar.dart';
-import 'package:vibe_life/widgets/hashtag_metin.dart';
-import 'package:vibe_life/widgets/bahsetme_metin_alani.dart';
+import 'package:myvibel/app_theme.dart';
+import 'package:myvibel/widgets/vibe_yukleniyor.dart';
+import 'package:myvibel/error_messages.dart';
+import 'package:myvibel/maestro_semantics.dart';
+import 'package:myvibel/sosyal_servis.dart';
+import 'package:myvibel/vibe_snackbar.dart';
+import 'package:myvibel/widgets/vibe_avatar.dart';
+import 'package:myvibel/widgets/vibe_ikonlar.dart';
+import 'package:myvibel/widgets/hashtag_metin.dart';
+import 'package:myvibel/widgets/bahsetme_metin_alani.dart';
+import 'package:myvibel/widgets/vibe_gradient_scaffold.dart';
+import 'package:myvibel/widgets/web_shell.dart';
+import 'package:myvibel/yas_hesap_kontrol.dart';
 
-// Timestamp'ten saat:dakika üret
+class _MasaustuSeciliSohbet {
+  const _MasaustuSeciliSohbet({
+    required this.chatId,
+    required this.otherUid,
+    required this.otherDisplayName,
+    required this.otherUsername,
+    required this.otherPhotoUrl,
+    required this.otherAvatarKey,
+  });
+
+  final String chatId;
+  final String otherUid;
+  final String otherDisplayName;
+  final String otherUsername;
+  final String otherPhotoUrl;
+  final String otherAvatarKey;
+}
 String _saatYaz(dynamic value) {
   if (value is! Timestamp) return "";
   final dt = value.toDate();
@@ -70,10 +94,19 @@ bool _chatOkunmamisMi({
 
 // Sohbet listesi sayfası
 class MessagesPage extends StatefulWidget {
-  const MessagesPage({super.key});
+  const MessagesPage({
+    super.key,
+    this.gomulu = false,
+    this.onKapat,
+    this.ilkHedef,
+  });
+
+  /// Masaüstü sağ panelde gömülü kullanım (Scaffold AppBar yok).
+  final bool gomulu;
+  final VoidCallback? onKapat;
+  final WebSohbetHedef? ilkHedef;
 
   @override
-
   State<MessagesPage> createState() => _MessagesPageState();
 }
 
@@ -87,6 +120,31 @@ class _MessagesPageState extends State<MessagesPage> {
   final Set<String> _kullaniciYuklenemedi = {}; // yüklenemeyen uid'ler (tekrar deneme yok)
   final Set<String> _bekleyenUidYukleme = {}; // build döngüsünü önlemek için
   bool _uidYuklemePlanlandi = false;
+  _MasaustuSeciliSohbet? _masaustuSecili;
+  String? _sohbetAkisiUid;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _sohbetAbonelik;
+  StreamController<QuerySnapshot<Map<String, dynamic>>>? _sohbetYayin;
+  QuerySnapshot<Map<String, dynamic>>? _sonSohbetSnap;
+
+  // build her çalıştığında yeni abonelik açılmasın (liste spinner'a dönmesin)
+  Stream<QuerySnapshot<Map<String, dynamic>>> _sohbetlerimAkisi(String uid) {
+    if (_sohbetYayin == null || _sohbetAkisiUid != uid) {
+      _sohbetAbonelik?.cancel();
+      _sohbetYayin?.close();
+      _sohbetAkisiUid = uid;
+      _sonSohbetSnap = null;
+      final yayin = StreamController<QuerySnapshot<Map<String, dynamic>>>.broadcast();
+      _sohbetYayin = yayin;
+      _sohbetAbonelik = SosyalServis.sohbetlerim(uid).listen(
+        (snap) {
+          _sonSohbetSnap = snap;
+          yayin.add(snap);
+        },
+        onError: yayin.addError,
+      );
+    }
+    return _sohbetYayin!.stream;
+  }
 
   // Tek kullanıcıyı Firestore'dan getir
   Future<MapEntry<String, Map<String, dynamic>>?> _kullaniciOnbellekVerisiniGetir(
@@ -108,11 +166,38 @@ class _MessagesPageState extends State<MessagesPage> {
     }
   }
 
-  // Widget ilk yüklendiğinde çalışır
   @override
   void initState() {
     super.initState();
     _yerelDmDurumlariniYukle();
+    _hedefiUygula(widget.ilkHedef);
+  }
+
+  @override
+  void didUpdateWidget(covariant MessagesPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final yeni = widget.ilkHedef;
+    if (yeni != null && yeni.chatId != oldWidget.ilkHedef?.chatId) {
+      setState(() => _hedefiUygula(yeni));
+    }
+  }
+
+  void _hedefiUygula(WebSohbetHedef? hedef) {
+    if (hedef == null) return;
+    _masaustuSecili = _MasaustuSeciliSohbet(
+      chatId: hedef.chatId,
+      otherUid: hedef.otherUid,
+      otherDisplayName: hedef.otherDisplayName,
+      otherUsername: hedef.otherUsername,
+      otherPhotoUrl: hedef.otherPhotoUrl,
+      otherAvatarKey: hedef.otherAvatarKey,
+    );
+  }
+
+  bool get _panelSohbetiKullan => widget.gomulu || webMasaustuMu(context);
+
+  void _sohbetiPaneleAl(_MasaustuSeciliSohbet secili) {
+    setState(() => _masaustuSecili = secili);
   }
 
   // Gizli sohbet ve okundu bilgilerini SharedPreferences'tan yükle
@@ -328,6 +413,8 @@ class _MessagesPageState extends State<MessagesPage> {
   // Abonelik ve kontrolcüleri temizle
   @override
   void dispose() {
+    _sohbetAbonelik?.cancel();
+    _sohbetYayin?.close();
     _aramaController.dispose();
     super.dispose();
   }
@@ -363,22 +450,38 @@ class _MessagesPageState extends State<MessagesPage> {
             const takipliProfilLimiti = 30;
             final firestore = FirebaseFirestore.instance;
 
-            final publicSnap = await firestore
-                .collection("users")
-                .where("hesapGizli", isEqualTo: false)
-                .limit(genelKullaniciLimiti)
-                .get();
+            final ilkYuklemeler = await Future.wait([
+              firestore
+                  .collection("users")
+                  .where("hesapGizli", isEqualTo: false)
+                  .limit(genelKullaniciLimiti)
+                  .get(),
+              SosyalServis.engellenenKullanicilariGetir(current.uid),
+              SosyalServis.beniEngelleyenKullanicilariGetir(current.uid),
+              SosyalServis.takipEdilenIdleriGetir(current.uid),
+            ]);
+            final publicSnap =
+                ilkYuklemeler[0] as QuerySnapshot<Map<String, dynamic>>;
+            final engelIdleri = {
+              ...(ilkYuklemeler[1] as Set<String>),
+              ...(ilkYuklemeler[2] as Set<String>),
+            };
+            final takipEdilenIdler = ilkYuklemeler[3] as Set<String>;
 
             final kullanicilarMap = <String, Map<String, dynamic>>{};
             for (final doc in publicSnap.docs) {
-              if (doc.id == current.uid) continue;
+              if (doc.id == current.uid || engelIdleri.contains(doc.id)) {
+                continue;
+              }
               kullanicilarMap[doc.id] = doc.data();
             }
-
-            final takipEdilenIdler =
-                await SosyalServis.takipEdilenIdleriGetir(current.uid);
             final takipliOrnek = takipEdilenIdler
-                .where((id) => id.isNotEmpty && id != current.uid)
+                .where(
+                  (id) =>
+                      id.isNotEmpty &&
+                      id != current.uid &&
+                      !engelIdleri.contains(id),
+                )
                 .take(takipliProfilLimiti)
                 .toList();
 
@@ -390,9 +493,12 @@ class _MessagesPageState extends State<MessagesPage> {
               final snap = await firestore
                   .collection("users")
                   .where(FieldPath.documentId, whereIn: part)
+                  .limit(10)
                   .get();
               for (final doc in snap.docs) {
-                if (doc.id == current.uid) continue;
+                if (doc.id == current.uid || engelIdleri.contains(doc.id)) {
+                  continue;
+                }
                 kullanicilarMap[doc.id] = doc.data();
               }
             }
@@ -505,8 +611,8 @@ class _MessagesPageState extends State<MessagesPage> {
                     Expanded(
                       child: yukleniyor
                           ? Center(
-                              child: CircularProgressIndicator(
-                                color: theme.colorScheme.primary,
+                              child: VibeYukleniyor(
+                                renk: theme.colorScheme.primary,
                               ),
                             )
                           : filtreli.isEmpty
@@ -534,14 +640,32 @@ class _MessagesPageState extends State<MessagesPage> {
                                       decoration: vibe.cardDecoration(radius: 14),
                                       child: ListTile(
                                         onTap: () async {
+                                          final bilet = tekSeferGecisAl();
+                                          if (bilet == null) return;
                                           final navigator = Navigator.of(context);
                                          
                                           // hata yakalamalı blok
                                           try {
                                             final chatId = await SosyalServis
                                                 .sohbetIdGetirVeyaOlustur(uid);
-                                            if (!mounted) return;
+                                            if (!mounted) {
+                                              tekSeferGecisIptal(bilet);
+                                              return;
+                                            }
                                             navigator.pop();
+                                            final secili = _MasaustuSeciliSohbet(
+                                              chatId: chatId,
+                                              otherUid: uid,
+                                              otherDisplayName: adSoyad,
+                                              otherUsername: kullaniciAdi,
+                                              otherPhotoUrl: photoUrl,
+                                              otherAvatarKey: avatarKey,
+                                            );
+                                            if (_panelSohbetiKullan) {
+                                              _sohbetiPaneleAl(secili);
+                                              tekSeferGecisBirak(bilet);
+                                              return;
+                                            }
                                             navigator.push(
                                               MaterialPageRoute(
                                                 builder: (_) => ChatPage(
@@ -554,8 +678,10 @@ class _MessagesPageState extends State<MessagesPage> {
                                                 ),
                                               ),
                                             );
+                                            tekSeferGecisBirak(bilet);
                                           // hata yakala
                                           } catch (e) {
+                                            tekSeferGecisIptal(bilet);
                                             if (!context.mounted) return;
                                             vibeSnackbarGoster(
                                               context,
@@ -568,6 +694,7 @@ class _MessagesPageState extends State<MessagesPage> {
                                         },
                                         leading: vibeAvatar(
                                           radius: 20,
+                                          userId: uid,
                                           photoUrl: photoUrl,
                                           avatarKey: avatarKey,
                                           fallbackText: kullaniciAdi,
@@ -615,10 +742,132 @@ class _MessagesPageState extends State<MessagesPage> {
       );
     }
 
-    return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
+    if (YasHesapKontrol.maybeOf(context)?.mesajAcik == false) {
+      return const SizedBox.shrink();
+    }
+
+    final masaustu = webMasaustuMu(context);
+    final listeGenislik =
+        widget.gomulu ? 260.0 : kWebMesajListeGenislik;
+
+    final govde = masaustu
+        ? Row(
+            children: [
+              SizedBox(
+                width: listeGenislik,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: theme.cardColor.withOpacity(0.25),
+                    border: Border(
+                      right: BorderSide(
+                        color: vibe.cardBorder,
+                        width: 1,
+                      ),
+                    ),
+                  ),
+                  child: _mesajListeKolonu(user, theme, vibe),
+                ),
+              ),
+              Expanded(
+                child: _masaustuSecili == null
+                    ? Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.forum_outlined,
+                              size: 56,
+                              color: vibe.faintText,
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Bir sohbet seç',
+                              style: TextStyle(
+                                color: theme.colorScheme.onSurface,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Soldaki listeden devam et veya yeni sohbet başlat.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: vibe.mutedText),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ChatPage(
+                        key: ValueKey(_masaustuSecili!.chatId),
+                        chatId: _masaustuSecili!.chatId,
+                        otherUid: _masaustuSecili!.otherUid,
+                        otherDisplayName: _masaustuSecili!.otherDisplayName,
+                        otherUsername: _masaustuSecili!.otherUsername,
+                        otherPhotoUrl: _masaustuSecili!.otherPhotoUrl,
+                        otherAvatarKey: _masaustuSecili!.otherAvatarKey,
+                        gomulu: widget.gomulu,
+                      ),
+              ),
+            ],
+          )
+        : _mesajListeKolonu(user, theme, vibe);
+
+    if (widget.gomulu) {
+      return Material(
+        color: Colors.transparent,
+        child: DecoratedBox(
+          decoration: vibe.gradientDecoration(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SafeArea(
+                bottom: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+                  child: Row(
+                    children: [
+                      Icon(VibeIkon.mesajBos, color: vibe.mutedText, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Sohbetler',
+                          style: TextStyle(
+                            color: theme.colorScheme.onSurface,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Kapat',
+                        onPressed: widget.onKapat,
+                        icon: Icon(Icons.close, color: vibe.mutedText),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Divider(height: 1, color: vibe.cardBorder),
+              Expanded(child: govde),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return VibeGradientScaffold(
       body: SafeArea(
-        child: Column(
+        child: govde,
+      ),
+    );
+  }
+
+  Widget _mesajListeKolonu(
+    User user,
+    ThemeData theme,
+    VibeThemeExtension vibe,
+  ) {
+    return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
@@ -648,18 +897,22 @@ class _MessagesPageState extends State<MessagesPage> {
                   const SizedBox(height: 8),
                   Align(
                     alignment: Alignment.centerLeft,
-                    child: FilledButton(
-                      onPressed: _yeniSohbetPaneliAc,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: vibe.primaryButton,
-                        foregroundColor: Colors.white,
-                        minimumSize: const Size(44, 40),
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                    child: maestroButton(
+                      label: MaestroSemantics.yeniSohbet,
+                      onTap: _yeniSohbetPaneliAc,
+                      child: FilledButton(
+                        onPressed: _yeniSohbetPaneliAc,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: vibe.primaryButton,
+                          foregroundColor: Colors.white,
+                          minimumSize: const Size(44, 40),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
+                        child: const Icon(Icons.add),
                       ),
-                      child: const Icon(Icons.add),
                     ),
                   ),
                 ],
@@ -667,12 +920,32 @@ class _MessagesPageState extends State<MessagesPage> {
             ),
             Expanded(
               child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                stream: SosyalServis.sohbetlerim(user.uid),
+                stream: _sohbetlerimAkisi(user.uid),
+                initialData: _sonSohbetSnap,
                 builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
+                  if (snapshot.hasError) {
                     return Center(
-                      child:
-                          CircularProgressIndicator(color: theme.colorScheme.primary),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            "Sohbetler yüklenemedi.",
+                            style: TextStyle(color: vibe.mutedText),
+                          ),
+                          const SizedBox(height: 8),
+                          TextButton(
+                            onPressed: () => setState(() {}),
+                            child: const Text("Tekrar dene"),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+
+                  if (snapshot.connectionState == ConnectionState.waiting &&
+                      !snapshot.hasData) {
+                    return Center(
+                      child: VibeYukleniyor(renk: theme.colorScheme.primary),
                     );
                   }
 
@@ -719,11 +992,38 @@ class _MessagesPageState extends State<MessagesPage> {
                   }).where((uid) => uid.isNotEmpty).toList();
                   _kullanicilariOnbellegeAlPlanla(otherUids);
 
+                  final canliDocs = gorunenDocs.where((chatDoc) {
+                    final participants =
+                        List<String>.from(chatDoc.data()["participants"] ?? []);
+                    final otherUid = participants.firstWhere(
+                      (id) => id != user.uid,
+                      orElse: () => "",
+                    );
+                    return otherUid.isNotEmpty &&
+                        !_kullaniciYuklenemedi.contains(otherUid);
+                  }).toList();
+
+                  if (canliDocs.isEmpty) {
+                    final henuzYukleniyor = otherUids.any(
+                      (uid) =>
+                          !_kullaniciOnbellegi.containsKey(uid) &&
+                          !_kullaniciYuklenemedi.contains(uid),
+                    );
+                    if (!henuzYukleniyor) {
+                      return Center(
+                        child: Text(
+                          "Henüz sohbet yok.",
+                          style: TextStyle(color: vibe.mutedText),
+                        ),
+                      );
+                    }
+                  }
+
                   return ListView.builder(
                     padding: const EdgeInsets.fromLTRB(14, 8, 14, 20),
-                    itemCount: gorunenDocs.length,
+                    itemCount: canliDocs.length,
                     itemBuilder: (context, index) {
-                      final chatDoc = gorunenDocs[index];
+                      final chatDoc = canliDocs[index];
                       final chat = chatDoc.data();
                       final participants = List<String>.from(chat["participants"] ?? []);
                       final otherUid = participants.firstWhere(
@@ -731,6 +1031,9 @@ class _MessagesPageState extends State<MessagesPage> {
                         orElse: () => "",
                       );
                       if (otherUid.isEmpty) return const SizedBox.shrink();
+                      if (_kullaniciYuklenemedi.contains(otherUid)) {
+                        return const SizedBox.shrink();
+                      }
 
                       final u = _kullaniciOnbellegi[otherUid] ?? {};
                       final adSoyad =
@@ -752,21 +1055,49 @@ class _MessagesPageState extends State<MessagesPage> {
                           lastMessage.toLowerCase().contains(arama);
                       if (!eslesme) return const SizedBox.shrink();
 
-                      return Container(
+                      final masaustuSecili = webMasaustuMu(context) &&
+                          _masaustuSecili?.chatId == chatDoc.id;
+
+                      return Semantics(
+                        label: '$adSoyad $kullaniciAdi',
+                        button: true,
+                        child: Container(
                         margin: const EdgeInsets.only(bottom: 10),
-                        decoration: vibe.cardDecoration(radius: 18),
+                        decoration: vibe.cardDecoration(radius: 18).copyWith(
+                          color: masaustuSecili
+                              ? theme.colorScheme.primary.withOpacity(0.14)
+                              : null,
+                          border: Border.all(
+                            color: masaustuSecili
+                                ? theme.colorScheme.primary.withOpacity(0.55)
+                                : vibe.cardBorder,
+                            width: masaustuSecili ? 1.5 : 1,
+                          ),
+                        ),
                         child: ListTile(
                           onTap: () async {
-                            await Navigator.push(
+                            final secili = _MasaustuSeciliSohbet(
+                              chatId: chatDoc.id,
+                              otherUid: otherUid,
+                              otherDisplayName: adSoyad,
+                              otherUsername: kullaniciAdi,
+                              otherPhotoUrl: photoUrl,
+                              otherAvatarKey: avatarKey,
+                            );
+                            if (webMasaustuMu(context) || widget.gomulu) {
+                              _sohbetiPaneleAl(secili);
+                              return;
+                            }
+                            await tekSeferPush(
                               context,
                               MaterialPageRoute(
                                 builder: (_) => ChatPage(
-                                  chatId: chatDoc.id,
-                                  otherUid: otherUid,
-                                  otherDisplayName: adSoyad,
-                                  otherUsername: kullaniciAdi,
-                                  otherPhotoUrl: photoUrl,
-                                  otherAvatarKey: avatarKey,
+                                  chatId: secili.chatId,
+                                  otherUid: secili.otherUid,
+                                  otherDisplayName: secili.otherDisplayName,
+                                  otherUsername: secili.otherUsername,
+                                  otherPhotoUrl: secili.otherPhotoUrl,
+                                  otherAvatarKey: secili.otherAvatarKey,
                                 ),
                               ),
                             );
@@ -776,6 +1107,7 @@ class _MessagesPageState extends State<MessagesPage> {
                               _sohbetSecenekleriAc(chatId: chatDoc.id, chat: chat),
                           leading: vibeAvatar(
                             radius: 22,
+                            userId: otherUid,
                             photoUrl: photoUrl,
                             avatarKey: avatarKey,
                             fallbackText: kullaniciAdi,
@@ -786,6 +1118,10 @@ class _MessagesPageState extends State<MessagesPage> {
                               Expanded(
                                 child: Text(
                                   adSoyad,
+                                  maxLines: _panelSohbetiKullan ? 1 : null,
+                                  overflow: _panelSohbetiKullan
+                                      ? TextOverflow.ellipsis
+                                      : null,
                                   style: TextStyle(
                                     color: theme.colorScheme.onSurface,
                                     fontWeight: FontWeight.bold,
@@ -849,6 +1185,7 @@ class _MessagesPageState extends State<MessagesPage> {
                             },
                           ),
                         ),
+                      ),
                       );
                     },
                   );
@@ -856,8 +1193,6 @@ class _MessagesPageState extends State<MessagesPage> {
               ),
             ),
           ],
-        ),
-      ),
     );
   }
 }
@@ -872,6 +1207,7 @@ class ChatPage extends StatefulWidget {
     required this.otherUsername,
     required this.otherPhotoUrl,
     required this.otherAvatarKey,
+    this.gomulu = false,
   });
 
   final String chatId; // sohbet kimliği
@@ -880,9 +1216,9 @@ class ChatPage extends StatefulWidget {
   final String otherUsername; // karşı taraf kullanıcı adı
   final String otherPhotoUrl; // karşı taraf foto url
   final String otherAvatarKey; // karşı taraf avatar anahtarı
+  final bool gomulu; // sağ panelde gömülü (geri butonu gizle)
 
   @override
-
   State<ChatPage> createState() => _ChatPageState();
 }
 
@@ -890,12 +1226,25 @@ class ChatPage extends StatefulWidget {
 class _ChatPageState extends State<ChatPage> {
   final TextEditingController _mesajController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  bool _gonderiliyor = false; // mesaj gönderiliyor mu
   bool _sessiz = false; // sohbet sessize alınmış mı
   int _oncekiMesajSayisi = 0; // önceki mesaj sayısı (kaydırma için)
   bool _otomatikKaydir = true; // alta otomatik kaydır mı
   int _sonOkunduMs = 0; // son okundu zaman damgası (ms)
   String? _sonOkunduIsaretlenenMesajId; // okundu işaretlenen son mesaj
+  String? _akisChatId;
+  late Stream<DocumentSnapshot<Map<String, dynamic>>> _sohbetDocAkisi;
+  late Stream<QuerySnapshot<Map<String, dynamic>>> _mesajAkisi;
+
+  // build her çalıştığında yeniden abone olunmasın (mesajlar boş flaş yapmasın)
+  void _akislariHazirla() {
+    if (_akisChatId == widget.chatId) return;
+    _akisChatId = widget.chatId;
+    _sohbetDocAkisi = FirebaseFirestore.instance
+        .collection("chats")
+        .doc(widget.chatId)
+        .snapshots();
+    _mesajAkisi = SosyalServis.sohbetMesajlari(widget.chatId);
+  }
 
   // Widget ilk yüklendiğinde çalışır
   @override
@@ -960,14 +1309,10 @@ class _ChatPageState extends State<ChatPage> {
   Future<void> _gonderiDetayinaGit(String postId) async {
     if (postId.isEmpty) return;
     final myUid = FirebaseAuth.instance.currentUser?.uid ?? "";
-    await Navigator.push(
+    await gonderiDetayiniAc(
       context,
-      MaterialPageRoute(
-        builder: (context) => GonderiDetaySayfasi(
-          postId: postId,
-          currentUserId: myUid,
-        ),
-      ),
+      postId: postId,
+      currentUserId: myUid,
     );
   }
 
@@ -1052,30 +1397,30 @@ class _ChatPageState extends State<ChatPage> {
 
   // Mesaj gönder
   Future<void> _mesajGonder() async {
-    if (_gonderiliyor) return;
-    setState(() => _gonderiliyor = true);
-   
-    // hata yakalamalı blok
+    final metin = _mesajController.text;
+    if (metin.trim().isEmpty) return;
+    _mesajController.clear();
+
     try {
       await SosyalServis.mesajGonder(
         chatId: widget.chatId,
         hedefUid: widget.otherUid,
-        metin: _mesajController.text,
+        metin: metin,
       );
-      _mesajController.clear();
-    // hata yakala
     } catch (e) {
       if (!mounted) return;
-      vibeSnackbarGoster(
-        context,
-        internetAwareErrorMessage(
-          error: e,
-          fallback: "Mesaj gönderilemedi.",
-        ),
-      );
-    // temizlik
-    } finally {
-      if (mounted) setState(() => _gonderiliyor = false);
+      if (_mesajController.text.isEmpty) {
+        _mesajController.text = metin;
+        _mesajController.selection =
+            TextSelection.collapsed(offset: metin.length);
+      }
+      final mesaj = e is FirebaseException && e.code == 'permission-denied'
+          ? 'Mesaj yazılamadı. E-postan doğrulanmamış olabilir veya bu sohbet kapalı.'
+          : internetAwareErrorMessage(
+              error: e,
+              fallback: "Mesaj gönderilemedi.",
+            );
+      vibeSnackbarGoster(context, mesaj);
     }
   }
 
@@ -1155,10 +1500,14 @@ class _ChatPageState extends State<ChatPage> {
     final theme = Theme.of(context);
     final vibe = context.vibe;
     final myUid = FirebaseAuth.instance.currentUser?.uid ?? "";
+    _akislariHazirla();
 
-    return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
+    return VibeGradientScaffold(
       appBar: AppBar(
+        automaticallyImplyLeading: !widget.gomulu,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        surfaceTintColor: Colors.transparent,
         titleSpacing: 0,
         actions: [
           IconButton(
@@ -1173,13 +1522,27 @@ class _ChatPageState extends State<ChatPage> {
           children: [
             vibeAvatar(
               radius: 16,
+              userId: widget.otherUid,
               photoUrl: widget.otherPhotoUrl,
               avatarKey: widget.otherAvatarKey,
               fallbackText: widget.otherUsername,
               emojiSize: 14,
             ),
             const SizedBox(width: 10),
-            Text(widget.otherDisplayName),
+            if (widget.gomulu)
+              Flexible(
+                child: Text(
+                  widget.otherDisplayName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              )
+            else
+              Text(widget.otherDisplayName),
           ],
         ),
       ),
@@ -1187,17 +1550,15 @@ class _ChatPageState extends State<ChatPage> {
         children: [
           Expanded(
             child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-              stream: FirebaseFirestore.instance
-                  .collection("chats")
-                  .doc(widget.chatId)
-                  .snapshots(),
+              stream: _sohbetDocAkisi,
               builder: (context, chatSnapshot) {
                 final sohbetVerisi =
                     chatSnapshot.data?.data() ?? const <String, dynamic>{};
                 return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                  stream: SosyalServis.sohbetMesajlari(widget.chatId),
+                  stream: _mesajAkisi,
                   builder: (context, snapshot) {
-                    final docs = snapshot.data?.docs ?? [];
+                    final docs =
+                        (snapshot.data?.docs ?? []).reversed.toList();
                     _yeniMesajlariOkunduIsaretle(docs);
                     final sonBendenMesaj = docs
                         .where((d) => (d.data()["senderUid"] ?? "") == myUid)
@@ -1211,6 +1572,19 @@ class _ChatPageState extends State<ChatPage> {
                       docs.length,
                       bendenYeniMesaj: bendenYeniMesaj,
                     );
+
+                    if (docs.isEmpty && snapshot.hasData) {
+                      return Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Text(
+                            "Henüz mesaj yok.\nİlk mesajı sen gönder.",
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: vibe.mutedText),
+                          ),
+                        ),
+                      );
+                    }
 
                     return ListView.builder(
                   controller: _scrollController,
@@ -1452,22 +1826,17 @@ class _ChatPageState extends State<ChatPage> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  IconButton(
-                    onPressed: _gonderiliyor ? null : _mesajGonder,
+                  maestroButton(
+                    label: MaestroSemantics.mesajGonder,
+                    onTap: _mesajGonder,
+                    child: IconButton(
+                    onPressed: _mesajGonder,
                     style: IconButton.styleFrom(
                       backgroundColor: vibe.primaryButton,
                       foregroundColor: Colors.white,
                     ),
-                    icon: _gonderiliyor
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Icon(Icons.send, color: Colors.white),
+                    icon: const Icon(VibeIkon.gonder, color: Colors.white),
+                  ),
                   ),
                 ],
               ),

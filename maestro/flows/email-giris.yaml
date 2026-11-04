@@ -1,0 +1,28 @@
+appId: com.myvibel.app
+---
+- tapOn:
+    text: "Tamam"
+    optional: true
+- extendedWaitUntil:
+    visible: "Giriş Yap"
+    timeout: 25000
+- tapOn: "E-posta veya kullanıcı adı"
+- eraseText
+- inputText: ${EMAIL}
+- tapOn: "Şifre"
+- eraseText
+- inputText: ${SIFRE}
+- hideKeyboard
+- tapOn: "Giriş Yap"
+- tapOn:
+    text: "Tamam"
+    optional: true
+- tapOn:
+    text: "Atla"
+    optional: true
+- tapOn:
+    text: "Başla"
+    optional: true
+- extendedWaitUntil:
+    visible: "Takip Edilen"
+    timeout: 60000

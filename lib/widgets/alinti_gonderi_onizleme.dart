@@ -1,14 +1,12 @@
 // Alıntılanan gönderi önizleme kartı.
+import 'package:myvibel/tek_sefer_navigasyon.dart';
 import 'package:flutter/material.dart';
-import 'package:vibe_life/alinti_gonderi.dart';
-import 'package:vibe_life/app_theme.dart';
-import 'package:vibe_life/gonderi_detay_sayfasi.dart';
-import 'package:vibe_life/profile_page.dart' hide tarihSaatYaz;
-import 'package:vibe_life/sosyal/sosyal_core.dart';
-import 'package:vibe_life/user_profile_page.dart';
-import 'package:vibe_life/utils/tarih_saat.dart';
-import 'package:vibe_life/widgets/hashtag_metin.dart';
-import 'package:vibe_life/widgets/vibe_avatar.dart';
+import 'package:myvibel/alinti_gonderi.dart';
+import 'package:myvibel/app_theme.dart';
+import 'package:myvibel/sosyal/sosyal_core.dart';
+import 'package:myvibel/utils/tarih_saat.dart';
+import 'package:myvibel/widgets/hashtag_metin.dart';
+import 'package:myvibel/widgets/vibe_avatar.dart';
 
 class AlintiGonderiOnizleme extends StatelessWidget {
   const AlintiGonderiOnizleme({
@@ -21,6 +19,7 @@ class AlintiGonderiOnizleme extends StatelessWidget {
     this.beniEngelleyenler,
     this.compact = false,
     this.detayaGit = true,
+    this.icAlintiGoster = false,
   });
 
   final AlintiGonderiSnapshot snapshot;
@@ -31,6 +30,8 @@ class AlintiGonderiOnizleme extends StatelessWidget {
   final Set<String>? beniEngelleyenler;
   final bool compact;
   final bool detayaGit;
+  /// Detay ekranında bir alt alıntıyı göster; feed/kartta false (yalnızca doğrudan alıntı).
+  final bool icAlintiGoster;
 
   bool _senkronEngelliMi() {
     final uid = snapshot.userId;
@@ -62,38 +63,16 @@ class AlintiGonderiOnizleme extends StatelessWidget {
 
   void _gonderiDetayinaGit(BuildContext context) {
     if (!detayaGit || !snapshot.mevcut || snapshot.postId.isEmpty) return;
-    Navigator.push(
+    gonderiDetayiniAc(
       context,
-      MaterialPageRoute(
-        builder: (_) => GonderiDetaySayfasi(
-          postId: snapshot.postId,
-          currentUserId: currentUserId ?? '',
-          onKendiProfilineGit: onKendiProfilineGit,
-          onAlintiYap: onAlintiYap,
-        ),
-      ),
+      postId: snapshot.postId,
+      currentUserId: currentUserId ?? '',
     );
   }
 
   void _profileGit(BuildContext context) {
     if (!snapshot.mevcut || snapshot.userId.isEmpty) return;
-    if (currentUserId != null && snapshot.userId == currentUserId) {
-      if (onKendiProfilineGit != null) {
-        onKendiProfilineGit!();
-        return;
-      }
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const ProfilePage()),
-      );
-      return;
-    }
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => UserProfilePage(userId: snapshot.userId),
-      ),
-    );
+    profiliAc(context, snapshot.userId);
   }
 
   @override
@@ -124,22 +103,9 @@ class AlintiGonderiOnizleme extends StatelessWidget {
           hedefUid: alintiSahibi,
         ),
         builder: (context, engelSnap) {
-          if (engelSnap.connectionState == ConnectionState.waiting) {
-            return Container(
-              width: double.infinity,
-              height: compact ? 48 : 56,
-              padding: EdgeInsets.all(compact ? 10 : 12),
-              decoration: BoxDecoration(
-                border: Border.all(color: context.vibe.cardBorder),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              alignment: Alignment.center,
-              child: const SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            );
+          if (engelSnap.connectionState == ConnectionState.waiting &&
+              !engelSnap.hasData) {
+            return _normalIcerik(context);
           }
           if (engelSnap.data == true) {
             return _engelliKutusu(context);
@@ -178,6 +144,7 @@ class AlintiGonderiOnizleme extends StatelessWidget {
                   children: [
                     vibeAvatar(
                       radius: compact ? 14 : 16,
+                      userId: snapshot.userId,
                       photoUrl: snapshot.photoUrl,
                       avatarKey: snapshot.avatarKey,
                       fallbackText: snapshot.kullaniciAdi,
@@ -223,7 +190,7 @@ class AlintiGonderiOnizleme extends StatelessWidget {
                   ),
                 ),
               ],
-              if (snapshot.icAlinti != null) ...[
+              if (icAlintiGoster && snapshot.icAlinti != null) ...[
                 const SizedBox(height: 8),
                 AlintiGonderiOnizleme(
                   snapshot: snapshot.icAlinti!,
@@ -234,6 +201,7 @@ class AlintiGonderiOnizleme extends StatelessWidget {
                   beniEngelleyenler: beniEngelleyenler,
                   compact: true,
                   detayaGit: detayaGit,
+                  icAlintiGoster: false,
                 ),
               ],
             ],

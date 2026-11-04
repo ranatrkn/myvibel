@@ -1,0 +1,9 @@
+appId: com.myvibel.app
+---
+# Yeni gönderi sekmesi: alıntı modundaysa normal Paylaş'a dön.
+- tapOn:
+    text: "Alıntıyı kaldır"
+    optional: true
+- extendedWaitUntil:
+    visible: "Paylaş|Alıntıyı paylaş"
+    timeout: 20000

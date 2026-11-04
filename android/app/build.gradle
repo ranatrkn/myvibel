@@ -27,12 +27,13 @@ if (keystorePropertiesFile.exists()) {
 }
 
 android {
-    namespace "com.vibelife.app"
+    namespace "com.myvibel.app"
     compileSdk flutter.compileSdkVersion
     ndkVersion "25.1.8937393"
     buildToolsVersion "35.0.0"
 
     compileOptions {
+        coreLibraryDesugaringEnabled true
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
@@ -46,7 +47,7 @@ android {
     }
 
     defaultConfig {
-        applicationId "com.vibelife.app"
+        applicationId "com.myvibel.app"
         // Burayı 23 yapmanı öneririm, Firebase için en güvenli limandır
         minSdkVersion 23 
         targetSdkVersion flutter.targetSdkVersion
@@ -73,11 +74,24 @@ android {
             } else {
                 signingConfig signingConfigs.debug
             }
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            minifyEnabled true
         }
     }
 
     buildFeatures {
         buildConfig true
+    }
+
+    lint {
+        checkReleaseBuilds false
+    }
+
+    // Android 16 (16 KB sayfa): native .so zip içinde hizalı ve sıkıştırılmamış olsun.
+    packaging {
+        jniLibs {
+            useLegacyPackaging = false
+        }
     }
 }
 
@@ -86,6 +100,7 @@ flutter {
 }
 
 dependencies {
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'
     implementation 'androidx.multidex:multidex:2.0.1'
     implementation platform('com.google.firebase:firebase-bom:33.7.0')
     implementation 'com.google.firebase:firebase-common'

@@ -1,0 +1,13 @@
+appId: com.myvibel.app
+---
+- launchApp:
+    stopApp: false
+- tapOn: "Alt menü Profil"
+- scrollUntilVisible:
+    element: "Vibel odası"
+    direction: DOWN
+    timeout: 15000
+- tapOn: "Vibel odası"
+- extendedWaitUntil:
+    visible: "Yemek \\(15 vil\\)|Seviye.*"
+    timeout: 15000

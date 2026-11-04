@@ -1,0 +1,30 @@
+appId: com.myvibel.app
+---
+- extendedWaitUntil:
+    visible: "Takip Edilen"
+    timeout: 20000
+- tapOn:
+    point: "324,2285"
+- extendedWaitUntil:
+    visible: "Liderlik"
+    timeout: 15000
+- tapOn:
+    point: "540,2285"
+- extendedWaitUntil:
+    visible: "Paylaş"
+    timeout: 15000
+- tapOn:
+    point: "756,2285"
+- extendedWaitUntil:
+    visible: "Bildirimler"
+    timeout: 15000
+- tapOn:
+    point: "972,2285"
+- extendedWaitUntil:
+    visible: "Beğendiklerim"
+    timeout: 15000
+- tapOn:
+    point: "108,2285"
+- extendedWaitUntil:
+    visible: "Takip Edilen"
+    timeout: 15000

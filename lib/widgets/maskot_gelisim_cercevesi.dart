@@ -1,5 +1,8 @@
 // Maskot karesi etrafında seviye gelişim çubuğu.
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:myvibel/app_theme.dart';
 
 /// Maskot görselini kare bir çerçeve içine alır; çerçeve gelişim oranına göre dolur.
 class MascotGelisimCercevesi extends StatelessWidget {
@@ -8,9 +11,9 @@ class MascotGelisimCercevesi extends StatelessWidget {
     required this.progress,
     required this.size,
     required this.child,
-    this.strokeWidth = 4,
-    this.innerPadding = 4,
-    this.progressColor = Colors.blueAccent,
+    this.strokeWidth = 5,
+    this.innerPadding = 5,
+    this.progressColor,
     this.backgroundColor,
     this.borderRadius = 20,
     this.backgroundFill,
@@ -21,15 +24,19 @@ class MascotGelisimCercevesi extends StatelessWidget {
   final Widget child;
   final double strokeWidth;
   final double innerPadding;
-  final Color progressColor;
+  final Color? progressColor;
   final Color? backgroundColor;
   final double borderRadius;
   final Color? backgroundFill;
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final kenar = strokeWidth + innerPadding;
     final icBoyut = size - kenar * 2;
+    final iz = backgroundColor ??
+        theme.colorScheme.onSurface.withOpacity(0.22);
+    final dolu = progressColor ?? VibeAppTheme.accent;
 
     return SizedBox(
       width: size,
@@ -38,17 +45,22 @@ class MascotGelisimCercevesi extends StatelessWidget {
         painter: _KareGelisimCercevePainter(
           progress: progress.clamp(0.0, 1.0),
           strokeWidth: strokeWidth,
-          progressColor: progressColor,
-          backgroundColor: backgroundColor ?? Colors.white10,
+          progressColor: dolu,
+          backgroundColor: iz,
           borderRadius: borderRadius,
           backgroundFill: backgroundFill,
         ),
         child: Padding(
           padding: EdgeInsets.all(kenar),
-          child: SizedBox(
-            width: icBoyut,
-            height: icBoyut,
-            child: child,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(
+              math.max(0, borderRadius - kenar / 2),
+            ),
+            child: SizedBox(
+              width: icBoyut,
+              height: icBoyut,
+              child: child,
+            ),
           ),
         ),
       ),
@@ -104,7 +116,20 @@ class _KareGelisimCercevePainter extends CustomPainter {
     if (progress <= 0) return;
 
     final metric = path.computeMetrics().first;
-    final dolu = metric.extractPath(0, metric.length * progress);
+    final uzunluk = metric.length;
+    // Üst kenarın ortasından başlasın; küçük ilerleme de görünsün.
+    final baslangic = uzunluk * 0.875;
+    final doluUzunluk = uzunluk * progress;
+    final Path dolu;
+    if (baslangic + doluUzunluk <= uzunluk) {
+      dolu = metric.extractPath(baslangic, baslangic + doluUzunluk);
+    } else {
+      final birinci = metric.extractPath(baslangic, uzunluk);
+      final ikinci = metric.extractPath(0, baslangic + doluUzunluk - uzunluk);
+      dolu = Path()
+        ..addPath(birinci, Offset.zero)
+        ..addPath(ikinci, Offset.zero);
+    }
     final fgPaint = Paint()
       ..color = progressColor
       ..style = PaintingStyle.stroke

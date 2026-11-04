@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'app_check_config.dart';
+import 'widgets/vibe_yukleniyor.dart';
 
 String? appCheckDebugTokenOnbellek;
 String? appCheckDebugSonHata;
@@ -16,7 +17,7 @@ Future<void> appCheckDebugTokenEnjekteEt() async {
   if (defaultTargetPlatform != TargetPlatform.android) return;
 
   try {
-    await const MethodChannel('vibe_life/app_check').invokeMethod<void>(
+    await const MethodChannel('myvibel/app_check').invokeMethod<void>(
       'setDebugToken',
       appCheckDebugTokenSabit,
     );
@@ -70,7 +71,7 @@ Future<void> appCheckDebugTokenGoster(BuildContext context) async {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const SizedBox(
                 height: 48,
-                child: Center(child: CircularProgressIndicator()),
+                child: Center(child: VibeYukleniyor()),
               );
             }
 

@@ -3,20 +3,186 @@
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
   },
+  "storage": {
+    "rules": "storage.rules"
+  },
   "hosting": {
-    "public": "hosting/public",
-    "ignore": [
-      "firebase.json",
-      "**/.*",
-      "**/node_modules/**"
+    "site": "myvibel-app",
+    "public": "build/web",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "redirects": [
+      {
+        "source": "/tr",
+        "destination": "https://myvibel.com/",
+        "type": 301
+      },
+      {
+        "source": "/tr/",
+        "destination": "https://myvibel.com/",
+        "type": 301
+      },
+      {
+        "source": "/tr/**",
+        "destination": "https://myvibel.com/",
+        "type": 301
+      },
+      {
+        "source": "/en",
+        "destination": "https://myvibel.com/",
+        "type": 301
+      },
+      {
+        "source": "/en/",
+        "destination": "https://myvibel.com/",
+        "type": 301
+      },
+      {
+        "source": "/en/**",
+        "destination": "https://myvibel.com/",
+        "type": 301
+      }
+    ],
+    "rewrites": [
+      {
+        "source": "/app/**",
+        "destination": "/app/index.html"
+      }
     ],
     "headers": [
+      {
+        "source": "**",
+        "headers": [
+          {
+            "key": "X-Content-Type-Options",
+            "value": "nosniff"
+          },
+          {
+            "key": "X-Frame-Options",
+            "value": "DENY"
+          },
+          {
+            "key": "Referrer-Policy",
+            "value": "strict-origin-when-cross-origin"
+          },
+          {
+            "key": "Permissions-Policy",
+            "value": "camera=(), microphone=(), geolocation=(), payment=()"
+          },
+          {
+            "key": "Strict-Transport-Security",
+            "value": "max-age=31536000; includeSubDomains; preload"
+          },
+          {
+            "key": "Content-Security-Policy",
+            "value": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://www.gstatic.com https://www.googleapis.com https://apis.google.com https://www.google.com https://www.gstatic.com/recaptcha/ https://www.recaptcha.net https://pagead2.googlesyndication.com https://partner.googleadservices.com; worker-src 'self' blob:; child-src 'self' blob:; connect-src 'self' https://*.googleapis.com https://www.googleapis.com https://apis.google.com https://*.firebaseio.com wss://*.firebaseio.com wss://*.googleapis.com https://*.cloudfunctions.net https://*.firebaseapp.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://firebaseappcheck.googleapis.com https://content-firebaseappcheck.googleapis.com https://firebase.googleapis.com https://www.gstatic.com https://fonts.gstatic.com https://www.google.com https://*.google.com https://appleid.apple.com https://www.recaptcha.net https://*.recaptcha.net https://firebasestorage.googleapis.com https://*.firebasestorage.app https://pagead2.googlesyndication.com https://googleads.g.doubleclick.net https://adservice.google.com; frame-src 'self' https://*.firebaseapp.com https://accounts.google.com https://appleid.apple.com https://www.google.com https://www.recaptcha.net https://www.gstatic.com https://googleads.g.doubleclick.net https://tpc.googlesyndication.com https://pagead2.googlesyndication.com https://www.googleadservices.com; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; form-action 'self' https://accounts.google.com https://appleid.apple.com; frame-ancestors 'none'; upgrade-insecure-requests"
+          }
+        ]
+      },
       {
         "source": "**/*.html",
         "headers": [
           {
             "key": "Cache-Control",
             "value": "public, max-age=3600"
+          }
+        ]
+      },
+      {
+        "source": "/app/index.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
+          }
+        ]
+      },
+      {
+        "source": "/app/",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
+          }
+        ]
+      },
+      {
+        "source": "/index.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
+          }
+        ]
+      },
+      {
+        "source": "/app/main.dart.js",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
+          }
+        ]
+      },
+      {
+        "source": "/app/flutter.js",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
+          }
+        ]
+      },
+      {
+        "source": "/app/flutter_bootstrap.js",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
+          }
+        ]
+      },
+      {
+        "source": "/app/flutter_service_worker.js",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
+          }
+        ]
+      },
+      {
+        "source": "/app/assets/**",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=31536000, immutable"
+          }
+        ]
+      },
+      {
+        "source": "/app/canvaskit/**",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=3600, must-revalidate"
+          }
+        ]
+      },
+      {
+        "source": "/app/**/*.js",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
+          }
+        ]
+      },
+      {
+        "source": "/app/**/*.wasm",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=3600, must-revalidate"
           }
         ]
       }
@@ -26,20 +192,20 @@
     "platforms": {
       "android": {
         "default": {
-          "projectId": "vibe-life-app",
-          "appId": "1:910548158122:android:fb34c96c0e2ab77b9db2d3",
+          "projectId": "myvibel-app",
+          "appId": "1:808611716551:android:21e85d9b49fc507175cde2",
           "fileOutput": "android/app/google-services.json"
         }
       },
       "dart": {
         "lib/firebase_options.dart": {
-          "projectId": "vibe-life-app",
+          "projectId": "myvibel-app",
           "configurations": {
-            "android": "1:910548158122:android:fb34c96c0e2ab77b9db2d3",
-            "ios": "1:910548158122:ios:d7e0d06ef4ebdc639db2d3",
-            "macos": "1:910548158122:ios:d7e0d06ef4ebdc639db2d3",
-            "web": "1:910548158122:web:d967d1a9a05b7dda9db2d3",
-            "windows": "1:910548158122:web:eb896d959e6d9a629db2d3"
+            "android": "1:808611716551:android:21e85d9b49fc507175cde2",
+            "ios": "1:808611716551:ios:50c7f8b3dde6cb2a75cde2",
+            "macos": "1:808611716551:ios:50c7f8b3dde6cb2a75cde2",
+            "web": "1:808611716551:web:05e410059a25cd8675cde2",
+            "windows": "1:808611716551:web:d767fdae70aeeccc75cde2"
           }
         }
       }

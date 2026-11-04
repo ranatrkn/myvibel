@@ -1,0 +1,34 @@
+appId: com.myvibel.app
+---
+# Takılırsa telefonda Ana sayfaya gel; Mesajlar ikonu görünsün, Enter.
+- runFlow: ../flows/ana-sayfaya-don.yaml
+- tapOn: "Alt menü Ana"
+- extendedWaitUntil:
+    visible: "Takip Edilen"
+    timeout: 20000
+- tapOn: "Mesajlar"
+- extendedWaitUntil:
+    visible: "Sohbetlerde ara.*"
+    timeout: 20000
+- tapOn: "Yeni sohbet"
+- waitForAnimationToEnd:
+    timeout: 3000
+- runFlow:
+    when:
+      visible: "Yeni Sohbet.*|Kullanıcı ara.*"
+    commands:
+      - tapOn:
+          text: "Kullanıcı ara.*"
+          optional: true
+      - inputText: "ttt"
+      - waitForAnimationToEnd:
+          timeout: 8000
+      - tapOn:
+          text: "@ttt"
+          optional: true
+      - tapOn:
+          text: "ttt"
+          optional: true
+      - hideKeyboard
+      - back
+- back

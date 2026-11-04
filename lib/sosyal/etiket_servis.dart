@@ -1,8 +1,8 @@
 // Hashtag, bahsetme ve etiket arama işlemleri
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
-import 'package:vibe_life/sosyal/bildirim_servis.dart';
-import 'package:vibe_life/sosyal/sosyal_core.dart';
+import 'package:myvibel/sosyal/bildirim_servis.dart';
+import 'package:myvibel/sosyal/sosyal_core.dart';
 
 // Etiket normalizasyonu ve arama servisi
 class EtiketServis {
@@ -504,12 +504,13 @@ class EtiketServis {
     final prefix = etiketNormalize(hamPrefix);
     if (prefix.isEmpty) return [];
 
+    final tavan = (limit + 5).clamp(1, 40);
     final snap = await SosyalCore.db
         .collection("usernames")
         .orderBy(FieldPath.documentId)
         .startAt([prefix])
         .endAt(["$prefix\uf8ff"])
-        .limit(limit + 5)
+        .limit(tavan)
         .get();
 
     final liste = <Map<String, dynamic>>[];

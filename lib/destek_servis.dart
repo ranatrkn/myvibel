@@ -6,7 +6,7 @@ class DestekServis {
   static const kategoriler = <String, String>{
     'hesap': 'Hesap',
     'hata': 'Hata / Teknik sorun',
-    'kvkk': 'KVKK / Veri talebi',
+    'yas_itiraz': 'Yaş / hesap itirazı',
     'oneri': 'Öneri',
     'diger': 'Diğer',
   };

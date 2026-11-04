@@ -1,0 +1,47 @@
+---
+description: Her şeyden önce pürüzsüz, akışkan kullanıcı deneyimi
+alwaysApply: true
+---
+
+# Pürüzsüz akış önceliği
+
+MyVibel'ta **her şeyden önce** kullanıcıya akıcı, kesintisiz bir deneyim sunulur. Teknik doğruluk ve «önce sunucu cevabını bekle» kolay yolu, UX'i bozuyorsa tercih edilmez.
+
+## Tasarım ilkeleri
+
+1. **Anında tepki**: Silme, beğeni, takip, okundu işareti gibi aksiyonlarda UI önce güncellenir (optimistik); ağ işlemi arka planda yapılır. Hata olursa geri al + kısa mesaj.
+2. **Gereksiz yükleme yok**: Stream/liste ekranlarında yalnızca **ilk veri yokken** tam ekran spinner. Yenileme veya arka plan sync sırasında mevcut içerik görünür kalır.
+3. **Kilitlenme yok**: Uzun `await` sırasında tüm ekranı veya listeyi kilitleme; en fazla ilgili buton/öğe devre dışı kalabilir (mümkünse hiç kilitleme).
+4. **Mikro gecikme bile önemli**: Kısa spinner, boş liste flaşı, «Siliniyor...» gibi durumlar kullanıcıyı rahatsız edebilir — özellikle bildirim, feed, mesaj, profil.
+
+## Uygulama kalıpları (Flutter)
+
+```dart
+// ❌ Kötü: silme bitene kadar bekle, sonra UI güncelle
+setState(() => _siliniyor = true);
+await servis.sil(id);
+setState(() => _siliniyor = false);
+
+// ✅ İyi: optimistik gizle, arka planda sil
+setState(() => _gizliIdler.add(id));
+unawaited(_silArkaPlan(id));
+
+// ❌ Kötü: her stream waiting'de spinner
+if (snapshot.connectionState == ConnectionState.waiting) {
+  return CircularProgressIndicator();
+}
+
+// ✅ İyi: sadece ilk yüklemede spinner
+if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
+  return CircularProgressIndicator();
+}
+```
+
+## Yeni özellik / değişiklik kontrol listesi
+
+- Kullanıcı aksiyonu anında görünür mü?
+- Ağ yavaş olsa bile ekran «titremez» mi?
+- Hata durumunda geri dönüş net mi?
+- Gereksiz tam ekran loading var mı?
+
+Varsayılan: **pürüzsüz akış**; «basit ama bekleten» implementasyon ancak optimistik UI mümkün değilse ve kullanıcı bilinçli olarak istemezse.

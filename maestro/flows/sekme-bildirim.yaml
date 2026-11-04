@@ -1,0 +1,14 @@
+appId: com.myvibel.app
+---
+- tapOn:
+    text: "Alt menü Bildirimler"
+    optional: true
+- runFlow:
+    when:
+      notVisible: "Bildirimler"
+    commands:
+      - tapOn:
+          text: "Alt menü Bildirimler"
+          optional: true
+- waitForAnimationToEnd:
+    timeout: 2500

@@ -1,0 +1,45 @@
+appId: com.myvibel.app
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "Takip Edilen"
+    timeout: 60000
+
+# Ana sayfa sekmeleri
+- assertVisible: "Takip Edilen"
+- tapOn: "Akış"
+- assertVisible: "Akış"
+- tapOn: "Takip Edilen"
+
+# Keşfet
+- tapOn: "Keşfet"
+- extendedWaitUntil:
+    visible: "Liderlik"
+    timeout: 30000
+- assertVisible: "Liderlik"
+
+# Yeni gönderi: boş paylaşım doğrulaması
+- tapOn: "Yeni"
+- extendedWaitUntil:
+    visible: "Paylaş"
+    timeout: 30000
+- tapOn: "Paylaş"
+- assertVisible: "Paylaşmak için bir şeyler yaz."
+
+# Bildirimler
+- tapOn: "Bildirim"
+- extendedWaitUntil:
+    visible: "Bildirimler"
+    timeout: 30000
+- assertVisible: "Bildirimler"
+
+# Profil
+- tapOn: "Profil"
+- extendedWaitUntil:
+    visible: "Beğendiklerim"
+    timeout: 30000
+- assertVisible: "Beğendiklerim"
+
+# Ana sayfaya dönüş
+- tapOn: "Ana"
+- assertVisible: "Takip Edilen"

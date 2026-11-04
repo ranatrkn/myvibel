@@ -1,0 +1,38 @@
+appId: com.myvibel.app
+---
+# 7. seviyeden 11'e 840 vil. Eldeki 8 vil için 84 gönderi.
+- launchApp:
+    stopApp: false
+- tapOn:
+    text: "Alt menü Ana"
+    optional: true
+- extendedWaitUntil:
+    visible: "Takip Edilen|Alt menü Yeni gönderi"
+    timeout: 20000
+- repeat:
+    times: 49
+    commands:
+      - tapOn: "Alt menü Yeni gönderi"
+      - extendedWaitUntil:
+          visible: "Paylaş"
+          timeout: 20000
+      - tapOn: "Gönderi metni"
+      - eraseText: 40
+      - inputText: "Vil biriktir"
+      - tapOn: "Paylaş"
+      - extendedWaitUntil:
+          notVisible: "Paylaşılıyor.*"
+          timeout: 45000
+      - runFlow:
+          when:
+            visible: "Çok hızlı.*"
+          commands:
+            - waitForAnimationToEnd:
+                timeout: 8000
+            - tapOn: "Paylaş"
+            - extendedWaitUntil:
+                notVisible: "Paylaşılıyor.*"
+                timeout: 45000
+      - extendedWaitUntil:
+          visible: "Takip Edilen|Gönderi paylaşıldı."
+          timeout: 20000

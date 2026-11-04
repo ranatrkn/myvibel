@@ -1,76 +1,56 @@
 {
   "project_info": {
-    "project_number": "910548158122",
-    "project_id": "vibe-life-app",
-    "storage_bucket": "vibe-life-app.firebasestorage.app"
+    "project_number": "808611716551",
+    "project_id": "myvibel-app",
+    "storage_bucket": "myvibel-app.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:910548158122:android:491d6bb00251cc069db2d3",
+        "mobilesdk_app_id": "1:808611716551:android:21e85d9b49fc507175cde2",
         "android_client_info": {
-          "package_name": "com.example.vibe_life"
+          "package_name": "com.myvibel.app"
         }
       },
       "oauth_client": [
         {
-          "client_id": "910548158122-jum8fo4uoujq7ah567vbt3laovu1l73p.apps.googleusercontent.com",
+          "client_id": "808611716551-al90nvp8tdso4ana667o291dkivq93ks.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.myvibel.app",
+            "certificate_hash": "0cbcd6ba5fe7a4bee4014b5eb5afe24b809767c7"
+          }
+        },
+        {
+          "client_id": "808611716551-p0mvlamfpiraf6k2g99dt0j5hdlrkmp7.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.myvibel.app",
+            "certificate_hash": "332ab236bfb51fbd0ecbd4b88664607645be39c4"
+          }
+        },
+        {
+          "client_id": "808611716551-e9usr5incluue56upgtout3r2lbme2cs.apps.googleusercontent.com",
           "client_type": 3
         }
       ],
       "api_key": [
         {
-          "current_key": "AIzaSyBrCvZUTG81x2RIssPGSTUsJbODGaclZb8"
+          "current_key": "AIzaSyCdQzj3Hh-upMOtUzhuiDGKS_6BGO8mJJg"
         }
       ],
       "services": {
         "appinvite_service": {
           "other_platform_oauth_client": [
             {
-              "client_id": "910548158122-jum8fo4uoujq7ah567vbt3laovu1l73p.apps.googleusercontent.com",
+              "client_id": "808611716551-e9usr5incluue56upgtout3r2lbme2cs.apps.googleusercontent.com",
               "client_type": 3
             },
             {
-              "client_id": "910548158122-3n0ajf2aopoovtroi333ltr0mbchv60e.apps.googleusercontent.com",
+              "client_id": "808611716551-02a7aahr000dvtqnveckmdloj7292hc4.apps.googleusercontent.com",
               "client_type": 2,
               "ios_info": {
-                "bundle_id": "com.example.vibeLife"
-              }
-            }
-          ]
-        }
-      }
-    },
-    {
-      "client_info": {
-        "mobilesdk_app_id": "1:910548158122:android:fb34c96c0e2ab77b9db2d3",
-        "android_client_info": {
-          "package_name": "com.vibelife.app"
-        }
-      },
-      "oauth_client": [
-        {
-          "client_id": "910548158122-jum8fo4uoujq7ah567vbt3laovu1l73p.apps.googleusercontent.com",
-          "client_type": 3
-        }
-      ],
-      "api_key": [
-        {
-          "current_key": "AIzaSyBrCvZUTG81x2RIssPGSTUsJbODGaclZb8"
-        }
-      ],
-      "services": {
-        "appinvite_service": {
-          "other_platform_oauth_client": [
-            {
-              "client_id": "910548158122-jum8fo4uoujq7ah567vbt3laovu1l73p.apps.googleusercontent.com",
-              "client_type": 3
-            },
-            {
-              "client_id": "910548158122-3n0ajf2aopoovtroi333ltr0mbchv60e.apps.googleusercontent.com",
-              "client_type": 2,
-              "ios_info": {
-                "bundle_id": "com.example.vibeLife"
+                "bundle_id": "com.myvibel.app"
               }
             }
           ]

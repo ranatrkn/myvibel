@@ -1,9 +1,12 @@
 // Tek gönderi detay ekranı (feed alıntıları, DM iletileri vb.).
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:vibe_life/alinti_gonderi.dart';
-import 'package:vibe_life/sosyal_servis.dart';
-import 'package:vibe_life/widgets/post_card.dart';
+import 'package:myvibel/alinti_gonderi.dart';
+import 'package:myvibel/sosyal/sosyal_core.dart';
+import 'package:myvibel/sosyal_servis.dart';
+import 'package:myvibel/widgets/post_card.dart';
+import 'package:myvibel/widgets/vibe_yukleniyor.dart';
+import 'package:myvibel/widgets/vibe_gradient_scaffold.dart';
 
 class GonderiDetaySayfasi extends StatelessWidget {
   const GonderiDetaySayfasi({
@@ -27,23 +30,29 @@ class GonderiDetaySayfasi extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Gönderi')),
+    return VibeGradientScaffold(
+      appBar: VibeGradientScaffold.seffafBaslik('Gönderi'),
       body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-        stream: FirebaseFirestore.instance
-            .collection('posts')
-            .doc(postId)
+        stream: SosyalCore.gonderiRef(postId)
             .snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting &&
               !snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
+            return const Center(child: VibeYukleniyor());
           }
 
           final doc = snapshot.data;
           final post = doc?.data();
           if (post == null || doc?.exists != true) {
-            return const Center(child: Text('Gönderi bulunamadı.'));
+            return const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Text(
+                  'Bu gönderi silinmiş veya artık görüntülenemiyor.',
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            );
           }
 
           return ListView(
