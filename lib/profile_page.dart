@@ -1453,7 +1453,7 @@ class ProfilePageState extends State<ProfilePage> {
                         colors: [
                           vibe.gradientStart.withOpacity(0.85),
                           vibe.gradientEnd.withOpacity(0.55),
-                          Colors.transparent,
+                          vibe.gradientEnd.withOpacity(0),
                         ],
                       ),
                     ),
@@ -1748,12 +1748,15 @@ class ProfilePageState extends State<ProfilePage> {
     VoidCallback? onTap,
     String? erisimEtiketi,
   }) {
+    final vibe = context.vibe;
     final kutu = Container(
       padding: const EdgeInsets.symmetric(vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.06),
+        color: vibe.isDark ? Colors.white.withOpacity(0.06) : vibe.cardColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white10),
+        border: Border.all(
+          color: vibe.isDark ? Colors.white10 : vibe.cardBorder,
+        ),
       ),
       child: Column(
         children: [
@@ -1977,12 +1980,15 @@ class ProfilePageState extends State<ProfilePage> {
     final gonderiSayisi = _gorunenProfilGonderileri()
         .where((doc) => doc.data()["raporNedeniyleGizli"] != true)
         .length;
+    final vibe = context.vibe;
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.07),
+        color: vibe.isDark ? Colors.white.withOpacity(0.07) : vibe.cardColor,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white12),
+        border: Border.all(
+          color: vibe.isDark ? Colors.white12 : vibe.cardBorder,
+        ),
       ),
       child: Row(
         children: [

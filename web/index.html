@@ -66,7 +66,7 @@
       font-family: system-ui, "Segoe UI", sans-serif;
       z-index: 9999;
       pointer-events: none;
-      transition: opacity .25s ease;
+      transition: opacity .15s ease;
     }
     #yukleniyor.gizli { opacity: 0; }
     #yukleniyor .nokta {
@@ -114,8 +114,10 @@
       var el = document.getElementById('yukleniyor');
       if (!el) return;
       el.classList.add('gizli');
-      setTimeout(function() { el.remove(); }, 300);
+      setTimeout(function() { el.remove(); }, 200);
     }
+    // Flutter kendi ilk karesini çizince HTML yükleyici kalkar; iki yükleyici üst üste binmez.
+    window.addEventListener('flutter-first-frame', yukleniyorGizle, { once: true });
     window.addEventListener('load', function(ev) {
       // main.dart.js dosya adı sabit; query ile tarayıcı önbelleğini kır.
       var entry = 'main.dart.js?v=' + encodeURIComponent(serviceWorkerVersion || String(Date.now()));
@@ -129,8 +131,7 @@
             canvasKitBaseUrl: '/app/canvaskit/',
           }).then(function(appRunner) {
             appRunner.runApp();
-            // Flutter ilk frame'e yakın gizle
-            setTimeout(yukleniyorGizle, 600);
+            setTimeout(yukleniyorGizle, 10000);
           }).catch(function(err) {
             console.error('Flutter init failed', err);
             yukleniyorGizle();

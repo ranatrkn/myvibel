@@ -61,7 +61,7 @@ class MascotDurumBari extends StatelessWidget {
             child: LinearProgressIndicator(
               value: oran,
               minHeight: compact ? 6 : 8,
-              backgroundColor: vibe.inputFill,
+              backgroundColor: vibe.isDark ? vibe.inputFill : vibe.cardBorder,
               valueColor: AlwaysStoppedAnimation<Color>(renk),
             ),
           ),

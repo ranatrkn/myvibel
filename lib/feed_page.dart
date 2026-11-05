@@ -384,6 +384,7 @@ class _FeedPageState extends State<FeedPage> with WidgetsBindingObserver {
                     maxWidth: kWebAkisOrtaMax,
                     // Açılmış sekmeler canlı kalır: sekme değişince sayfa
                     // yeniden yüklenmez, iç navigator yığını korunur.
+                    child: VibeGradyanKapali(
                     child: IndexedStack(
                       index: _secilenIndeks,
                       children: List.generate(
@@ -406,6 +407,7 @@ class _FeedPageState extends State<FeedPage> with WidgetsBindingObserver {
                               )
                             : const SizedBox.shrink(),
                       ),
+                    ),
                     ),
                   ),
                 ),

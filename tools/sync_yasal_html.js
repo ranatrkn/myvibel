@@ -104,7 +104,7 @@ write('cocuk-guvenligi.html', {
   meta: `Son güncelleme: ${tarih} · Sürüm ${surum}`,
   content: cocuk,
   topLinks:
-    '<a href="/privacy.html">Gizlilik</a>\n      <a href="/terms.html">Koşullar</a>',
+    '<a href="/privacy.html">Gizlilik</a>\n      <a href="/kvkk.html">KVKK</a>\n      <a href="/terms.html">Koşullar</a>',
   footer:
-    '<a href="privacy.html">Gizlilik Politikası</a> · <a href="terms.html">Kullanım Koşulları</a>',
+    '<a href="privacy.html">Gizlilik Politikası</a> · <a href="kvkk.html">KVKK Aydınlatma Metni</a> · <a href="terms.html">Kullanım Koşulları</a>',
 });
