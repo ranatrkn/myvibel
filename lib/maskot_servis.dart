@@ -357,21 +357,36 @@ class MascotServis {
     robot['gelisimPuani'] = gelisimPuani;
     robot['seviye'] = seviye;
     if (seviye > eskiSeviye) {
-      _fazStatlariniHizala(robot, seviye);
+      _fazStatlariniHizala(robot, seviye, eskiSeviye: eskiSeviye);
       return _seviyeOdulleriniIsle(robot, seviye);
     }
     return [];
   }
 
   /// Yeni faza geciste eksik statlari mantikli varsayilanlara ceker.
-  static void _fazStatlariniHizala(Map<String, dynamic> robot, int seviye) {
+  /// Düşük stat yalnızca o stat ilk açıldığı seviye atlamasında doldurulur;
+  /// her senkronda doldurmak açlık/yalnızlık düşüşünü siler.
+  static void _fazStatlariniHizala(
+    Map<String, dynamic> robot,
+    int seviye, {
+    int? eskiSeviye,
+  }) {
+    bool yeniAcildi(int acilis) =>
+        eskiSeviye != null && eskiSeviye < acilis && seviye >= acilis;
+
     if (toklukAktif(seviye) && !robot.containsKey('tokluk')) {
       robot['tokluk'] = 80;
     }
-    if (enerjiAktif(seviye) && _int(robot['enerji'], 0) < 30) {
+    if (enerjiAktif(seviye) &&
+        (!robot.containsKey('enerji') ||
+            (yeniAcildi(enerjiAcilisSeviyesi) &&
+                _int(robot['enerji'], 0) < 30))) {
       robot['enerji'] = 70;
     }
-    if (mutlulukAktif(seviye) && _int(robot['mutluluk'], 0) < 40) {
+    if (mutlulukAktif(seviye) &&
+        (!robot.containsKey('mutluluk') ||
+            (yeniAcildi(mutlulukAcilisSeviyesi) &&
+                _int(robot['mutluluk'], 0) < 40))) {
       robot['mutluluk'] = 65;
     }
   }
@@ -908,7 +923,9 @@ class MascotServis {
     robot['sonMutlulukTickMs'] = simdiMs;
   }
 
-  static int _toklukDususUygula({
+  /// [aclikBaslangicMs]: tokluk bu senkron aralığında eşiğin altına indiyse
+  /// indiği an.
+  static ({int tokluk, int? aclikBaslangicMs}) _toklukDususUygula({
     required Map<String, dynamic> robot,
     required int simdiMs,
     required bool uygulamaAcildi,
@@ -921,13 +938,16 @@ class MascotServis {
     // Uyurken tokluk düşmez; uyanınca uyku süresi birikmiş borç olarak
     // tek seferde kesilmesin diye referans zaman uyku bitişine çekilir.
     if (uykuBitis > simdiMs) {
-      return tokluk;
+      return (tokluk: tokluk, aclikBaslangicMs: null);
     }
     if (uykuBaslangic > 0 && uykuBitis > 0 && simdiMs >= uykuBitis) {
       if (tick < uykuBitis) tick = uykuBitis;
     }
 
+    int? aclikBaslangicMs;
     if (simdiMs > tick) {
+      final oncekiTokluk = tokluk;
+      final baslangicTick = tick;
       final dusus = _mutlulukDususMiktari(
         gecenMs: simdiMs - tick,
         tamBosalmaDakika: toklukUygulamaDisiDakika,
@@ -939,11 +959,19 @@ class MascotServis {
           tamBosalmaDakika: toklukUygulamaDisiDakika,
         );
       }
+      const esik = MaskotBakimSozleri.toklukEsik;
+      if (oncekiTokluk > esik && tokluk <= esik) {
+        aclikBaslangicMs = baslangicTick +
+            _mutlulukDususTuketilenMs(
+              dususMiktari: oncekiTokluk - esik,
+              tamBosalmaDakika: toklukUygulamaDisiDakika,
+            );
+      }
     }
 
     robot['sonToklukTickMs'] = tick;
     robot['sonUygulamaMs'] = simdiMs;
-    return tokluk;
+    return (tokluk: tokluk, aclikBaslangicMs: aclikBaslangicMs);
   }
 
   /// Açken (tokluk düşük) enerji zamanla düşer.
@@ -953,11 +981,19 @@ class MascotServis {
     required int enerji,
     required int tokluk,
     required int seviye,
+    int? aclikBaslangicMs,
   }) {
-    if (!enerjiAktif(seviye) || tokluk > 25) return enerji;
-    if (_int(robot['uykuBitisMs'], 0) > simdiMs) return enerji;
+    if (!enerjiAktif(seviye) ||
+        tokluk > MaskotBakimSozleri.toklukEsik ||
+        _int(robot['uykuBitisMs'], 0) > simdiMs) {
+      robot['sonEnerjiDususMs'] = simdiMs;
+      return enerji;
+    }
 
     var tick = _int(robot['sonEnerjiDususMs'], simdiMs);
+    if (aclikBaslangicMs != null && aclikBaslangicMs > tick) {
+      tick = aclikBaslangicMs;
+    }
     if (simdiMs <= tick) return enerji;
 
     final gecenMs = simdiMs - tick;
@@ -973,7 +1009,7 @@ class MascotServis {
             tamBosalmaDakika: aclikEnerjiBosalmaDakika,
           );
     }
-    robot['sonEnerjiDususMs'] = simdiMs;
+    robot['sonEnerjiDususMs'] = tick;
     return enerji;
   }
 
@@ -1037,6 +1073,7 @@ class MascotServis {
     robot['uykuBaslangicMs'] = 0;
     robot['uykuBaslangicEnerji'] = 0;
     robot['sonToklukTickMs'] = simdi;
+    robot['sonEnerjiDususMs'] = simdi;
     robot['mutluluk'] =
         _clampStat(_int(robot['mutluluk'], 50) + uyanincaMutlulukBonus);
   }
@@ -1083,12 +1120,15 @@ class MascotServis {
       return mesajlar;
     }
 
+    int? aclikBaslangicMs;
     if (toklukAktif(seviye)) {
-      tokluk = _toklukDususUygula(
+      final toklukSonuc = _toklukDususUygula(
         robot: robot,
         simdiMs: simdiMs,
         uygulamaAcildi: uygulamaAcildi,
       );
+      tokluk = toklukSonuc.tokluk;
+      aclikBaslangicMs = toklukSonuc.aclikBaslangicMs;
       if (!robot.containsKey('sonToklukPozitifMs')) {
         robot['sonToklukPozitifMs'] = simdiMs;
       }
@@ -1133,15 +1173,14 @@ class MascotServis {
       ),
     );
 
-    if (enerjiAktif(seviye) && _int(robot['uykuBitisMs'], 0) <= simdiMs) {
-      enerji = _aclikEnerjiDususUygula(
-        robot: robot,
-        simdiMs: simdiMs,
-        enerji: enerji,
-        tokluk: tokluk,
-        seviye: seviye,
-      );
-    }
+    enerji = _aclikEnerjiDususUygula(
+      robot: robot,
+      simdiMs: simdiMs,
+      enerji: enerji,
+      tokluk: tokluk,
+      seviye: seviye,
+      aclikBaslangicMs: aclikBaslangicMs,
+    );
 
     if (!enerjiAktif(seviye)) {
       robot['tokluk'] = tokluk;
