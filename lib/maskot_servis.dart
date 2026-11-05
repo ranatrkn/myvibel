@@ -787,16 +787,7 @@ class MascotServis {
         robot.enerji >= 50) {
       return 'Harika hissediyorum!';
     }
-    if (toklukAktif(robot.seviye)) {
-      return MaskotBakimSozleri.toklukKutuNotu(robot.tokluk);
-    }
-    if (robot.seviye < mutlulukAcilisSeviyesi) {
-      if (enerjiAktif(robot.seviye) && robot.enerji <= uyuMaxEnerji) {
-        return 'Yorgunum. Uyutursan enerji dolar (yaklaşık 1 saat).';
-      }
-      return 'Gönderi, yorum ve beğeniler vil kazandırır; vil ile bana yemek al.';
-    }
-    return 'Seninle güçlüyüz. Birlikte büyümeye devam.';
+    return MaskotBakimSozleri.toklukKutuNotu(robot.tokluk);
   }
 
   static bool senkronMesajBasariMi(String mesaj) {
@@ -809,24 +800,23 @@ class MascotServis {
         mesaj.contains('dinleniyor');
   }
 
-  static String seviyeOdulAciklamasi(int seviye) {
+  /// Yeni bir özelliğin açıldığı ve kutlama gösterilen seviyeler.
+  static const kutlamaSeviyeleri = [
+    toklukAcilisSeviyesi,
+    enerjiAcilisSeviyesi,
+    mutlulukAcilisSeviyesi,
+  ];
+
+  static String? seviyeOdulAciklamasi(int seviye) {
     switch (seviye) {
-      case 2:
-        return 'Daha fazla ruh hali mesajı açıldı';
-      case 3:
-        return 'Vibel ile bağın güçlendi';
-      case 4:
-        return 'Bakım etkisi güçlendi';
-      case 5:
-        return 'Az kaldı: 6. seviyede yemek ve vil açılır';
-      case 6:
-        return 'Vil cüzdanın ve yemek sistemi açıldı!';
-      case 11:
-        return 'Enerji ve uyku açıldı';
-      case 21:
-        return 'Mutluluk ve güçlü bağ';
+      case toklukAcilisSeviyesi:
+        return 'Kabuğumdan çıktım! Artık vil kazanıp bana yemek verebilirsin.';
+      case enerjiAcilisSeviyesi:
+        return 'Enerji ve uyku açıldı. Haftalık görevler de seni bekliyor!';
+      case mutlulukAcilisSeviyesi:
+        return 'Mutluluk açıldı. Birlikte vakit geçirdikçe daha mutlu olurum.';
       default:
-        return 'Seviye $seviye ödülü kazanıldı';
+        return null;
     }
   }
 

@@ -31,6 +31,7 @@ import 'package:myvibel/etiket_navigasyon.dart';
 import 'package:myvibel/widgets/alinti_gonderi_onizleme.dart';
 import 'package:myvibel/widgets/hashtag_metin.dart';
 import 'package:myvibel/maskot_page.dart';
+import 'package:myvibel/maskot_bakim_sozleri.dart';
 import 'package:myvibel/maskot_servis.dart';
 import 'package:myvibel/widgets/mascot_ruh_hali_metni.dart';
 import 'package:myvibel/legal_pages.dart';
@@ -1865,7 +1866,13 @@ class ProfilePageState extends State<ProfilePage> {
                       const SizedBox(height: 6),
                       mascot.uyuyor
                           ? Text(
-                              '${mascot.isim} dinleniyor — uyandırmak için odaya gir',
+                              MascotServis.erkenUyandirabilir(mascot)
+                                  ? '${mascot.isim} uyuyor. Odasına girip uyandırabilirsin.'
+                                  : MaskotBakimSozleri.donen(
+                                      MaskotBakimSozleri.uyuyorKutuCumleleri(
+                                        mascot.isim,
+                                      ),
+                                    ),
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(

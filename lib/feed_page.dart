@@ -1,6 +1,7 @@
 // Ana sayfa kabuğu: alt menü ile feed, keşfet, yeni gönderi, bildirim ve profil sekmeleri
 import 'dart:async';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -28,6 +29,7 @@ import 'package:myvibel/widgets/vibe_marka_baslik.dart';
 import 'package:myvibel/ana_kabuk.dart';
 import 'package:myvibel/widgets/web_shell.dart';
 import 'package:myvibel/yas_hesap_kontrol.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // Feed modülü bileşenlerini dışa aktar
 export 'package:myvibel/feed/feed_content.dart';
@@ -128,7 +130,50 @@ class _FeedPageState extends State<FeedPage> with WidgetsBindingObserver {
         _gunlukGorevAcilisKaydet();
       });
       _surumNotuGoster();
+      _seviyeKutlamaBaslat();
     });
+  }
+
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
+      _seviyeAboneligi;
+  Future<void> _seviyeKuyrugu = Future<void>.value();
+  int? _bilinenSeviye;
+
+  // Seviye 6, 11 veya 21'e ulaşınca bir kez kutlama göster.
+  void _seviyeKutlamaBaslat() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    _seviyeAboneligi?.cancel();
+    _seviyeAboneligi = FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .snapshots()
+        .listen((snap) {
+      final seviye = MascotServis.tryParse(snap.data()?['robot'])?.seviye;
+      if (seviye == null) return;
+      _seviyeKuyrugu = _seviyeKuyrugu
+          .then((_) => _seviyeKontrol(uid, seviye))
+          .catchError((Object e) {
+        debugPrint('Seviye kutlaması kontrol edilemedi: $e');
+      });
+    }, onError: (Object e) {
+      debugPrint('Seviye dinleyicisi hata verdi: $e');
+    });
+  }
+
+  Future<void> _seviyeKontrol(String uid, int seviye) async {
+    final anahtar = 'son_gorulen_seviye_$uid';
+    final prefs = await SharedPreferences.getInstance();
+    final onceki = _bilinenSeviye ?? prefs.getInt(anahtar);
+    if (onceki == seviye) return;
+    _bilinenSeviye = seviye;
+    await prefs.setInt(anahtar, seviye);
+    if (onceki == null || seviye < onceki || !mounted) return;
+    final kutlanacak = MascotServis.kutlamaSeviyeleri
+        .where((s) => s > onceki && s <= seviye)
+        .toList();
+    if (kutlanacak.isEmpty) return;
+    await VibelAnlaticiPaneli.seviyeKutlamasiGoster(context, kutlanacak.last);
   }
 
   void _sekmeyeGit(int indeks) {
@@ -236,6 +281,7 @@ class _FeedPageState extends State<FeedPage> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _mascotDakikaTimer?.cancel();
+    _seviyeAboneligi?.cancel();
     if (identical(AnaKabuk.aktif, _kabuk)) {
       AnaKabuk.aktif = null;
     }

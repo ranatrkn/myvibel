@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:myvibel/app_theme.dart';
 import 'package:myvibel/legal_pages.dart';
+import 'package:myvibel/maskot_servis.dart';
 import 'package:myvibel/widgets/maskot_lottie_view.dart';
 import 'package:myvibel/yasal_icerik.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -39,6 +40,77 @@ class VibelAnlaticiPaneli {
     );
     await prefs.setString(surumAnahtar, VibeLegal.appVersionLabel);
   }
+
+  static Future<void> seviyeKutlamasiGoster(
+    BuildContext context,
+    int seviye,
+  ) async {
+    final metin = MascotServis.seviyeOdulAciklamasi(seviye);
+    if (metin == null) return;
+    await showDialog<void>(
+      context: context,
+      builder: (_) => _SeviyeKutlamaDiyalog(seviye: seviye, metin: metin),
+    );
+  }
+}
+
+class _SeviyeKutlamaDiyalog extends StatelessWidget {
+  const _SeviyeKutlamaDiyalog({required this.seviye, required this.metin});
+
+  final int seviye;
+  final String metin;
+
+  @override
+  Widget build(BuildContext context) {
+    final vibe = context.vibe;
+    final theme = Theme.of(context);
+    return Dialog(
+      backgroundColor: theme.dialogBackgroundColor,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            MascotLottieView(
+              seviye: seviye,
+              width: 96,
+              height: 96,
+              tamEkranAc: false,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Seviye $seviye!',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: theme.colorScheme.onSurface,
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              metin,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: vibe.mutedText,
+                height: 1.45,
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Harika!'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _AnlaticiAdim {
@@ -59,12 +131,17 @@ class _AnlaticiDiyalogState extends State<_AnlaticiDiyalog> {
     _AnlaticiAdim(
       baslik: 'Merhaba, ben Vibel',
       metin:
-          'Akışta gez, gönderileri beğen ve yorum yap. Her etkileşimle birlikte büyürüm.',
+          'Akışta gez, gönderileri beğen, yorum yap; her etkileşiminle birlikte büyürüm.',
     ),
     _AnlaticiAdim(
       baslik: 'Gelişim çubuğum',
       metin:
-          'Çerçevemdeki çizgi gelişimim. Gönderi +10, yorum +3, beğeni +2, takip +5. 6. seviyede kabuğumdan çıkarım; yemek ve vil açılır.',
+          'Çerçevemdeki çizgi gelişimim. Paylaş, yorum yap, beğen, takip et; çizgi dolunca seviye atlarım.',
+    ),
+    _AnlaticiAdim(
+      baslik: 'Kabuktan çıkış',
+      metin:
+          '6. seviyede kabuğumdan çıkarım. Sonra vil kazanır, bana yemek verirsin. İlerleyen seviyelerde uyku ve haftalık görevler açılır.',
     ),
     _AnlaticiAdim(
       baslik: 'Paylaş ve bağ kur',

@@ -50,11 +50,11 @@ app.*.symbols
 # Obfuscation related
 app.*.map.json
 
-# Android release signing (gizli — Git'e eklenmez)
+# Android release signing (gizli â€” Git'e eklenmez)
 **/key.properties
 **/*.jks
 **/*.keystore
 android/KEYSTORE_CREDENTIALS.txt
 
-# Ge�ici kural test ortam�
+# Gecici kural test ortami
 tmp-kural-test/
