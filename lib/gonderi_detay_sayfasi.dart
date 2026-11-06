@@ -15,12 +15,14 @@ class GonderiDetaySayfasi extends StatelessWidget {
     required this.currentUserId,
     this.onKendiProfilineGit,
     this.onAlintiYap,
+    this.yorumlariAc = false,
   });
 
   final String postId;
   final String currentUserId;
   final VoidCallback? onKendiProfilineGit;
   final ValueChanged<AlintiGonderiBaglam>? onAlintiYap;
+  final bool yorumlariAc;
 
   int _intDeger(dynamic value, int varsayilan) {
     if (value is int) return value;
@@ -81,6 +83,7 @@ class GonderiDetaySayfasi extends StatelessWidget {
                 ),
                 onKendiProfilineGit: onKendiProfilineGit,
                 onAlintiYap: onAlintiYap,
+                yorumlariAcikBaslat: yorumlariAc,
               ),
             ],
           );

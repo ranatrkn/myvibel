@@ -469,6 +469,7 @@ class SosyalServis {
     required String currentUserId,
     required String metin,
     String? parentId,
+    String? commentId,
   }) =>
       BegeniYorumServis.yorumEkle(
         postId: postId,
@@ -476,6 +477,7 @@ class SosyalServis {
         currentUserId: currentUserId,
         metin: metin,
         parentId: parentId,
+        commentId: commentId,
       );
 
   static Future<BegenenSayfa> begenenleriGetir({
@@ -528,6 +530,7 @@ class SosyalServis {
     required String metin,
     String mesajTipi = "text",
     String postId = "",
+    String? messageId,
   }) =>
       MesajServis.mesajGonder(
         chatId: chatId,
@@ -535,6 +538,7 @@ class SosyalServis {
         metin: metin,
         mesajTipi: mesajTipi,
         postId: postId,
+        messageId: messageId,
       );
 
   // Gönderiyi mesaj olarak ilet

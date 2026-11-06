@@ -16,6 +16,7 @@ import 'package:myvibel/profile_page.dart';
 import 'package:myvibel/puan_animasyon.dart';
 import 'package:myvibel/maskot_servis.dart';
 import 'package:myvibel/sosyal/lider_tac_servis.dart';
+import 'package:myvibel/sosyal/takip_sayac_onbellek.dart';
 import 'package:myvibel/widgets/isim_yan_rozet.dart';
 import 'package:myvibel/sosyal_servis.dart';
 import 'package:myvibel/maestro_semantics.dart';
@@ -124,6 +125,10 @@ class _FeedPageState extends State<FeedPage> with WidgetsBindingObserver {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(LiderTacServis.instance.baslat());
       unawaited(HaftaRozetServis.instance.yenile());
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid != null) {
+        unawaited(TakipSayacOnbellek.onYukle(uid).catchError((_) {}));
+      }
       _mascotSenkronBaslat(zorla: true);
       Future<void>.delayed(const Duration(seconds: 3), () {
         if (!mounted) return;
@@ -186,7 +191,8 @@ class _FeedPageState extends State<FeedPage> with WidgetsBindingObserver {
     if (ayni) {
       _ortaNavAnahtari(indeks).currentState?.popUntil((r) => r.isFirst);
     }
-    if (indeks == 0) {
+    // Başka sekmeden dönüşte akış korunur; yenileme yalnızca ikinci dokunuşta.
+    if (indeks == 0 && ayni) {
       final akis = _feedKey.currentState;
       if (akis != null && akis.mounted) {
         unawaited(akis.feediYenile());
@@ -226,6 +232,7 @@ class _FeedPageState extends State<FeedPage> with WidgetsBindingObserver {
       case 2:
         return NewPostPage(
           key: _newPostKey,
+          aktif: _secilenIndeks == 2,
           alintiBaglam: _alintiBaglam,
           onAlintiIptal: _alintiBaglaminiTemizle,
           onPostCreated: () {
@@ -486,12 +493,39 @@ class _FeedPageState extends State<FeedPage> with WidgetsBindingObserver {
               onTap: _sohbetKartinaTiklandi,
               child: Padding(
                 padding: const EdgeInsets.all(16),
-                child: Column(
+                child: _SohbetOkunmamisDinleyici(
+                  builder: (okunmamis) => Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Row(
                       children: [
-                        Icon(VibeIkon.mesajBos, color: vibe.mutedText, size: 22),
+                        Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            Icon(
+                              VibeIkon.mesajBos,
+                              color: okunmamis
+                                  ? theme.colorScheme.onSurface
+                                  : vibe.mutedText,
+                              size: 22,
+                            ),
+                            if (okunmamis)
+                              const Positioned(
+                                right: -2,
+                                top: -2,
+                                child: SizedBox(
+                                  width: 9,
+                                  height: 9,
+                                  child: DecoratedBox(
+                                    decoration: BoxDecoration(
+                                      color: Colors.redAccent,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
@@ -512,14 +546,21 @@ class _FeedPageState extends State<FeedPage> with WidgetsBindingObserver {
                     ),
                     const SizedBox(height: 10),
                     Text(
-                      'Mesajlarını görüntüle ve sohbet başlat.',
+                      okunmamis
+                          ? 'Okunmamış mesajın var.'
+                          : 'Mesajlarını görüntüle ve sohbet başlat.',
                       style: TextStyle(
-                        color: vibe.mutedText,
+                        color: okunmamis
+                            ? theme.colorScheme.onSurface
+                            : vibe.mutedText,
                         fontSize: 12,
+                        fontWeight:
+                            okunmamis ? FontWeight.w600 : FontWeight.normal,
                         height: 1.35,
                       ),
                     ),
                   ],
+                ),
                 ),
               ),
             ),
@@ -779,4 +820,74 @@ class _FeedPageState extends State<FeedPage> with WidgetsBindingObserver {
       ),
     );
   }
+}
+
+// Masaüstü kapalı sohbet kartı için okunmamış DM dinleyicisi
+class _SohbetOkunmamisDinleyici extends StatefulWidget {
+  const _SohbetOkunmamisDinleyici({required this.builder});
+
+  final Widget Function(bool okunmamis) builder;
+
+  @override
+  State<_SohbetOkunmamisDinleyici> createState() =>
+      _SohbetOkunmamisDinleyiciState();
+}
+
+class _SohbetOkunmamisDinleyiciState extends State<_SohbetOkunmamisDinleyici> {
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _abonelik;
+  SharedPreferences? _prefs;
+  bool _okunmamis = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    unawaited(SharedPreferences.getInstance().then((p) {
+      _prefs = p;
+      if (!mounted) return;
+      _abonelik = SosyalServis.sohbetlerim(uid).listen(
+        (snap) {
+          if (!mounted) return;
+          final yeni = _hesapla(uid, snap.docs);
+          if (yeni != _okunmamis) setState(() => _okunmamis = yeni);
+        },
+        onError: (e) => debugPrint('sohbet karti dm durumu: $e'),
+      );
+    }));
+  }
+
+  bool _hesapla(
+    String uid,
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
+    final prefs = _prefs;
+    for (final doc in docs) {
+      final data = doc.data();
+      if (SosyalServis.sohbetGizliMi(
+        uid: uid,
+        chat: data,
+        localHiddenAtMs: prefs?.getInt("dm_hidden_chat_${uid}_${doc.id}"),
+      )) {
+        continue;
+      }
+      if (SosyalServis.sohbetOkunmamisMi(
+        uid: uid,
+        chat: data,
+        localReadAtMs: prefs?.getInt("dm_last_read_${uid}_${doc.id}"),
+      )) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  @override
+  void dispose() {
+    _abonelik?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder(_okunmamis);
 }

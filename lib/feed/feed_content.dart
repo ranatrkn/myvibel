@@ -69,6 +69,7 @@ class FeedPageContentState extends State<FeedPageContent>
   bool _takipHazir = false; // Takip listesi yüklendi mi
   bool _engellerHazir = false; // Engel listeleri yüklendi mi
   bool _kendiPostlarYuklendi = false; // Kendi postları eklendi mi
+  bool _takipIlkPartiYuklendi = false; // Takip edilenlerden ilk parti geldi mi
   final Map<String, DocumentSnapshot<Map<String, dynamic>>> _takipChunkImlec =
       {}; // Takip feed whereIn imleçleri
   String? _yuklemeHatasi; // Hata mesajı
@@ -380,6 +381,7 @@ class FeedPageContentState extends State<FeedPageContent>
       _yukleniyorDahaFazla = false;
       _dahaFazlaVar = true;
       _kendiPostlarYuklendi = false;
+      _takipIlkPartiYuklendi = false;
       _takipChunkImlec.clear();
       _yuklemeHatasi = null;
       _kesfetBosPartiSayaci = 0;
@@ -442,7 +444,14 @@ class FeedPageContentState extends State<FeedPageContent>
     var tazelik = 0.0;
     final createdAt = post["createdAt"];
     if (createdAt is Timestamp) {
-      final saat = DateTime.now().difference(createdAt.toDate()).inHours;
+      final fark = DateTime.now().difference(createdAt.toDate());
+      final benimUid = FirebaseAuth.instance.currentUser?.uid;
+      if (benimUid != null &&
+          post["userId"]?.toString() == benimUid &&
+          fark.inMinutes < 30) {
+        return 100000 - fark.inSeconds.toDouble();
+      }
+      final saat = fark.inHours;
       if (saat <= 6) {
         tazelik = 40;
       } else if (saat <= 24) {
@@ -781,13 +790,17 @@ class FeedPageContentState extends State<FeedPageContent>
       _bekleyenPostlariSirala();
     }
 
-    // Kuyruk dolana kadar parti yükle
-    while (_bekleyenPostlar.length < _sayfaBoyutu && _dahaFazlaVar) {
+    // Kuyruk dolana kadar parti yükle; kendi postları kuyruğu doldursa da
+    // takip edilenlerin ilk partisi sıralamaya girmeli.
+    while ((_bekleyenPostlar.length < _sayfaBoyutu ||
+            (_aktifSekme == FeedSekmesi.takip && !_takipIlkPartiYuklendi)) &&
+        _dahaFazlaVar) {
       final oncekiSayi = _bekleyenPostlar.length;
       if (_aktifSekme == FeedSekmesi.takip) {
         late final ({int eklenen, bool dahaFazlaPostVar}) sonuc;
         try {
           sonuc = await _takipPostPartisiYukle(user.uid, gosterilenIdler);
+          _takipIlkPartiYuklendi = true;
         } catch (e) {
           debugPrint('takip post partisi failed: $e');
           _dahaFazlaVar = false;

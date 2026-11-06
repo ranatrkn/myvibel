@@ -1,9 +1,33 @@
 // Özelleştirilmiş snackbar mesajları.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:myvibel/app_theme.dart';
+import 'package:myvibel/error_messages.dart';
+import 'package:myvibel/widgets/web_shell.dart';
 
 // Snackbar mesaj türleri
 enum VibeMesajTipi { hata, uyari, bilgi, basari }
+
+// Başarı mesajını hemen gösterir, işlemi arka planda yürütür; hata olursa
+// mesajı hata ile değiştirir. Çağıran widget bu arada kapanmış olabilir.
+void vibeIyimserIslem(
+  BuildContext context, {
+  required Future<void> Function() islem,
+  required String basariMesaji,
+  required String hataMesaji,
+}) {
+  final messengerContext = ScaffoldMessenger.of(context).context;
+  vibeSnackbarGoster(context, basariMesaji, tip: VibeMesajTipi.basari);
+  unawaited(islem().catchError((Object e) {
+    if (!messengerContext.mounted) return;
+    ScaffoldMessenger.of(messengerContext).hideCurrentSnackBar();
+    vibeSnackbarGoster(
+      messengerContext,
+      internetAwareErrorMessage(error: e, fallback: hataMesaji),
+    );
+  }));
+}
 
 // Tipe göre stillendirilmiş snackbar gösterir
 void vibeSnackbarGoster(
@@ -52,12 +76,28 @@ void vibeSnackbarGoster(
       break;
   }
 
+  // Masaüstünde kök Scaffold'un altında durur; iç sayfaların alt menülerini örtmesin
+  // ve yan paneller yüzünden kaymasın diye mesajı çağıran sayfanın ortasına hizalanır.
+  EdgeInsets margin = const EdgeInsets.fromLTRB(16, 0, 16, 16);
+  if (webMasaustuMu(context)) {
+    const genislik = 440.0;
+    final ekran = MediaQuery.sizeOf(context).width;
+    var merkez = ekran / 2;
+    final kutu = context.findRenderObject();
+    if (kutu is RenderBox && kutu.attached && kutu.hasSize) {
+      merkez = kutu.localToGlobal(kutu.size.center(Offset.zero)).dx;
+    }
+    final sol = (merkez - genislik / 2)
+        .clamp(16.0, (ekran - genislik - 16).clamp(16.0, double.infinity));
+    margin = EdgeInsets.fromLTRB(sol, 0, (ekran - sol - genislik).clamp(16.0, double.infinity), 96);
+  }
+
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
       behavior: SnackBarBehavior.floating,
       backgroundColor: Colors.transparent,
       elevation: 0,
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      margin: margin,
       content: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(

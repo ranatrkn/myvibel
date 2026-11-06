@@ -8,7 +8,9 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:myvibel/app_theme.dart';
 import 'package:myvibel/widgets/vibe_yukleniyor.dart';
+import 'package:myvibel/destek_servis.dart';
 import 'package:myvibel/error_messages.dart';
+import 'package:myvibel/legal_pages.dart';
 import 'package:myvibel/maestro_semantics.dart';
 import 'package:myvibel/messages_page.dart';
 import 'package:myvibel/sosyal/sosyal_core.dart';
@@ -226,6 +228,10 @@ class NotificationsPageState extends State<NotificationsPage>
         return " senden bahsetti";
       case "maskot_yemek":
         return " Vibel'ine yemek verdi";
+      case "destek":
+        return (data["metin"] ?? "").toString().trim().isNotEmpty
+            ? " destek talebini yanıtladı"
+            : " destek talebini çözüldü olarak kapattı";
       default:
         final metin = (data["metin"] ?? "").toString();
         return metin.isNotEmpty ? " $metin" : "";
@@ -290,6 +296,8 @@ class NotificationsPageState extends State<NotificationsPage>
         return VibeIkon.bahset;
       case "maskot_yemek":
         return VibeIkon.yemek;
+      case "destek":
+        return Icons.support_agent_outlined;
       default:
         return VibeIkon.bildirim;
     }
@@ -660,7 +668,22 @@ class NotificationsPageState extends State<NotificationsPage>
                 Expanded(
                   child: InkWell(
                     borderRadius: BorderRadius.circular(14),
-                    onTap: secimModu ? () => onSecimDegisti(!secili) : null,
+                    onTap: secimModu
+                        ? () => onSecimDegisti(!secili)
+                        : tip == "destek"
+                        ? () => _destegeGit(uid: user.uid, bildirimId: doc.id)
+                        : webMasaustuMu(context) &&
+                                postId.isNotEmpty &&
+                                _gonderiOnizlemeTipi(tip)
+                            ? () => _gonderiDetayinaGit(
+                                  postId: postId,
+                                  currentUserId: user.uid,
+                                  uid: user.uid,
+                                  bildirimId: doc.id,
+                                  yorumlariAc: tip == "comment" ||
+                                      tip == "comment_reply",
+                                )
+                            : null,
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(8, 8, 10, 8),
                       child: Row(
@@ -681,7 +704,10 @@ class NotificationsPageState extends State<NotificationsPage>
                               kalin: !okundu,
                               yaziRengi: theme.colorScheme.onSurface,
                               adRengi: theme.colorScheme.primary,
-                              onAd: secimModu || gonderenUid.isEmpty
+                              kullaniciAdiMi: tip != "destek",
+                              onAd: secimModu ||
+                                      gonderenUid.isEmpty ||
+                                      tip == "destek"
                                   ? null
                                   : () => _profilAc(
                                         gonderenUid: gonderenUid,
@@ -696,7 +722,11 @@ class NotificationsPageState extends State<NotificationsPage>
                   ),
                 ),
                 if (!secimModu &&
-                    (tip == "like" || tip == "comment" || tip == "mention"))
+                    (tip == "like" ||
+                        tip == "comment" ||
+                        tip == "comment_reply" ||
+                        tip == "mention" ||
+                        tip == "destek"))
                   IconButton(
                     icon: Icon(
                       Icons.delete_outline,
@@ -713,6 +743,8 @@ class NotificationsPageState extends State<NotificationsPage>
             borderRadius: BorderRadius.circular(16),
             onTap: secimModu
                 ? () => onSecimDegisti(!secili)
+                : tip == "destek"
+                ? () => _destegeGit(uid: user.uid, bildirimId: doc.id)
                 : tip == "mention"
                     ? () {
                         if (postId.isNotEmpty) {
@@ -745,6 +777,7 @@ class NotificationsPageState extends State<NotificationsPage>
                               currentUserId: user.uid,
                               uid: user.uid,
                               bildirimId: doc.id,
+                              yorumlariAc: tip != "like",
                             )
                         : tip == "message"
                             ? () {
@@ -790,6 +823,46 @@ class NotificationsPageState extends State<NotificationsPage>
                         ),
                       ),
                     ),
+                  if (tip == "destek") ...[
+                    if ((data["metin"] ?? "").toString().trim().isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2, bottom: 2),
+                        child: Text(
+                          '"${(data["metin"] ?? "").toString().trim()}"',
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: vibe.mutedText,
+                            fontSize: 13,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ),
+                    if ((data["konu"] ?? "").toString().isNotEmpty)
+                      Container(
+                        width: double.infinity,
+                        margin: const EdgeInsets.only(top: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: vibe.inputFill,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: vibe.cardBorder),
+                        ),
+                        child: Text(
+                          'Talep: ${data["konu"]}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: theme.colorScheme.onSurface,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                  ],
                   if (gonderiOnizleme.isNotEmpty && _gonderiOnizlemeTipi(tip))
                     Padding(
                       padding: const EdgeInsets.only(top: 4),
@@ -805,6 +878,8 @@ class NotificationsPageState extends State<NotificationsPage>
                                     currentUserId: user.uid,
                                     uid: user.uid,
                                     bildirimId: doc.id,
+                                    yorumlariAc: tip == "comment" ||
+                                        tip == "comment_reply",
                                   ),
                           child: Container(
                             width: double.infinity,
@@ -875,6 +950,8 @@ class NotificationsPageState extends State<NotificationsPage>
     final bahsetmeBildirimleri = filtreli
         .where((d) => _bahsetmeBildirimiMi((d.data()["tip"] ?? "").toString()))
         .toList();
+    final destekBildirimleri =
+        filtreli.where((d) => d.data()["tip"] == "destek").toList();
 
     final bolumler = <({
       String kategori,
@@ -882,6 +959,12 @@ class NotificationsPageState extends State<NotificationsPage>
       String aciklama,
       List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
     })>[
+      (
+        kategori: 'destek',
+        baslik: "Destek",
+        aciklama: "Destek taleplerine ${DestekServis.bildirimGonderenAdi} yanıtları",
+        docs: destekBildirimleri,
+      ),
       (
         kategori: 'gonderi',
         baslik: "Gönderi",
@@ -989,6 +1072,7 @@ class NotificationsPageState extends State<NotificationsPage>
     required String currentUserId,
     required String uid,
     required String bildirimId,
+    bool yorumlariAc = false,
   }) async {
     if (postId.isEmpty) {
       _mesajGoster("Bu bildirim için gönderi bulunamadı.");
@@ -1000,6 +1084,7 @@ class NotificationsPageState extends State<NotificationsPage>
       context,
       postId: postId,
       currentUserId: currentUserId,
+      yorumlariAc: yorumlariAc && webMasaustuMu(context),
     );
   }
 
@@ -1061,6 +1146,14 @@ class NotificationsPageState extends State<NotificationsPage>
   }
 
   // Kullanıcı profiline git
+  void _destegeGit({required String uid, required String bildirimId}) {
+    unawaited(_bildirimiOkunduIsaretle(uid, bildirimId));
+    tekSeferPush(
+      context,
+      MaterialPageRoute(builder: (_) => const ContactPage()),
+    );
+  }
+
   Future<void> _profilAc({
     required String gonderenUid,
     required String uid,
@@ -1113,6 +1206,7 @@ class NotificationsPageState extends State<NotificationsPage>
           final data = d.data();
           final tip = (data["tip"] ?? "").toString();
           if (tip == "message") return false;
+          if (tip == "destek") return true;
           final gonderenUid = (data["gonderenUid"] ?? "").toString();
           if (_silinenGonderenler.contains(gonderenUid)) {
             return false;
@@ -1392,6 +1486,7 @@ class _BildirimBaslik extends StatelessWidget {
     required this.yaziRengi,
     required this.adRengi,
     required this.onAd,
+    this.kullaniciAdiMi = true,
   });
 
   final String ad;
@@ -1400,6 +1495,7 @@ class _BildirimBaslik extends StatelessWidget {
   final Color yaziRengi;
   final Color adRengi;
   final VoidCallback? onAd;
+  final bool kullaniciAdiMi;
 
   @override
   Widget build(BuildContext context) {
@@ -1423,7 +1519,7 @@ class _BildirimBaslik extends StatelessWidget {
             child: GestureDetector(
               onTap: onAd,
               behavior: HitTestBehavior.opaque,
-              child: Text('@$ad', style: adStili),
+              child: Text(kullaniciAdiMi ? '@$ad' : ad, style: adStili),
             ),
           ),
           TextSpan(text: ek),

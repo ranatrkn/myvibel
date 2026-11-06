@@ -14,6 +14,7 @@ import 'package:myvibel/messages_page.dart';
 import 'package:myvibel/maestro_semantics.dart';
 import 'package:myvibel/puan_animasyon.dart';
 import 'package:myvibel/sosyal/lider_tac_servis.dart';
+import 'package:myvibel/sosyal/takip_sayac_onbellek.dart';
 import 'package:myvibel/sosyal_servis.dart';
 import 'package:myvibel/etiket_navigasyon.dart';
 import 'package:myvibel/yas_hesap_kontrol.dart';
@@ -144,7 +145,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
   }
 
   // Takip et / takipten çık
-  Future<void> _takibiDegistir() async {
+  Future<void> _takibiDegistir({bool hedefGizli = false}) async {
     if (_engelledim || _beniEngelledi) {
       vibeSnackbarGoster(
         context,
@@ -169,11 +170,24 @@ class _UserProfilePageState extends State<UserProfilePage> {
       }
     }
 
-    setState(() => _takipIslemiSuruyor = true);
+    final oncekiDurum = _takipDurumu;
+    setState(() {
+      _takipIslemiSuruyor = true;
+      _takipDurumu = oncekiDurum == TakipDurumu.takipEtmiyor
+          ? (hedefGizli
+              ? TakipDurumu.istekGonderildi
+              : TakipDurumu.takipEdiliyor)
+          : TakipDurumu.takipEtmiyor;
+    });
 
     final mesaj =
-        await SosyalServis.takipButonunaBas(widget.userId, _takipDurumu);
-    final yeniDurum = await SosyalServis.takipDurumuGetir(widget.userId);
+        await SosyalServis.takipButonunaBas(widget.userId, oncekiDurum);
+    TakipDurumu yeniDurum;
+    try {
+      yeniDurum = await SosyalServis.takipDurumuGetir(widget.userId);
+    } catch (_) {
+      yeniDurum = oncekiDurum;
+    }
 
     if (!mounted) return;
 
@@ -339,32 +353,18 @@ class _UserProfilePageState extends State<UserProfilePage> {
         );
       },
     );
-    if (onay != true) return;
-
-    // hata yakalamalı blok
-    try {
-      await SosyalServis.kullaniciSikayetEt(
+    if (onay != true || !mounted) return;
+    final aciklama = aciklamaController.text;
+    vibeIyimserIslem(
+      context,
+      islem: () => SosyalServis.kullaniciSikayetEt(
         hedefUid: widget.userId,
         sebep: sebep,
-        aciklama: aciklamaController.text,
-      );
-      if (!mounted) return;
-      vibeSnackbarGoster(
-        context,
-        "Şikayet alındı. Teşekkür ederiz.",
-        tip: VibeMesajTipi.basari,
-      );
-      // hata yakala
-    } catch (e) {
-      if (!mounted) return;
-      vibeSnackbarGoster(
-        context,
-        internetAwareErrorMessage(
-          error: e,
-          fallback: "Şikayet gönderilemedi.",
-        ),
-      );
-    }
+        aciklama: aciklama,
+      ),
+      basariMesaji: "Şikayet alındı. Teşekkür ederiz.",
+      hataMesaji: "Şikayet gönderilemedi.",
+    );
   }
 
   // Şikayet sebebi seçim diyaloğu
@@ -372,15 +372,18 @@ class _UserProfilePageState extends State<UserProfilePage> {
     String? secim;
     await showDialog<void>(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return SimpleDialog(
           title: const Text("Şikayet Sebebi"),
           children: [
-            _sikayetSecenek("Spam", (v) => secim = v),
-            _sikayetSecenek("Hakaret/Nefret", (v) => secim = v),
-            _sikayetSecenek("Uygunsuz İçerik", (v) => secim = v),
-            _sikayetSecenek("Sahte Hesap", (v) => secim = v),
-            _sikayetSecenek("Diğer", (v) => secim = v),
+            for (final metin in const [
+              "Spam",
+              "Hakaret/Nefret",
+              "Uygunsuz İçerik",
+              "Sahte Hesap",
+              "Diğer",
+            ])
+              _sikayetSecenek(dialogContext, metin, (v) => secim = v),
           ],
         );
       },
@@ -389,11 +392,15 @@ class _UserProfilePageState extends State<UserProfilePage> {
   }
 
   // Tek şikayet sebebi satırı
-  Widget _sikayetSecenek(String metin, ValueChanged<String> sec) {
+  Widget _sikayetSecenek(
+    BuildContext dialogContext,
+    String metin,
+    ValueChanged<String> sec,
+  ) {
     return SimpleDialogOption(
       onPressed: () {
         sec(metin);
-        Navigator.pop(context);
+        Navigator.pop(dialogContext);
       },
       child: Text(metin),
     );
@@ -689,9 +696,9 @@ class _UserProfilePageState extends State<UserProfilePage> {
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: _takipYukleniyor || _takipIslemiSuruyor
+                      onPressed: _takipYukleniyor
                           ? null
-                          : _takibiDegistir,
+                          : () => _takibiDegistir(hedefGizli: hesapGizli),
                       style: ElevatedButton.styleFrom(
                         backgroundColor:
                             _takipDurumu == TakipDurumu.takipEdiliyor
@@ -943,10 +950,13 @@ class _UserProfilePageState extends State<UserProfilePage> {
     final theme = Theme.of(context);
     final vibe = context.vibe;
 
-    return FutureBuilder<AggregateQuerySnapshot>(
-      future: koleksiyon.count().get(),
+    final uid = koleksiyon.parent!.id;
+    final takipci = koleksiyon.id == 'followers';
+    return FutureBuilder<int>(
+      future: TakipSayacOnbellek.tazele(uid, takipci: takipci),
       builder: (context, snap) {
-        final sayi = snap.data?.count ?? 0;
+        final sayi =
+            snap.data ?? TakipSayacOnbellek.oku(uid, takipci: takipci) ?? '–';
         final kutu = Container(
           padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
@@ -1361,6 +1371,63 @@ class _UserProfilePostCardState extends State<_UserProfilePostCard> {
 
   Future<void> begeniyiDegistir() => _begeni.degistir(context);
 
+  // Gönderiyi şikayet et
+  Future<void> _postuSikayetEt() async {
+    String? sebep;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => SimpleDialog(
+        title: const Text("Şikayet Sebebi"),
+        children: [
+          for (final metin in const [
+            "Spam",
+            "Hakaret/Nefret",
+            "Uygunsuz İçerik",
+            "Diğer",
+          ])
+            SimpleDialogOption(
+              onPressed: () {
+                sebep = metin;
+                Navigator.pop(dialogContext);
+              },
+              child: Text(metin),
+            ),
+        ],
+      ),
+    );
+    final secilen = sebep;
+    if (secilen == null || !mounted) return;
+    final onay = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text("Gönderiyi Şikayet Et"),
+        content:
+            Text("Bu gönderiyi '$secilen' sebebiyle şikayet etmek istiyor musun?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text("Vazgeç"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text("Şikayet Et"),
+          ),
+        ],
+      ),
+    );
+    if (onay != true || !mounted) return;
+    vibeIyimserIslem(
+      context,
+      islem: () => SosyalServis.gonderiSikayetEt(
+        postId: widget.postId,
+        postOwnerId: widget.postOwnerId,
+        sebep: secilen,
+      ),
+      basariMesaji: "Gönderi şikayet edildi.",
+      hataMesaji: "Şikayet gönderilemedi.",
+    );
+  }
+
   // Yorum panelini aç
   void yorumPaneliniAc() {
     if (widget.currentUserId.isEmpty) return;
@@ -1436,6 +1503,22 @@ class _UserProfilePostCardState extends State<_UserProfilePostCard> {
               _tarihSaatYaz(widget.createdAt),
               style: TextStyle(color: vibe.faintText, fontSize: 12),
             ),
+            trailing: widget.currentUserId.isEmpty ||
+                    widget.currentUserId == widget.postOwnerId
+                ? null
+                : PopupMenuButton<String>(
+                    padding: const EdgeInsets.all(8),
+                    icon: Icon(VibeIkon.menu, color: vibe.mutedText),
+                    onSelected: (value) {
+                      if (value == "report_post") _postuSikayetEt();
+                    },
+                    itemBuilder: (context) => const [
+                      PopupMenuItem(
+                        value: "report_post",
+                        child: Text("Gönderiyi Şikayet Et"),
+                      ),
+                    ],
+                  ),
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),

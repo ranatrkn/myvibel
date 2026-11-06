@@ -23,6 +23,7 @@ import 'package:myvibel/maestro_semantics.dart';
 import 'package:myvibel/sosyal/lider_tac_servis.dart';
 import 'package:myvibel/sosyal_oauth.dart';
 import 'package:myvibel/sosyal/sosyal_core.dart';
+import 'package:myvibel/sosyal/takip_sayac_onbellek.dart';
 import 'package:myvibel/sosyal_servis.dart';
 import 'package:myvibel/yas_hesap_kontrol.dart';
 import 'package:myvibel/ebeveyn_kontrol.dart';
@@ -1622,15 +1623,11 @@ class ProfilePageState extends State<ProfilePage> {
           Row(
             children: [
               Expanded(
-                child: FutureBuilder<AggregateQuerySnapshot>(
-                  future: FirebaseFirestore.instance
-                      .collection("users")
-                      .doc(userId)
-                      .collection("followers")
-                      .count()
-                      .get(),
+                child: FutureBuilder<int>(
+                  future: TakipSayacOnbellek.tazele(userId, takipci: true),
                   builder: (context, countSnap) {
-                    final sayi = _sayacDegeri("takipci_$userId", countSnap);
+                    final sayi = countSnap.data ??
+                        TakipSayacOnbellek.oku(userId, takipci: true);
                     return _miniSayacKutusu(
                       "Takipçi",
                       sayi,
@@ -1653,15 +1650,11 @@ class ProfilePageState extends State<ProfilePage> {
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: FutureBuilder<AggregateQuerySnapshot>(
-                  future: FirebaseFirestore.instance
-                      .collection("users")
-                      .doc(userId)
-                      .collection("following")
-                      .count()
-                      .get(),
+                child: FutureBuilder<int>(
+                  future: TakipSayacOnbellek.tazele(userId, takipci: false),
                   builder: (context, countSnap) {
-                    final sayi = _sayacDegeri("takip_$userId", countSnap);
+                    final sayi = countSnap.data ??
+                        TakipSayacOnbellek.oku(userId, takipci: false);
                     return _miniSayacKutusu(
                       "Takip Edilen",
                       sayi,
@@ -1731,17 +1724,6 @@ class ProfilePageState extends State<ProfilePage> {
 
   // Mini sayaç kutusu
   // Profil açılışında sayaçlar «0» diye yanıp sönmesin: son bilinen değer.
-  static final Map<String, int> _sayacOnbellek = {};
-
-  int? _sayacDegeri(String anahtar, AsyncSnapshot<AggregateQuerySnapshot> snap) {
-    final sayi = snap.data?.count;
-    if (sayi != null) {
-      _sayacOnbellek[anahtar] = sayi;
-      return sayi;
-    }
-    return _sayacOnbellek[anahtar];
-  }
-
   Widget _miniSayacKutusu(
     String baslik,
     int? sayi, {
@@ -2769,13 +2751,16 @@ class _HesapSilDialogState extends State<_HesapSilDialog> {
   bool get _sifreGerekli {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return false;
-    if (_sosyalHesabi) return _sosyalOnaylandi;
     return auth_eposta.epostaSifreKullanicisiMi(user);
   }
 
+  /// Şifre bağlı hesaplarda yeniden doğrulama şifreyle yapılır; sosyal onay
+  /// yalnızca şifresi olmayan Google/Apple hesaplarında istenir.
   bool get _sosyalHesabi {
     final user = FirebaseAuth.instance.currentUser;
-    return user != null && SosyalOAuth.oauthMu(user);
+    return user != null &&
+        SosyalOAuth.oauthMu(user) &&
+        !auth_eposta.epostaSifreKullanicisiMi(user);
   }
 
   bool get _appleHesabi {
@@ -2864,7 +2849,10 @@ class _HesapSilDialogState extends State<_HesapSilDialog> {
     } catch (e) {
       if (!mounted) return;
       if (e is FirebaseAuthException &&
-          (e.code == 'canceled' || e.code == 'sign_in_canceled')) {
+          (e.code == 'canceled' ||
+              e.code == 'sign_in_canceled' ||
+              e.code == 'popup-closed-by-user' ||
+              e.code == 'cancelled-popup-request')) {
         setState(() => _siliniyor = false);
         return;
       }
@@ -2985,9 +2973,9 @@ class _HesapSilDialogState extends State<_HesapSilDialog> {
                 ] else ...[
                   Text(
                     googleOnayi
-                        ? 'Bu işlem geri alınamaz. Önce $_sosyalSaglayiciAdi hesabınla onayla, sonra şifreni girmen istenecek.'
+                        ? 'Bu işlem geri alınamaz. Silmek için önce $_sosyalSaglayiciAdi hesabınla onayla.'
                         : _sosyalHesabi
-                            ? '$_sosyalSaglayiciAdi onayın alındı. Silmek için şifreni gir.'
+                            ? '$_sosyalSaglayiciAdi onayın alındı. Silmeyi tamamlamak için Hesabı Sil\'e dokun.'
                             : 'Bu işlem geri alınamaz. Gönderilerin, yorumların, beğenilerin, mesajların, bildirimlerin ve profil bilgilerin kalıcı olarak silinir.',
                     style: TextStyle(color: vibe.mutedText, fontSize: 13),
                   ),
@@ -3149,10 +3137,13 @@ class _SifreDegistirDialogState extends State<_SifreDegistirDialog> {
       if (!mounted) return;
       setState(() {
         _kaydediliyor = false;
-        _hataMesaji = internetAwareErrorMessage(
-          error: e,
-          fallback: sifreDegistirHataMesaji(e),
-        );
+        _hataMesaji =
+            e is FirebaseAuthException && e.code != 'network-request-failed'
+            ? sifreDegistirHataMesaji(e)
+            : internetAwareErrorMessage(
+                error: e,
+                fallback: sifreDegistirHataMesaji(e),
+              );
       });
     }
   }
@@ -3294,12 +3285,17 @@ class _MascotIsimDialogState extends State<_MascotIsimDialog> {
   Widget build(BuildContext context) {
     final vibe = context.vibe;
     final onSurface = Theme.of(context).colorScheme.onSurface;
+    final masaustu = webMasaustuMu(context);
 
     return AlertDialog(
       backgroundColor: vibe.dialogBackground,
       title: Text("Vibel İsmi", style: TextStyle(color: onSurface)),
       content: TextField(
         controller: controller,
+        autofocus: masaustu,
+        onSubmitted: masaustu
+            ? (deger) => Navigator.pop(context, deger.trim())
+            : null,
         maxLength: 20,
         style: TextStyle(color: onSurface),
         decoration: InputDecoration(

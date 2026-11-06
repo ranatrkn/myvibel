@@ -178,9 +178,7 @@ class GoogleGirisServis {
       try {
         await user.reauthenticateWithPopup(_webGoogleProvider());
       } on FirebaseAuthException catch (e) {
-        if (e.code == 'popup-blocked' ||
-            e.code == 'popup-closed-by-user' ||
-            e.code == 'cancelled-popup-request') {
+        if (e.code == 'popup-blocked') {
           await user.reauthenticateWithRedirect(_webGoogleProvider());
           return;
         }
@@ -194,7 +192,7 @@ class GoogleGirisServis {
 
   static Future<void> googleOturumunuKapat() async {
     try {
-      await _google.signOut();
+      await _google.signOut().timeout(const Duration(seconds: 2));
     } catch (e) {
       debugPrint('Google signOut: $e');
     }

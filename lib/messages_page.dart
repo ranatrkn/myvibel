@@ -4,7 +4,9 @@ import 'dart:async';
 import 'package:myvibel/tek_sefer_navigasyon.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:myvibel/app_theme.dart';
 import 'package:myvibel/widgets/vibe_yukleniyor.dart';
@@ -1234,11 +1236,15 @@ class _ChatPageState extends State<ChatPage> {
   String? _akisChatId;
   late Stream<DocumentSnapshot<Map<String, dynamic>>> _sohbetDocAkisi;
   late Stream<QuerySnapshot<Map<String, dynamic>>> _mesajAkisi;
+  final List<({String id, String metin})> _bekleyenMesajlar = [];
+  Set<String> _gelenMesajIdleri = const {};
 
   // build her çalıştığında yeniden abone olunmasın (mesajlar boş flaş yapmasın)
   void _akislariHazirla() {
     if (_akisChatId == widget.chatId) return;
     _akisChatId = widget.chatId;
+    _bekleyenMesajlar.clear();
+    _gelenMesajIdleri = const {};
     _sohbetDocAkisi = FirebaseFirestore.instance
         .collection("chats")
         .doc(widget.chatId)
@@ -1401,14 +1407,39 @@ class _ChatPageState extends State<ChatPage> {
     if (metin.trim().isEmpty) return;
     _mesajController.clear();
 
+    final bekleyen = (
+      id: FirebaseFirestore.instance
+          .collection("chats")
+          .doc(widget.chatId)
+          .collection("messages")
+          .doc()
+          .id,
+      metin: metin.trim(),
+    );
+    setState(() {
+      _bekleyenMesajlar
+        ..removeWhere((b) => _gelenMesajIdleri.contains(b.id))
+        ..add(bekleyen);
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scrollController.hasClients) return;
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+      );
+    });
+
     try {
       await SosyalServis.mesajGonder(
         chatId: widget.chatId,
         hedefUid: widget.otherUid,
         metin: metin,
+        messageId: bekleyen.id,
       );
     } catch (e) {
       if (!mounted) return;
+      setState(() => _bekleyenMesajlar.remove(bekleyen));
       if (_mesajController.text.isEmpty) {
         _mesajController.text = metin;
         _mesajController.selection =
@@ -1494,6 +1525,58 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
+  Widget _bekleyenMesajBalonu(String metin) {
+    final vibe = context.vibe;
+    return Align(
+      alignment: Alignment.centerRight,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.75,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Opacity(
+              opacity: 0.7,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: vibe.primaryButton,
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(14),
+                    topRight: Radius.circular(14),
+                    bottomLeft: Radius.circular(14),
+                    bottomRight: Radius.circular(4),
+                  ),
+                  border: Border.all(color: vibe.cardBorder),
+                ),
+                child: Text(
+                  metin,
+                  softWrap: true,
+                  style: const TextStyle(color: Colors.white),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: 4, bottom: 8),
+              child: Text(
+                "Gönderiliyor",
+                style: TextStyle(
+                  color: vibe.faintText,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // Arayüzü oluştur
   @override
   Widget build(BuildContext context) {
@@ -1559,6 +1642,10 @@ class _ChatPageState extends State<ChatPage> {
                   builder: (context, snapshot) {
                     final docs =
                         (snapshot.data?.docs ?? []).reversed.toList();
+                    _gelenMesajIdleri = {for (final d in docs) d.id};
+                    final bekleyenler = _bekleyenMesajlar
+                        .where((b) => !_gelenMesajIdleri.contains(b.id))
+                        .toList();
                     _yeniMesajlariOkunduIsaretle(docs);
                     final sonBendenMesaj = docs
                         .where((d) => (d.data()["senderUid"] ?? "") == myUid)
@@ -1573,7 +1660,7 @@ class _ChatPageState extends State<ChatPage> {
                       bendenYeniMesaj: bendenYeniMesaj,
                     );
 
-                    if (docs.isEmpty && snapshot.hasData) {
+                    if (docs.isEmpty && bekleyenler.isEmpty && snapshot.hasData) {
                       return Center(
                         child: Padding(
                           padding: const EdgeInsets.all(24),
@@ -1589,8 +1676,13 @@ class _ChatPageState extends State<ChatPage> {
                     return ListView.builder(
                   controller: _scrollController,
                   padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-                  itemCount: docs.length,
+                  itemCount: docs.length + bekleyenler.length,
                   itemBuilder: (context, index) {
+                    if (index >= docs.length) {
+                      return _bekleyenMesajBalonu(
+                        bekleyenler[index - docs.length].metin,
+                      );
+                    }
                     final m = docs[index].data();
                     final benden = (m["senderUid"] ?? "") == myUid;
                     final mesajId = docs[index].id;
@@ -1684,8 +1776,17 @@ class _ChatPageState extends State<ChatPage> {
                               ? CrossAxisAlignment.end
                               : CrossAxisAlignment.start,
                           children: [
-                            GestureDetector(
+                            _TarayiciMenusuKapali(
+                              aktif: benden && !silinmis,
+                              child: GestureDetector(
                               onLongPress: benden
+                                  ? () => _mesajSilOnayiAc(
+                                        messageId: mesajId,
+                                        mevcutMetin:
+                                            (m["metin"] ?? "").toString(),
+                                      )
+                                  : null,
+                              onSecondaryTap: benden && !silinmis
                                   ? () => _mesajSilOnayiAc(
                                         messageId: mesajId,
                                         mevcutMetin:
@@ -1714,6 +1815,7 @@ class _ChatPageState extends State<ChatPage> {
                                 ),
                                 child: icerik,
                               ),
+                            ),
                             ),
                             Padding(
                               padding: const EdgeInsets.only(top: 4, bottom: 8),
@@ -1807,6 +1909,7 @@ class _ChatPageState extends State<ChatPage> {
                       controller: _mesajController,
                       haricUid: myUid,
                       maxLines: 2,
+                      enterIleGonder: _mesajGonder,
                       style: TextStyle(color: theme.colorScheme.onSurface),
                       decoration: InputDecoration(
                         hintText: "Mesaj yaz...",
@@ -1844,6 +1947,55 @@ class _ChatPageState extends State<ChatPage> {
           ),
         ],
       ),
+    );
+  }
+}
+
+// Web'de sağ tık kendi menümüzü açarken tarayıcı menüsü üstüne açılmasın.
+class _TarayiciMenusuKapali extends StatefulWidget {
+  const _TarayiciMenusuKapali({required this.aktif, required this.child});
+
+  final bool aktif;
+  final Widget child;
+
+  @override
+  State<_TarayiciMenusuKapali> createState() => _TarayiciMenusuKapaliState();
+}
+
+class _TarayiciMenusuKapaliState extends State<_TarayiciMenusuKapali> {
+  bool _kapali = false;
+
+  void _kapat() {
+    if (_kapali) return;
+    _kapali = true;
+    unawaited(BrowserContextMenu.disableContextMenu());
+  }
+
+  void _ac() {
+    if (!_kapali) return;
+    _kapali = false;
+    unawaited(BrowserContextMenu.enableContextMenu());
+  }
+
+  @override
+  void didUpdateWidget(covariant _TarayiciMenusuKapali oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!widget.aktif) _ac();
+  }
+
+  @override
+  void dispose() {
+    _ac();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!kIsWeb || !widget.aktif) return widget.child;
+    return MouseRegion(
+      onEnter: (_) => _kapat(),
+      onExit: (_) => _ac(),
+      child: widget.child,
     );
   }
 }

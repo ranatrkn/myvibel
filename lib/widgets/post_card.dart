@@ -43,6 +43,7 @@ class PostCard extends StatefulWidget {
   final VoidCallback? onKendiProfilineGit; // Kendi profiline geçiş callback
   final ValueChanged<bool>? onBegeniDegisti; // Beğeni durumu değişince
   final ValueChanged<AlintiGonderiBaglam>? onAlintiYap; // Alıntıla
+  final bool yorumlariAcikBaslat; // Bildirimden gelince yorum paneli
 
   const PostCard({
     super.key,
@@ -65,6 +66,7 @@ class PostCard extends StatefulWidget {
     this.onKendiProfilineGit,
     this.onBegeniDegisti,
     this.onAlintiYap,
+    this.yorumlariAcikBaslat = false,
   });
 
   @override
@@ -72,9 +74,35 @@ class PostCard extends StatefulWidget {
 }
 
 class _PostCardState extends State<PostCard> {
+  // Liste kartı ekrandan çıkınca yeniden kurulur ve feed'deki eski belge
+  // sayısını alır; yerel değişiklik, taban sayı aynı kaldıkça korunur.
+  static final Map<String, ({int taban, int deger})> _yerelYorumSayilari = {};
+
   bool gizleKart = false; // Engelleme sonrası kartı gizle
   late int yorumSayisi; // Güncel yorum sayısı
+  late int _yorumTabani;
   late PostBegeniDurumuYonetici _begeni;
+
+  void _yorumSayisiniBaslat() {
+    final yerel = _yerelYorumSayilari[widget.postId];
+    if (yerel != null && yerel.taban == widget.baslangicYorumSayisi) {
+      _yorumTabani = yerel.taban;
+      yorumSayisi = yerel.deger;
+    } else {
+      _yerelYorumSayilari.remove(widget.postId);
+      _yorumTabani = widget.baslangicYorumSayisi;
+      yorumSayisi = widget.baslangicYorumSayisi;
+    }
+  }
+
+  // Panel açıkken kart listeden atılmış olabilir; sayı yine haritaya yazılır.
+  void _yorumSayisiniDegistir(int fark) {
+    final yeni = yorumSayisi + fark;
+    yorumSayisi = yeni < 0 ? 0 : yeni;
+    _yerelYorumSayilari[widget.postId] =
+        (taban: _yorumTabani, deger: yorumSayisi);
+    if (mounted) setState(() {});
+  }
 
   void _begeniYoneticiOlustur() {
     _begeni = PostBegeniDurumuYonetici(
@@ -95,8 +123,13 @@ class _PostCardState extends State<PostCard> {
   @override
   void initState() {
     super.initState();
-    yorumSayisi = widget.baslangicYorumSayisi;
+    _yorumSayisiniBaslat();
     _begeniYoneticiOlustur();
+    if (widget.yorumlariAcikBaslat) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) yorumPaneliniAc();
+      });
+    }
   }
 
   @override
@@ -113,10 +146,9 @@ class _PostCardState extends State<PostCard> {
     if (oldWidget.baslangicBegeniSayisi != widget.baslangicBegeniSayisi) {
       _begeni.guncelle(yeniBaslangicBegeni: widget.baslangicBegeniSayisi);
     }
-    if (oldWidget.baslangicYorumSayisi != widget.baslangicYorumSayisi) {
-      setState(() {
-        yorumSayisi = widget.baslangicYorumSayisi;
-      });
+    if (oldWidget.postId != widget.postId ||
+        oldWidget.baslangicYorumSayisi != widget.baslangicYorumSayisi) {
+      setState(_yorumSayisiniBaslat);
     }
   }
 
@@ -161,18 +193,8 @@ class _PostCardState extends State<PostCard> {
           postId: widget.postId,
           postOwnerId: widget.postOwnerId,
           userId: widget.userId,
-          onYorumEklendi: () {
-            if (!mounted) return;
-            setState(() {
-              yorumSayisi += 1;
-            });
-          },
-          onYorumSilindi: () {
-            if (!mounted) return;
-            setState(() {
-              if (yorumSayisi > 0) yorumSayisi -= 1;
-            });
-          },
+          onYorumEklendi: () => _yorumSayisiniDegistir(1),
+          onYorumSilindi: () => _yorumSayisiniDegistir(-1),
         );
       },
     );
@@ -183,24 +205,31 @@ class _PostCardState extends State<PostCard> {
     String? secim;
     await showDialog<void>(
       context: context,
-      builder: (context) => SimpleDialog(
+      builder: (dialogContext) => SimpleDialog(
         title: const Text("Şikayet Sebebi"),
         children: [
-          _sikayetSecenek("Spam", (v) => secim = v),
-          _sikayetSecenek("Hakaret/Nefret", (v) => secim = v),
-          _sikayetSecenek("Uygunsuz İçerik", (v) => secim = v),
-          _sikayetSecenek("Diğer", (v) => secim = v),
+          for (final metin in const [
+            "Spam",
+            "Hakaret/Nefret",
+            "Uygunsuz İçerik",
+            "Diğer",
+          ])
+            _sikayetSecenek(dialogContext, metin, (v) => secim = v),
         ],
       ),
     );
     return secim;
   }
 
-  Widget _sikayetSecenek(String metin, ValueChanged<String> sec) {
+  Widget _sikayetSecenek(
+    BuildContext dialogContext,
+    String metin,
+    ValueChanged<String> sec,
+  ) {
     return SimpleDialogOption(
       onPressed: () {
         sec(metin);
-        Navigator.pop(context);
+        Navigator.pop(dialogContext);
       },
       child: Text(metin),
     );
@@ -241,29 +270,17 @@ class _PostCardState extends State<PostCard> {
       mesaj: "Bu gönderiyi '$sebep' sebebiyle şikayet etmek istiyor musun?",
       onayMetni: "Şikayet Et",
     );
-    if (!onay) return;
-    try {
-      await SosyalServis.gonderiSikayetEt(
+    if (!onay || !mounted) return;
+    vibeIyimserIslem(
+      context,
+      islem: () => SosyalServis.gonderiSikayetEt(
         postId: widget.postId,
         postOwnerId: widget.postOwnerId,
         sebep: sebep,
-      );
-      if (!mounted) return;
-      vibeSnackbarGoster(
-        context,
-        "Gönderi şikayet edildi.",
-        tip: VibeMesajTipi.basari,
-      );
-    } catch (e) {
-      if (!mounted) return;
-      vibeSnackbarGoster(
-        context,
-        internetAwareErrorMessage(
-          error: e,
-          fallback: "Şikayet gönderilemedi.",
-        ),
-      );
-    }
+      ),
+      basariMesaji: "Gönderi şikayet edildi.",
+      hataMesaji: "Şikayet gönderilemedi.",
+    );
   }
 
   // Gönderiyi alıntıla (yalnızca açık hesap gönderileri)

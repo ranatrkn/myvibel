@@ -9,6 +9,7 @@ import 'package:myvibel/error_messages.dart';
 import 'package:myvibel/haftalik_gorev_servis.dart';
 import 'package:myvibel/maestro_semantics.dart';
 import 'package:myvibel/maskot_servis.dart';
+import 'package:myvibel/reklam_servis.dart';
 import 'package:myvibel/vibe_snackbar.dart';
 import 'package:myvibel/widgets/mascot_ruh_hali_metni.dart';
 import 'package:myvibel/widgets/haftalik_gorev_karti.dart';
@@ -19,6 +20,8 @@ import 'package:myvibel/widgets/vibe_yukleniyor.dart';
 import 'package:myvibel/widgets/vil_harcama_uyarisi.dart';
 import 'package:myvibel/widgets/vil_rozeti.dart';
 import 'package:myvibel/widgets/vibe_gradient_scaffold.dart';
+import 'package:myvibel/widgets/web_shell.dart';
+import 'package:myvibel/yas_hesap_kontrol.dart';
 
 class MascotPage extends StatefulWidget {
   const MascotPage({super.key});
@@ -29,7 +32,44 @@ class MascotPage extends StatefulWidget {
 
 class _MascotPageState extends State<MascotPage> {
   bool _islemSuruyor = false;
+  bool _reklamIzleniyor = false;
   Map<String, dynamic>? _iyimserRobot;
+
+  Future<void> _reklamIzleVilKazan(String uid) async {
+    if (_reklamIzleniyor) return;
+    setState(() => _reklamIzleniyor = true);
+    try {
+      final kazandi = await OdulluReklamServis.goster();
+      if (!mounted) return;
+      if (!kazandi) {
+        vibeSnackbarGoster(context, 'Vil için reklamı sonuna kadar izlemelisin.');
+        return;
+      }
+      setState(() => _iyimserRobot = null);
+      vibeSnackbarGoster(context, '+${MascotServis.reklamVilOdulu} vil kazandın!');
+      unawaited(MascotServis.reklamVilEkle(uid).catchError((Object e) {
+        if (!mounted) return;
+        vibeSnackbarGoster(
+          context,
+          internetAwareErrorMessage(
+            error: e,
+            fallback: 'Vil şu an eklenemedi. Tekrar dene.',
+          ),
+        );
+      }));
+    } catch (e) {
+      if (!mounted) return;
+      vibeSnackbarGoster(
+        context,
+        internetAwareErrorMessage(
+          error: e,
+          fallback: 'Şu an izlenebilecek reklam yok. Biraz sonra tekrar dene.',
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _reklamIzleniyor = false);
+    }
+  }
 
   @override
   void initState() {
@@ -213,6 +253,10 @@ class _MascotPageState extends State<MascotPage> {
                       ),
                     ),
                   ),
+                  if (OdulluReklamServis.kullanilabilir &&
+                      (YasHesapKontrol.maybeOf(context)?.reklamGosterilir ??
+                          false))
+                    _reklamVilButonu(uid, MascotServis.reklamVilKalan(data)),
                 ],
                 if (MascotServis.toklukAktif(mascot.seviye))
                   MascotDurumBari(
@@ -274,6 +318,23 @@ class _MascotPageState extends State<MascotPage> {
                             }),
                   ),
                 ] else ...[
+                  if (webMasaustuMu(context) &&
+                      MascotServis.yemekSistemiAcik(mascot.seviye) &&
+                      (mascot.tokluk >= 100 ||
+                          mascot.vil < MascotServis.yemekVilMaliyeti))
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Text(
+                        mascot.tokluk >= 100
+                            ? '${mascot.isim} tok, biraz sonra tekrar besleyebilirsin.'
+                            : 'Yemek için yeterli vil yok. Paylaş, yorum yap, beğen; vil kazan.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: context.vibe.mutedText,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
                   if (MascotServis.yemekSistemiAcik(mascot.seviye))
                     _aksiyonButon(
                       label: 'Yemek',
@@ -363,6 +424,42 @@ class _MascotPageState extends State<MascotPage> {
     if (saat > 0) return '$saat sa $dakika dk';
     if (dakika > 0) return '$dakika dk';
     return '${sure.inSeconds.remainder(60)} sn';
+  }
+
+  Widget _reklamVilButonu(String uid, int kalan) {
+    unawaited(OdulluReklamServis.onYukle());
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: SizedBox(
+        width: double.infinity,
+        child: OutlinedButton.icon(
+          onPressed: _reklamIzleniyor || kalan <= 0
+              ? null
+              : () => _reklamIzleVilKazan(uid),
+          icon: _reklamIzleniyor
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.ondemand_video_outlined),
+          label: Text(
+            kalan > 0
+                ? 'Reklam izle, +${MascotServis.reklamVilOdulu} vil kazan '
+                    '($kalan/${MascotServis.reklamVilGunlukSinir})'
+                : 'Bugünlük reklam ödülü bitti',
+          ),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: VibeAppTheme.accent,
+            side: const BorderSide(color: VibeAppTheme.accent),
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _aksiyonButon({

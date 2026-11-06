@@ -222,9 +222,7 @@ class EngelServis {
     final raporId = "user_${current.uid}_$hedefUid";
     final raporRef = SosyalCore.db.collection("reports").doc(raporId);
     final onceki = await raporRef.get();
-    if (onceki.exists) {
-      throw "Bu kullanıcıyı zaten şikayet ettin.";
-    }
+    if (onceki.exists) return; // Şikayet zaten kayıtlı
 
     await raporRef.set({
       "type": "user",
@@ -254,16 +252,12 @@ class EngelServis {
     final raporId = "post_${current.uid}_$postId";
     final raporRef = SosyalCore.db.collection("reports").doc(raporId);
     final onceki = await raporRef.get();
-    if (onceki.exists) {
-      throw "Bu gönderiyi zaten şikayet ettin.";
-    }
+    if (onceki.exists) return; // Şikayet zaten kayıtlı
 
     final postRef = SosyalCore.db.collection("posts").doc(postId);
     await SosyalCore.db.runTransaction((tx) async {
       final oncekiRapor = await tx.get(raporRef);
-      if (oncekiRapor.exists) {
-        throw "Bu gönderiyi zaten şikayet ettin.";
-      }
+      if (oncekiRapor.exists) return;
 
       final snap = await tx.get(postRef);
       final mevcut = snap.data()?["sikayetSayisi"];
@@ -303,17 +297,13 @@ class EngelServis {
     final raporId = "comment_${current.uid}_${postId}_$yorumId";
     final raporRef = SosyalCore.db.collection("reports").doc(raporId);
     final onceki = await raporRef.get();
-    if (onceki.exists) {
-      throw "Bu yorumu zaten şikayet ettin.";
-    }
+    if (onceki.exists) return; // Şikayet zaten kayıtlı
 
     final yorumRef =
         SosyalCore.db.collection("posts").doc(postId).collection("comments").doc(yorumId);
     await SosyalCore.db.runTransaction((tx) async {
       final oncekiRapor = await tx.get(raporRef);
-      if (oncekiRapor.exists) {
-        throw "Bu yorumu zaten şikayet ettin.";
-      }
+      if (oncekiRapor.exists) return;
 
       final snap = await tx.get(yorumRef);
       final mevcut = snap.data()?["sikayetSayisi"];

@@ -62,6 +62,24 @@ while (Test-Path (Join-Path $appDir 'app\main.dart.js')) {
   Move-Item $tmp $appDir -Force
 }
 
+# Flutter asset adlari hash'siz (ikon fontu her derlemede yeniden kirpiliyor) ve
+# /app/assets/** bir yil immutable onbellekleniyor; her derleme yeni klasore gider.
+$assetsDir = Join-Path $appDir 'assets'
+if (Test-Path $assetsDir) {
+  $surum = Get-Date -Format 'yyyyMMddHHmmss'
+  $surumDir = Join-Path $appDir "v\$surum"
+  New-Item -ItemType Directory -Path $surumDir -Force | Out-Null
+  Move-Item $assetsDir (Join-Path $surumDir 'assets') -Force
+  $indexYolu = Join-Path $appDir 'index.html'
+  $html = [IO.File]::ReadAllText($indexYolu, [Text.Encoding]::UTF8)
+  if (-not $html.Contains("assetBase: '/app/'")) {
+    throw "app/index.html icinde assetBase: '/app/' bulunamadi."
+  }
+  $html = $html.Replace("assetBase: '/app/'", "assetBase: '/app/v/$surum/'")
+  [IO.File]::WriteAllText($indexYolu, $html, (New-Object Text.UTF8Encoding $false))
+  Write-Host "Asset surumu: /app/v/$surum/assets"
+}
+
 # Kok landing + yasal sayfalar + SEO
 Copy-Item (Join-Path $root 'hosting\public\root-index.html') (Join-Path $webRoot 'index.html') -Force
 Write-Host 'Kok landing: / (SEO) + CTA /app/'

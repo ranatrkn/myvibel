@@ -31,6 +31,7 @@ class _DestekTalepleriPanelPageState extends State<DestekTalepleriPanelPage> {
   String _durumFiltresi = 'pending';
   String _kategoriFiltresi = 'tumu';
   final Map<String, String> _yerelDurum = {};
+  final Map<String, String> _yerelYanit = {};
 
   late final Stream<QuerySnapshot<Map<String, dynamic>>> _talepAkisi =
       FirebaseFirestore.instance
@@ -49,6 +50,7 @@ class _DestekTalepleriPanelPageState extends State<DestekTalepleriPanelPage> {
   static const _kategoriIkonlari = <String, IconData>{
     'hesap': Icons.manage_accounts_outlined,
     'hata': Icons.bug_report_outlined,
+    'kvkk': Icons.gavel_outlined,
     'yas_itiraz': Icons.badge_outlined,
     'oneri': Icons.lightbulb_outline,
     'diger': Icons.help_outline,
@@ -111,30 +113,86 @@ class _DestekTalepleriPanelPageState extends State<DestekTalepleriPanelPage> {
     return yerel;
   }
 
+  String _yanitOku(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+    final sunucu = (doc.data()['modYaniti'] ?? '').toString();
+    final yerel = _yerelYanit[doc.id];
+    if (yerel == null) return sunucu;
+    if (yerel == sunucu) _yerelYanit.remove(doc.id);
+    return yerel;
+  }
+
   void _durumGuncelle(
     QueryDocumentSnapshot<Map<String, dynamic>> doc,
     String durum,
     String basariMesaji,
   ) {
-    final onceki = _durumOku(doc);
-    setState(() => _yerelDurum[doc.id] = durum);
+    _talebiGuncelle(doc, durum: durum, basariMesaji: basariMesaji);
+  }
+
+  void _talebiGuncelle(
+    QueryDocumentSnapshot<Map<String, dynamic>> doc, {
+    String? durum,
+    String? yanit,
+    required String basariMesaji,
+  }) {
+    final oncekiDurum = _yerelDurum[doc.id];
+    final oncekiYanit = _yerelYanit[doc.id];
+    setState(() {
+      if (durum != null) _yerelDurum[doc.id] = durum;
+      if (yanit != null) _yerelYanit[doc.id] = yanit;
+    });
     vibeSnackbarGoster(context, basariMesaji, tip: VibeMesajTipi.basari);
+    final data = doc.data();
     unawaited(
-      doc.reference.update({
-        'status': durum,
-        'reviewedAt': FieldValue.serverTimestamp(),
-        'reviewedBy': FirebaseAuth.instance.currentUser?.uid ?? '',
-      }).catchError((Object e) {
+      DestekServis.moderatorGuncelle(
+        talepRef: doc.reference,
+        talepSahibi: (data['userId'] ?? '').toString(),
+        konu: (data['konu'] ?? '').toString(),
+        durum: durum,
+        yanit: yanit,
+      ).catchError((Object e) {
         if (!mounted) return;
-        setState(() => _yerelDurum[doc.id] = onceki);
+        setState(() {
+          if (oncekiDurum == null) {
+            _yerelDurum.remove(doc.id);
+          } else {
+            _yerelDurum[doc.id] = oncekiDurum;
+          }
+          if (oncekiYanit == null) {
+            _yerelYanit.remove(doc.id);
+          } else {
+            _yerelYanit[doc.id] = oncekiYanit;
+          }
+        });
         vibeSnackbarGoster(
           context,
           internetAwareErrorMessage(
             error: e,
-            fallback: 'Durum güncellenemedi.',
+            fallback: 'Talep güncellenemedi.',
           ),
         );
       }),
+    );
+  }
+
+  Future<void> _yanitla(QueryDocumentSnapshot<Map<String, dynamic>> doc) async {
+    final status = _durumOku(doc);
+    final sonuc = await showDialog<({String yanit, bool kapat})>(
+      context: context,
+      builder: (_) => _YanitDiyalogu(
+        kullaniciAdi: (doc.data()['kullaniciAdi'] ?? '').toString(),
+        oncekiYanit: _yanitOku(doc),
+        kapatVarsayilan: status != 'resolved',
+      ),
+    );
+    if (sonuc == null || !mounted) return;
+    _talebiGuncelle(
+      doc,
+      durum: sonuc.kapat ? 'resolved' : null,
+      yanit: sonuc.yanit,
+      basariMesaji: sonuc.kapat
+          ? 'Yanıt gönderildi, talep çözüldü olarak kapatıldı.'
+          : 'Yanıt gönderildi.',
     );
   }
 
@@ -317,6 +375,7 @@ class _DestekTalepleriPanelPageState extends State<DestekTalepleriPanelPage> {
     final userId = (data['userId'] ?? '').toString();
     final eposta = (data['eposta'] ?? '').toString().trim();
     final appVersion = (data['appVersion'] ?? '').toString();
+    final yanit = _yanitOku(doc);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -365,6 +424,10 @@ class _DestekTalepleriPanelPageState extends State<DestekTalepleriPanelPage> {
             ),
             const SizedBox(height: 8),
             ModAlintiKutusu(metin: mesaj),
+            if (yanit.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              ModAlintiKutusu(metin: yanit, baslik: 'Yanıtın'),
+            ],
             const SizedBox(height: 8),
             ModBilgiSatiri(
               ikon: Icons.person_outline,
@@ -411,6 +474,12 @@ class _DestekTalepleriPanelPageState extends State<DestekTalepleriPanelPage> {
                           icon: const Icon(Icons.check, size: 18),
                           label: const Text('Çözüldü'),
                         ),
+                      if (userId.isNotEmpty)
+                        OutlinedButton.icon(
+                          onPressed: () => _yanitla(doc),
+                          icon: const Icon(Icons.reply, size: 18),
+                          label: Text(yanit.isEmpty ? 'Yanıtla' : 'Yanıtı düzenle'),
+                        ),
                       if (status == 'pending')
                         OutlinedButton.icon(
                           onPressed: () => _durumGuncelle(
@@ -424,7 +493,7 @@ class _DestekTalepleriPanelPageState extends State<DestekTalepleriPanelPage> {
                       if (eposta.isNotEmpty)
                         TextButton.icon(
                           onPressed: () => _epostaYaz(eposta, konu),
-                          icon: const Icon(Icons.reply, size: 18),
+                          icon: const Icon(Icons.mail_outline, size: 18),
                           label: const Text('E-postayla yanıtla'),
                         ),
                     ],
@@ -463,6 +532,102 @@ class _DestekTalepleriPanelPageState extends State<DestekTalepleriPanelPage> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _YanitDiyalogu extends StatefulWidget {
+  const _YanitDiyalogu({
+    required this.kullaniciAdi,
+    required this.oncekiYanit,
+    required this.kapatVarsayilan,
+  });
+
+  final String kullaniciAdi;
+  final String oncekiYanit;
+  final bool kapatVarsayilan;
+
+  @override
+  State<_YanitDiyalogu> createState() => _YanitDiyaloguState();
+}
+
+class _YanitDiyaloguState extends State<_YanitDiyalogu> {
+  late final TextEditingController _controller =
+      TextEditingController(text: widget.oncekiYanit);
+  late bool _kapat = widget.kapatVarsayilan;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _gonder() {
+    final yanit = _controller.text.trim();
+    if (yanit.isEmpty) return;
+    Navigator.pop(context, (yanit: yanit, kapat: _kapat));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final vibe = context.vibe;
+    return AlertDialog(
+      title: Text(
+        widget.kullaniciAdi.isEmpty
+            ? 'Talebi yanıtla'
+            : '@${widget.kullaniciAdi} kullanıcısına yanıt',
+      ),
+      content: SizedBox(
+        width: 460,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Yanıt kullanıcıya bildirim olarak gider ve Destek sayfasındaki '
+              'taleplerinde görünür.',
+              style: TextStyle(color: vibe.mutedText, fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _controller,
+              autofocus: true,
+              minLines: 4,
+              maxLines: 8,
+              maxLength: DestekServis.yanitSiniri,
+              decoration: InputDecoration(
+                hintText: 'Yanıtını yaz...',
+                filled: true,
+                fillColor: vibe.inputFill,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+            CheckboxListTile(
+              value: _kapat,
+              onChanged: (v) => setState(() => _kapat = v ?? false),
+              contentPadding: EdgeInsets.zero,
+              controlAffinity: ListTileControlAffinity.leading,
+              title: const Text('Talebi çözüldü olarak kapat'),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Vazgeç'),
+        ),
+        ValueListenableBuilder<TextEditingValue>(
+          valueListenable: _controller,
+          builder: (context, deger, _) => FilledButton(
+            onPressed: deger.text.trim().isEmpty ? null : _gonder,
+            child: const Text('Gönder'),
+          ),
+        ),
+      ],
     );
   }
 }

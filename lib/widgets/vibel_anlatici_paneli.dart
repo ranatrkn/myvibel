@@ -4,6 +4,7 @@ import 'package:myvibel/app_theme.dart';
 import 'package:myvibel/legal_pages.dart';
 import 'package:myvibel/maskot_servis.dart';
 import 'package:myvibel/widgets/maskot_lottie_view.dart';
+import 'package:myvibel/widgets/web_shell.dart';
 import 'package:myvibel/yasal_icerik.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -67,46 +68,51 @@ class _SeviyeKutlamaDiyalog extends StatelessWidget {
     return Dialog(
       backgroundColor: theme.dialogBackgroundColor,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            MascotLottieView(
-              seviye: seviye,
-              width: 96,
-              height: 96,
-              tamEkranAc: false,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Seviye $seviye!',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: theme.colorScheme.onSurface,
-                fontSize: 20,
-                fontWeight: FontWeight.w800,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: webMasaustuMu(context) ? 400 : double.infinity,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              MascotLottieView(
+                seviye: seviye,
+                width: 96,
+                height: 96,
+                tamEkranAc: false,
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              metin,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: vibe.mutedText,
-                height: 1.45,
-                fontSize: 14,
+              const SizedBox(height: 8),
+              Text(
+                'Seviye $seviye!',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: theme.colorScheme.onSurface,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            Align(
-              alignment: Alignment.centerRight,
-              child: FilledButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Harika!'),
+              const SizedBox(height: 8),
+              Text(
+                metin,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: vibe.mutedText,
+                  height: 1.45,
+                  fontSize: 14,
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 16),
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Harika!'),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -142,6 +148,13 @@ class _AnlaticiDiyalogState extends State<_AnlaticiDiyalog> {
       baslik: 'Kabuktan çıkış',
       metin:
           '6. seviyede kabuğumdan çıkarım. Sonra vil kazanır, bana yemek verirsin. İlerleyen seviyelerde uyku ve haftalık görevler açılır.',
+    ),
+    _AnlaticiAdim(
+      baslik: 'Beni aç bırakma',
+      metin:
+          '6. seviyeden sonra acıkırım. Uygulama kapalıyken de tokluğum azalır; tam tok olsam bile yaklaşık 5 saatte bitebilir. '
+          'Tokluğum 3 gün boyunca sıfırda kalırsa yumurtaya dönerim ve seviyem 1’e iner. '
+          'Bu olmadan önce her zaman bildirim gelmeyebilir; ara sıra uğrayıp bana yemek ver.',
     ),
     _AnlaticiAdim(
       baslik: 'Paylaş ve bağ kur',

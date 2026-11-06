@@ -26,6 +26,9 @@ class BahsetmeMetinAlani extends StatefulWidget {
   /// Masaüstü web: Enter gönderir, Shift+Enter alt satır.
   final VoidCallback? enterIleGonder;
 
+  /// Masaüstü web, çok satırlı alan: Enter alt satır, Ctrl/Cmd+Enter gönderir.
+  final VoidCallback? ctrlEnterIleGonder;
+
   const BahsetmeMetinAlani({
     super.key,
     required this.controller,
@@ -39,6 +42,7 @@ class BahsetmeMetinAlani extends StatefulWidget {
     this.keyboardDismissBehavior,
     this.focusNode,
     this.enterIleGonder,
+    this.ctrlEnterIleGonder,
   });
 
   @override
@@ -212,16 +216,18 @@ class _BahsetmeMetinAlaniState extends State<BahsetmeMetinAlani> {
           ),
         if (widget.expands)
           Expanded(
-            child: TextField(
-              controller: widget.controller,
-              focusNode: widget.focusNode,
-              style: widget.style,
-              expands: true,
-              maxLines: null,
-              maxLength: widget.maxLength,
-              textAlignVertical: TextAlignVertical.top,
-              onChanged: (_) => _metinDegisti(),
-              decoration: widget.decoration,
+            child: _ctrlEnterSarmala(
+              TextField(
+                controller: widget.controller,
+                focusNode: widget.focusNode,
+                style: widget.style,
+                expands: true,
+                maxLines: null,
+                maxLength: widget.maxLength,
+                textAlignVertical: TextAlignVertical.top,
+                onChanged: (_) => _metinDegisti(),
+                decoration: widget.decoration,
+              ),
             ),
           )
         else
@@ -237,6 +243,29 @@ class _BahsetmeMetinAlaniState extends State<BahsetmeMetinAlani> {
             ),
           ),
       ],
+    );
+  }
+
+  Widget _ctrlEnterSarmala(Widget alan) {
+    final gonder = widget.ctrlEnterIleGonder;
+    if (gonder == null || !webMasaustuMu(context)) return alan;
+    return Focus(
+      canRequestFocus: false,
+      skipTraversal: true,
+      onKeyEvent: (node, event) {
+        if (event is! KeyDownEvent ||
+            (event.logicalKey != LogicalKeyboardKey.enter &&
+                event.logicalKey != LogicalKeyboardKey.numpadEnter)) {
+          return KeyEventResult.ignored;
+        }
+        final klavye = HardwareKeyboard.instance;
+        if (!klavye.isControlPressed && !klavye.isMetaPressed) {
+          return KeyEventResult.ignored;
+        }
+        gonder();
+        return KeyEventResult.handled;
+      },
+      child: alan,
     );
   }
 

@@ -4,6 +4,7 @@ import 'dart:async';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:myvibel/app_theme.dart';
 import 'package:myvibel/widgets/web_shell.dart';
 import 'package:lottie/lottie.dart';
@@ -98,10 +99,13 @@ class MascotLottieView extends StatefulWidget {
         opaque: false,
         barrierColor: Colors.transparent,
         pageBuilder: (context, animation, secondaryAnimation) {
-          return _TamEkranAnimasyon(
-            seviye: seviye,
-            gorselDurum: durum,
-            renk: renk,
+          return _escIleKapat(
+            context,
+            _TamEkranAnimasyon(
+              seviye: seviye,
+              gorselDurum: durum,
+              renk: renk,
+            ),
           );
         },
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
@@ -123,10 +127,13 @@ class MascotLottieView extends StatefulWidget {
         opaque: false,
         barrierColor: Colors.transparent,
         pageBuilder: (context, animation, secondaryAnimation) {
-          return _RetyRenkSecici(
-            seviye: seviye,
-            gorselDurum: durum,
-            mevcut: mevcut,
+          return _escIleKapat(
+            context,
+            _RetyRenkSecici(
+              seviye: seviye,
+              gorselDurum: durum,
+              mevcut: mevcut,
+            ),
           );
         },
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
@@ -341,6 +348,17 @@ class _MascotLottieViewState extends State<MascotLottieView> {
       child: child,
     );
   }
+}
+
+Widget _escIleKapat(BuildContext context, Widget child) {
+  if (!webMasaustuMu(context)) return child;
+  return CallbackShortcuts(
+    bindings: {
+      const SingleActivator(LogicalKeyboardKey.escape): () =>
+          Navigator.of(context).maybePop(),
+    },
+    child: Focus(autofocus: true, child: child),
+  );
 }
 
 class _TamEkranAnimasyon extends StatefulWidget {

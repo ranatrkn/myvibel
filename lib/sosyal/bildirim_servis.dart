@@ -15,6 +15,7 @@ class BildirimServis {
     String? metin,
     String? postMetin,
     String? yorumMetin,
+    String? commentId,
     bool postOzetiniAtla = false,
   }) async {
     if (hedefUid.isEmpty || gonderenUid.isEmpty || hedefUid == gonderenUid) {
@@ -56,10 +57,50 @@ class BildirimServis {
       "chatId": chatId ?? "",
       "postMetin": gonderiOzeti,
       "yorumMetin": _kisaMetin(yorumMetin),
+      if (commentId != null && commentId.isNotEmpty) "commentId": commentId,
       "metin": metin ?? "",
       "okundu": false,
       "createdAt": FieldValue.serverTimestamp(),
     });
+  }
+
+  /// Gönderenin bir gönderide bıraktığı bildirimleri alıcıdan kaldırır
+  /// (beğeni geri çekme, yorum silme). [commentId] verilirse yalnızca o yoruma
+  /// ait bildirimler; eski kayıtlarda commentId yoksa [yorumMetin] eşleşir.
+  static Future<void> gonderenBildirimleriniSil({
+    required String hedefUid,
+    required String gonderenUid,
+    required String postId,
+    required Set<String> tipler,
+    String? commentId,
+    String? yorumMetin,
+  }) async {
+    if (hedefUid.isEmpty || gonderenUid.isEmpty || postId.isEmpty) return;
+    if (hedefUid == gonderenUid) return;
+    final kisaYorum = yorumMetin == null ? null : _kisaMetin(yorumMetin);
+    try {
+      final snap = await SosyalCore.db
+          .collection("users")
+          .doc(hedefUid)
+          .collection("notifications")
+          .where("gonderenUid", isEqualTo: gonderenUid)
+          .where("postId", isEqualTo: postId)
+          .get();
+      for (final doc in snap.docs) {
+        final veri = doc.data();
+        if (!tipler.contains((veri["tip"] ?? "").toString())) continue;
+        if (commentId != null) {
+          final kayitliId = (veri["commentId"] ?? "").toString();
+          final eslesti = kayitliId.isNotEmpty
+              ? kayitliId == commentId
+              : kisaYorum != null && veri["yorumMetin"] == kisaYorum;
+          if (!eslesti) continue;
+        }
+        await doc.reference.delete();
+      }
+    } catch (e) {
+      debugPrint("gonderenBildirimleriniSil failed: $e");
+    }
   }
 
   static String _kisaMetin(String? ham, {int limit = 80}) {

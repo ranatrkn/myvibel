@@ -242,6 +242,7 @@ class MesajServis {
     required String metin,
     String mesajTipi = "text",
     String postId = "",
+    String? messageId,
   }) async {
     final current = FirebaseAuth.instance.currentUser;
     if (current == null) throw "Oturum bulunamadı.";
@@ -264,7 +265,7 @@ class MesajServis {
         : await EtiketServis.bahsetmeUidleriniCoz(temizMetin);
 
     final chatRef = SosyalCore.db.collection("chats").doc(chatId);
-    final msgRef = chatRef.collection("messages").doc();
+    final msgRef = chatRef.collection("messages").doc(messageId);
     final ozetMetin =
         mesajTipi == "post_forward" ? "Bir gönderi iletti" : temizMetin;
 

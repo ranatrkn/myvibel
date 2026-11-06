@@ -538,6 +538,12 @@ class BegeniYorumServis {
       } catch (e) {
         debugPrint('begeni kullanici geri alimi ($postId): $e');
       }
+      unawaited(BildirimServis.gonderenBildirimleriniSil(
+        hedefUid: gercekOwnerId,
+        gonderenUid: currentUserId,
+        postId: postId,
+        tipler: const {'like'},
+      ));
     }
 
     try {
@@ -587,6 +593,7 @@ class BegeniYorumServis {
     required String currentUserId,
     required String metin,
     String? parentId,
+    String? commentId,
   }) async {
     final kendiGonderisi = SosyalCore.kendiGonderisiMi(
       postOwnerId: postOwnerId,
@@ -599,11 +606,11 @@ class BegeniYorumServis {
       uid: currentUserId,
       aksiyon: 'yorum',
       minAralikMs: SosyalCore.yorumMinAralikMs,
-      mesaj: 'Cok hizli yorum yapiyorsun. Lutfen biraz bekle.',
+      mesaj: 'Çok hızlı yorum yapıyorsun. Lütfen biraz bekle.',
     );
 
     final postRef = SosyalCore.gonderiRef(postId);
-    final commentRef = postRef.collection('comments').doc();
+    final commentRef = postRef.collection('comments').doc(commentId);
     final userRef = SosyalCore.db.collection('users').doc(currentUserId);
     final istenenParentId = (parentId ?? '').trim();
 
@@ -714,6 +721,7 @@ class BegeniYorumServis {
         postId: postId,
         metin: 'yorumuna yanıt verdi',
         yorumMetin: metin,
+        commentId: commentRef.id,
       );
     }
 
@@ -727,6 +735,7 @@ class BegeniYorumServis {
         postId: postId,
         metin: 'gönderine yorum yaptı',
         yorumMetin: metin,
+        commentId: commentRef.id,
       );
     }
 
@@ -891,6 +900,34 @@ class BegeniYorumServis {
       // Vil/puan geri alma takılırsa yorum yine silinsin.
       debugPrint('yorumSil odul geri al permission-denied, yalin silme: $e');
       await yorumSilTxn(kullaniciOdulGeriAl: false);
+    }
+
+    final silinenYorumlar = <(String, Map<String, dynamic>)>[
+      (commentId, commentSnap.data() ?? const {}),
+      for (final yanit in yanitDocs) (yanit.id, yanit.data()),
+    ];
+    for (final (id, veri) in silinenYorumlar) {
+      final gonderenUid = (veri['userId'] ?? '').toString();
+      final yorumMetni = (veri['metin'] ?? '').toString();
+      final yanitUid = (veri['yanitUserId'] ?? '').toString();
+      unawaited(BildirimServis.gonderenBildirimleriniSil(
+        hedefUid: postOwnerId,
+        gonderenUid: gonderenUid,
+        postId: postId,
+        tipler: const {'comment', 'comment_reply', 'mention'},
+        commentId: id,
+        yorumMetin: yorumMetni,
+      ));
+      if (yanitUid.isNotEmpty && yanitUid != postOwnerId) {
+        unawaited(BildirimServis.gonderenBildirimleriniSil(
+          hedefUid: yanitUid,
+          gonderenUid: gonderenUid,
+          postId: postId,
+          tipler: const {'comment_reply'},
+          commentId: id,
+          yorumMetin: yorumMetni,
+        ));
+      }
     }
   }
 

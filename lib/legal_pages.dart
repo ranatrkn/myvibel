@@ -1,10 +1,16 @@
 // Gizlilik, KVKK, kullanım koşulları, SSS ve destek sayfaları.
+import 'dart:async';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:myvibel/app_theme.dart';
 import 'package:myvibel/destek_servis.dart';
 import 'package:myvibel/error_messages.dart';
+import 'package:myvibel/utils/tarih_saat.dart';
 import 'package:myvibel/vibe_snackbar.dart';
+import 'package:myvibel/widgets/web_shell.dart';
 import 'package:myvibel/yasal_icerik.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -248,7 +254,6 @@ class _ContactPageState extends State<ContactPage> {
   final _konuController = TextEditingController();
   final _mesajController = TextEditingController();
   late String _kategori;
-  bool _gonderiliyor = false;
   bool _gonderildi = false;
 
   @override
@@ -267,44 +272,55 @@ class _ContactPageState extends State<ContactPage> {
     super.dispose();
   }
 
-  Future<void> _talepGonder() async {
-    if (_gonderiliyor) return;
-
-    setState(() => _gonderiliyor = true);
-    try {
-      await DestekServis.talepGonder(
-        kategori: _kategori,
-        konu: _konuController.text,
-        mesaj: _mesajController.text,
-        appVersion: VibeLegal.appVersionLabel,
-      );
-      if (!mounted) return;
-      setState(() {
-        _gonderildi = true;
-        _konuController.clear();
-        _mesajController.clear();
-        _kategori = widget.ilkKategori != null &&
-                DestekServis.kategoriler.containsKey(widget.ilkKategori)
-            ? widget.ilkKategori!
-            : DestekServis.kategoriler.keys.first;
-      });
-      vibeSnackbarGoster(
-        context,
-        'Talebin ${YasalIcerik.uygulamaAdi} ekibine iletildi.',
-        tip: VibeMesajTipi.basari,
-      );
-    } catch (e) {
-      if (!mounted) return;
-      vibeSnackbarGoster(
-        context,
-        internetAwareErrorMessage(
-          error: e,
-          fallback: 'Talep gönderilemedi.',
-        ),
-      );
-    } finally {
-      if (mounted) setState(() => _gonderiliyor = false);
+  void _talepGonder() {
+    final kategori = _kategori;
+    final konu = _konuController.text;
+    final mesaj = _mesajController.text;
+    final hata =
+        DestekServis.talepHatasi(kategori: kategori, konu: konu, mesaj: mesaj);
+    if (hata != null) {
+      vibeSnackbarGoster(context, hata);
+      return;
     }
+
+    final messengerContext = ScaffoldMessenger.of(context).context;
+    setState(() {
+      _gonderildi = true;
+      _konuController.clear();
+      _mesajController.clear();
+      _kategori = widget.ilkKategori != null &&
+              DestekServis.kategoriler.containsKey(widget.ilkKategori)
+          ? widget.ilkKategori!
+          : DestekServis.kategoriler.keys.first;
+    });
+    vibeSnackbarGoster(
+      context,
+      'Talebin ${YasalIcerik.uygulamaAdi} ekibine iletildi.',
+      tip: VibeMesajTipi.basari,
+    );
+
+    unawaited(DestekServis.talepGonder(
+      kategori: kategori,
+      konu: konu,
+      mesaj: mesaj,
+      appVersion: VibeLegal.appVersionLabel,
+    ).catchError((Object e) {
+      // Gönderilemeyen talep forma geri yazılır; kullanıcı yeniden deneyebilir.
+      if (mounted) {
+        setState(() {
+          _gonderildi = false;
+          _kategori = kategori;
+          if (_konuController.text.isEmpty) _konuController.text = konu;
+          if (_mesajController.text.isEmpty) _mesajController.text = mesaj;
+        });
+      }
+      if (!messengerContext.mounted) return;
+      ScaffoldMessenger.of(messengerContext).hideCurrentSnackBar();
+      vibeSnackbarGoster(
+        messengerContext,
+        internetAwareErrorMessage(error: e, fallback: 'Talep gönderilemedi.'),
+      );
+    }));
   }
 
   @override
@@ -342,7 +358,8 @@ class _ContactPageState extends State<ContactPage> {
                 const SizedBox(height: 8),
                 Text(
                   'Hesap, teknik sorun veya önerilerini buradan iletebilirsin. '
-                  'KVKK başvuruları web sitesinden yapılır.\n\n'
+                  'KVKK başvurusu için kategori olarak «KVKK / Veri talebi» seç '
+                  'veya web sitesini kullan.\n\n'
                   'Bir gönderi veya kullanıcıyı şikayet etmek için ilgili kartın menüsündeki '
                   '«Şikayet Et» seçeneğini kullan.',
                   style: TextStyle(color: vibe.mutedText, height: 1.45),
@@ -389,6 +406,10 @@ class _ContactPageState extends State<ContactPage> {
           const SizedBox(height: 6),
           DropdownButtonFormField<String>(
             value: _kategori,
+            dropdownColor:
+                webMasaustuMu(context) ? vibe.sheetBackground : null,
+            borderRadius:
+                webMasaustuMu(context) ? BorderRadius.circular(12) : null,
             decoration: InputDecoration(
               filled: true,
               fillColor: vibe.inputFill,
@@ -405,18 +426,15 @@ class _ContactPageState extends State<ContactPage> {
                   ),
                 )
                 .toList(),
-            onChanged: _gonderiliyor
-                ? null
-                : (v) {
-                    if (v != null) setState(() => _kategori = v);
-                  },
+            onChanged: (v) {
+              if (v != null) setState(() => _kategori = v);
+            },
           ),
           const SizedBox(height: 16),
           Text('Konu', style: TextStyle(color: vibe.mutedText)),
           const SizedBox(height: 6),
           TextField(
             controller: _konuController,
-            enabled: !_gonderiliyor,
             maxLength: 120,
             decoration: InputDecoration(
               hintText: 'Kısa özet (ör. giriş yapamıyorum)',
@@ -433,7 +451,6 @@ class _ContactPageState extends State<ContactPage> {
           const SizedBox(height: 6),
           TextField(
             controller: _mesajController,
-            enabled: !_gonderiliyor,
             maxLength: 2000,
             minLines: 5,
             maxLines: 8,
@@ -453,20 +470,175 @@ class _ContactPageState extends State<ContactPage> {
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
-              onPressed: _gonderiliyor ? null : _talepGonder,
-              icon: _gonderiliyor
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Icon(Icons.send_rounded),
-              label: Text(_gonderiliyor ? 'Gönderiliyor...' : 'Talebi Gönder'),
+              onPressed: _talepGonder,
+              icon: const Icon(Icons.send_rounded),
+              label: const Text('Talebi Gönder'),
             ),
           ),
+          const _Taleplerim(),
+        ],
+      ),
+    );
+  }
+}
+
+class _Taleplerim extends StatefulWidget {
+  const _Taleplerim();
+
+  @override
+  State<_Taleplerim> createState() => _TaleplerimState();
+}
+
+class _TaleplerimState extends State<_Taleplerim> {
+  late final Stream<List<QueryDocumentSnapshot<Map<String, dynamic>>>>? _akis =
+      FirebaseAuth.instance.currentUser == null
+          ? null
+          : DestekServis.taleplerimAkisi(FirebaseAuth.instance.currentUser!.uid);
+
+  static const _durumlar = <String, (String, Color)>{
+    'pending': ('Bekliyor', Colors.orange),
+    'reviewed': ('İnceleniyor', Colors.blue),
+    'resolved': ('Çözüldü', Colors.green),
+    'rejected': ('Reddedildi', Colors.redAccent),
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final akis = _akis;
+    if (akis == null) return const SizedBox.shrink();
+    final vibe = context.vibe;
+    final theme = Theme.of(context);
+
+    return StreamBuilder<List<QueryDocumentSnapshot<Map<String, dynamic>>>>(
+      stream: akis,
+      builder: (context, snapshot) {
+        final talepler = snapshot.data ?? const [];
+        if (talepler.isEmpty) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SizedBox(height: 28),
+            Text(
+              'Taleplerim',
+              style: TextStyle(
+                color: theme.colorScheme.onSurface,
+                fontWeight: FontWeight.w700,
+                fontSize: 16,
+              ),
+            ),
+            const SizedBox(height: 10),
+            for (final doc in talepler) _talepKarti(doc.data(), vibe, theme),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _talepKarti(
+    Map<String, dynamic> data,
+    VibeThemeExtension vibe,
+    ThemeData theme,
+  ) {
+    final (durumMetni, durumRengi) =
+        _durumlar[(data['status'] ?? 'pending').toString()] ??
+            _durumlar['pending']!;
+    final yanit = (data['modYaniti'] ?? '').toString().trim();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: vibe.cardDecoration(radius: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  (data['konu'] ?? '').toString(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: theme.colorScheme.onSurface,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: durumRengi.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  durumMetni,
+                  style: TextStyle(
+                    color: durumRengi,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            tarihSaatYaz(data['createdAt']),
+            style: TextStyle(color: vibe.faintText, fontSize: 11.5),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            (data['mesaj'] ?? '').toString(),
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: vibe.mutedText, height: 1.4),
+          ),
+          if (yanit.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: vibe.inputFill,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: theme.colorScheme.primary.withOpacity(0.35),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.support_agent_outlined,
+                        size: 16,
+                        color: theme.colorScheme.primary,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        '${DestekServis.bildirimGonderenAdi} yanıtı',
+                        style: TextStyle(
+                          color: theme.colorScheme.primary,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  SelectableText(
+                    yanit,
+                    style: TextStyle(
+                      color: theme.colorScheme.onSurface,
+                      height: 1.45,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );

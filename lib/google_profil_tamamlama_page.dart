@@ -141,7 +141,10 @@ class _GoogleProfilTamamlamaPageState extends State<GoogleProfilTamamlamaPage> {
                 await GoogleGirisServis.yenidenDogrula(hesabiYenidenSec: false);
               }
             } on FirebaseAuthException catch (e2) {
-              if (e2.code == 'canceled' || e2.code == 'sign_in_canceled') {
+              if (e2.code == 'canceled' ||
+                  e2.code == 'sign_in_canceled' ||
+                  e2.code == 'popup-closed-by-user' ||
+                  e2.code == 'cancelled-popup-request') {
                 return;
               }
               rethrow;

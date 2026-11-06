@@ -73,6 +73,7 @@ Future<void> gonderiDetayiniAc(
   BuildContext context, {
   required String postId,
   required String currentUserId,
+  bool yorumlariAc = false,
 }) async {
   if (postId.isEmpty) return;
   await tekSeferPush(
@@ -82,6 +83,7 @@ Future<void> gonderiDetayiniAc(
         postId: postId,
         currentUserId: currentUserId,
         onKendiProfilineGit: AnaKabuk.kendiProfilineGit,
+        yorumlariAc: yorumlariAc,
       ),
     ),
   );

@@ -286,6 +286,7 @@ class ModAlintiKutusu extends StatelessWidget {
           ],
           SelectableText(
             metin,
+            minLines: maxLines == null ? null : 1,
             maxLines: maxLines,
             style: TextStyle(
               color: theme.colorScheme.onSurface,

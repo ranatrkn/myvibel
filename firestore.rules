@@ -117,20 +117,22 @@ service cloud.firestore {
         && intField(request.resource.data, 'yorumSayisi', 0) >= 0;
     }
 
+    // Eksik map anahtarına erişim hata fırlatır (false değil); hiç beslenmemiş
+    // Vibel'de 'tokluk' yoktur. Bu yüzden alanlar get() ile okunur.
     function robotSeviyeFrom(data) {
-      return data.robot is map && data.robot.seviye is number
+      return data.get('robot', null) is map && data.robot.get('seviye', null) is number
         ? data.robot.seviye
         : 1;
     }
 
     function robotEtkilesimPuaniFrom(data) {
-      return data.robot is map && data.robot.etkilesimPuani is number
+      return data.get('robot', null) is map && data.robot.get('etkilesimPuani', null) is number
         ? data.robot.etkilesimPuani
         : 0;
     }
 
     function robotToklukFrom(data) {
-      return data.robot is map && data.robot.tokluk is number
+      return data.get('robot', null) is map && data.robot.get('tokluk', null) is number
         ? data.robot.tokluk
         : 0;
     }
@@ -141,7 +143,7 @@ service cloud.firestore {
     }
 
     function robotGelisimFrom(data) {
-      return data.robot is map && data.robot.gelisimPuani is number
+      return data.get('robot', null) is map && data.robot.get('gelisimPuani', null) is number
         ? data.robot.gelisimPuani
         : 0;
     }
@@ -391,7 +393,8 @@ service cloud.firestore {
               'raporNedeniyleGizli',
               'gonderiSayisi',
               'begeniSayisi',
-              'yorumSayisi'
+              'yorumSayisi',
+              'reklamVil'
             ]);
     }
 
@@ -410,6 +413,29 @@ service cloud.firestore {
         && request.resource.data.robot.seviye == resource.data.robot.seviye
         && request.resource.data.robot.diff(resource.data.robot)
             .affectedKeys().hasOnly(['etkilesimPuani']);
+    }
+
+    // Ödüllü reklam: +15 vil, Türkiye gününe göre günde en fazla 5.
+    function ownerReklamVilOk() {
+      let eski = resource.data.get('reklamVil', null);
+      let yeni = request.resource.data.get('reklamVil', null);
+      let bugun = math.floor((request.time.toMillis() + 10800000) / 86400000);
+      let eskiGun = eski is map && eski.get('gun', null) is int ? eski.gun : -1;
+      let eskiAdet = eski is map && eski.get('adet', null) is int ? eski.adet : 0;
+      return changedOnly(['robot', 'reklamVil'])
+        && resource.data.get('robot', null) is map
+        && robotSeviyeFrom(resource.data) >= 6
+        && request.resource.data.robot.diff(resource.data.robot)
+            .affectedKeys().hasOnly(['etkilesimPuani'])
+        && robotEtkilesimPuaniChangedBy(15)
+        && yeni is map
+        && yeni.keys().hasOnly(['gun', 'adet'])
+        && yeni.gun is int
+        && yeni.adet is int
+        && (yeni.gun == bugun || yeni.gun == bugun - 1)
+        && yeni.gun >= eskiGun
+        && yeni.adet == (yeni.gun == eskiGun ? eskiAdet + 1 : 1)
+        && yeni.adet <= 5;
     }
 
     function gonderiSilVilHarcaniyor() {
@@ -432,7 +458,8 @@ service cloud.firestore {
           'email',
           'hesapGizli',
           'aramaSkoru',
-          'raporNedeniyleGizli'
+          'raporNedeniyleGizli',
+          'reklamVil'
         ])
         && robotToklukFrom(request.resource.data) <= 100
         && robotToklukFrom(request.resource.data)
@@ -585,6 +612,7 @@ service cloud.firestore {
         && createAgeOk()
         && request.resource.data.aramaSkoru == 0
         && !('isModerator' in request.resource.data)
+        && !('reklamVil' in request.resource.data)
         && !('email' in request.resource.data)
         && !('dogumTarihi' in request.resource.data)
         && request.resource.data.kullaniciAdi is string
@@ -1291,10 +1319,28 @@ service cloud.firestore {
     // Bildirim / rapor doğrulama
     // -------------------------------------------------------------------------
 
+    // Moderatörün destek yanıtı: yalnızca talebin sahibine, engelden bağımsız.
+    function destekBildirimiOk(userId) {
+      let ticketId = request.resource.data.get('ticketId', '');
+      return request.resource.data.tip == 'destek'
+        && isModerator()
+        && ticketId is string
+        && ticketId.size() > 0
+        && get(/databases/$(database)/documents/supportTickets/$(ticketId)).data.userId == userId
+        && request.resource.data.okundu == false
+        && request.resource.data.gonderenKullaniciAdi is string
+        && request.resource.data.metin is string
+        && request.resource.data.metin.size() <= 300;
+    }
+
     function notificationCreateOk(userId) {
       return request.resource.data.gonderenUid == request.auth.uid
         && userId != request.auth.uid
-        && notBlockedPair(userId)
+        && (destekBildirimiOk(userId) || sosyalBildirimOk(userId));
+    }
+
+    function sosyalBildirimOk(userId) {
+      return notBlockedPair(userId)
         && request.resource.data.tip in [
           'follow',
           'follow_request',
@@ -1383,10 +1429,13 @@ service cloud.firestore {
         && request.resource.data.mesaj == resource.data.mesaj
         && request.resource.data.kullaniciAdi == resource.data.kullaniciAdi
         && request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['status', 'reviewedAt', 'reviewedBy'])
+            .hasOnly(['status', 'reviewedAt', 'reviewedBy', 'modYaniti', 'yanitlandiAt'])
         && request.resource.data.status in [
           'pending', 'reviewed', 'resolved', 'rejected'
-        ];
+        ]
+        && (!('modYaniti' in request.resource.data)
+          || (request.resource.data.modYaniti is string
+            && request.resource.data.modYaniti.size() <= 2000));
     }
 
     function supportTicketCreateOk() {
@@ -1599,15 +1648,16 @@ service cloud.firestore {
       allow create: if isOwner(userId) && userCreateOk();
       // Önemli: ownerScoreUpdateOk çok dallı; önce ucuz robot/profil kuralları.
       // Aksi halde 1000 ifade limiti dolup renk/isim yazımı permission-denied olur.
-      allow update: if ownerYemekKisaOk(userId)
+      allow update: if (isOwner(userId) && ownerRobotGorunumOk())
+        || (isOwner(userId) && ownerRobotBakimOk())
+        || (isOwner(userId) && ownerReklamVilOk())
+        || ownerYemekKisaOk(userId)
         || ownerGonderiSayacOk(userId)
         || (isOwner(userId) && ownerSosyalMaskotOdulYazOk())
         || ownerSosyalSkorKazanimOk(userId)
         || ownerSosyalGeriAlimOk(userId)
-        || (isOwner(userId) && ownerRobotGorunumOk())
         || (isOwner(userId) && ownerYumurtaGelisimOk())
         || (isOwner(userId) && ownerRobotKurOk())
-        || (isOwner(userId) && ownerRobotBakimOk())
         || (isOwner(userId) && changedOnly(['robot']) && ownerVilHarcamaliYemekOk())
         || (isOwner(userId) && ownerRobotYemekYazOk())
         || (isOwner(userId) && ownerUserUpdateOk())
@@ -1947,7 +1997,11 @@ service cloud.firestore {
     // =========================================================================
 
     match /reports/{reportId} {
-      allow read: if isModerator()
+      // Belge yokken "zaten şikayet ettin mi" okuması permission-denied vermesin.
+      allow get: if isModerator()
+        || (isSignedIn()
+          && (resource == null || resource.data.reporterUid == request.auth.uid));
+      allow list: if isModerator()
         || (isSignedIn() && resource.data.reporterUid == request.auth.uid);
       allow create: if isSignedIn() && reportCreateOk();
       allow update: if isModerator() && reportUpdateOk();

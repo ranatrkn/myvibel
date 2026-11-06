@@ -23,6 +23,14 @@ bool _teknikIngilizceMesaj(String metin) {
   return ipuclari.any(t.contains);
 }
 
+/// Firebase Auth'un ham İngilizce mesajları (ör. "The supplied auth credential
+/// is incorrect...") kullanıcıya gösterilmez; uygulamanın kendi Türkçe
+/// mesajları geçer.
+bool _ingilizceAuthMesaji(String metin) => RegExp(
+  r'\b(the|is|has|an|invalid|incorrect|expired|malformed|password|user|email)\b',
+  caseSensitive: false,
+).hasMatch(metin);
+
 String _izinMesaji(String fallback) {
   // Genel “kullanıcı adını değiştir” gibi yanıltıcı fallback’leri ezme.
   final f = fallback.trim();
@@ -125,8 +133,9 @@ String internetAwareErrorMessage({
       case 'wrong-password':
       case 'user-not-found':
       case 'invalid-email':
-        return error.message?.trim().isNotEmpty == true
-            ? error.message!.trim()
+        final mesaj = error.message?.trim() ?? '';
+        return mesaj.isNotEmpty && !_ingilizceAuthMesaji(mesaj)
+            ? mesaj
             : 'Giriş bilgileri hatalı.';
       default:
         if (error.code.contains('app-check')) {

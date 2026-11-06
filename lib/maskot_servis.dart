@@ -149,6 +149,8 @@ class MascotServis {
   static const vilTakipGeriAlMaliyeti = 3;
   static const yemekVilMaliyeti = 15;
   static const arkadasYemekVilMaliyeti = 20;
+  static const reklamVilOdulu = 15;
+  static const reklamVilGunlukSinir = 5;
   /// Karşılıklı yemek 30 gün içinde değilse rozet solar; silinmez.
   static const bagSolmaMs = 30 * 24 * 60 * 60 * 1000;
   /// Takipten çıkınca bağın silinmesi için tanınan süre.
@@ -375,7 +377,11 @@ class MascotServis {
         eskiSeviye != null && eskiSeviye < acilis && seviye >= acilis;
 
     if (toklukAktif(seviye) && !robot.containsKey('tokluk')) {
+      // Saat eski sonUygulamaMs'ten başlarsa yeni çıkan Vibel anında 0 tokluk olur.
+      final simdi = _simdiMs();
       robot['tokluk'] = 80;
+      robot['sonToklukTickMs'] = simdi;
+      robot['sonToklukPozitifMs'] = simdi;
     }
     if (enerjiAktif(seviye) &&
         (!robot.containsKey('enerji') ||
@@ -436,6 +442,44 @@ class MascotServis {
     } catch (_) {
       return false;
     }
+  }
+
+  /// Türkiye saatine göre gün numarası; rules aynı formülle doğrular.
+  static int reklamVilGunu([int? ms]) =>
+      ((ms ?? _simdiMs()) + 3 * 60 * 60 * 1000) ~/ (24 * 60 * 60 * 1000);
+
+  static int reklamVilKalan(Map<String, dynamic>? userData) {
+    final kayit = userData?['reklamVil'];
+    if (kayit is! Map || _int(kayit['gun'], -1) != reklamVilGunu()) {
+      return reklamVilGunlukSinir;
+    }
+    return (reklamVilGunlukSinir - _int(kayit['adet'], 0))
+        .clamp(0, reklamVilGunlukSinir)
+        .toInt();
+  }
+
+  /// Ödüllü reklam sonrası vil. Günlük tavan rules'ta da zorunlu.
+  static Future<void> reklamVilEkle(String uid) async {
+    final ref = _db.collection('users').doc(uid);
+    await _db.runTransaction((tx) async {
+      final snap = await tx.get(ref);
+      final data = snap.data() ?? <String, dynamic>{};
+      final mascot = tryParse(data['robot']);
+      if (mascot == null || !vilCuzdaniAcik(mascot.seviye)) {
+        throw 'Vil 6. seviyede açılır.';
+      }
+      if (reklamVilKalan(data) <= 0) {
+        throw 'Bugünlük reklam ödülünün hepsini aldın. Yarın tekrar gel.';
+      }
+      final gun = reklamVilGunu();
+      final kayit = data['reklamVil'];
+      final oncekiAdet =
+          kayit is Map && _int(kayit['gun'], -1) == gun ? _int(kayit['adet'], 0) : 0;
+      tx.update(ref, {
+        'robot.etkilesimPuani': FieldValue.increment(reklamVilOdulu),
+        'reklamVil': {'gun': gun, 'adet': oncekiAdet + 1},
+      });
+    });
   }
 
   static bool gonderiSilVilGerekir(int seviye) => vilCuzdaniAcik(seviye);
@@ -825,7 +869,8 @@ class MascotServis {
   static String? seviyeOdulAciklamasi(int seviye) {
     switch (seviye) {
       case toklukAcilisSeviyesi:
-        return 'Kabuğumdan çıktım! Artık vil kazanıp bana yemek verebilirsin.';
+        return 'Kabuğumdan çıktım! Artık vil kazanıp bana yemek verebilirsin. '
+            'Dikkat: uygulama kapalıyken de acıkırım. 3 gün aç kalırsam yumurtaya dönerim.';
       case enerjiAcilisSeviyesi:
         return 'Enerji ve uyku açıldı. Haftalık görevler de seni bekliyor!';
       case mutlulukAcilisSeviyesi:

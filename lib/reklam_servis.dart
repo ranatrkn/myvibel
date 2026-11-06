@@ -12,6 +12,76 @@ import 'package:myvibel/web_akis_reklam_stub.dart'
 class ReklamKimlikleri {
   static const androidUygulama = 'ca-app-pub-4786108844945952~4156557723';
   static const androidGonderi = 'ca-app-pub-4786108844945952/6117277160';
+
+  /// AdMob'da oluşturulan ödüllü birim. Boşken release'de ödüllü reklam kapalı.
+  static const androidOdullu = '';
+  static const _androidOdulluTest = 'ca-app-pub-3940256099942544/5224354917';
+
+  static String get androidOdulluBirim =>
+      kReleaseMode ? androidOdullu : _androidOdulluTest;
+}
+
+/// "Reklam izle, vil kazan": tek seferlik ödüllü reklam; bir sonraki önceden yüklenir.
+class OdulluReklamServis {
+  OdulluReklamServis._();
+
+  static RewardedAd? _hazir;
+  static Future<void>? _yukleniyor;
+
+  static bool get kullanilabilir =>
+      ReklamServis.androidde && ReklamKimlikleri.androidOdulluBirim.isNotEmpty;
+
+  static Future<void> onYukle() {
+    if (!kullanilabilir || _hazir != null) return Future.value();
+    return _yukleniyor ??= _yukle().whenComplete(() => _yukleniyor = null);
+  }
+
+  static Future<void> _yukle() async {
+    await ReklamServis.baslat();
+    final tamam = Completer<void>();
+    await RewardedAd.load(
+      adUnitId: ReklamKimlikleri.androidOdulluBirim,
+      request: const AdRequest(),
+      rewardedAdLoadCallback: RewardedAdLoadCallback(
+        onAdLoaded: (ad) {
+          _hazir = ad;
+          if (!tamam.isCompleted) tamam.complete();
+        },
+        onAdFailedToLoad: (error) {
+          debugPrint('Odullu reklam yuklenemedi: ${error.code} ${error.message}');
+          if (!tamam.isCompleted) tamam.complete();
+        },
+      ),
+    );
+    await tamam.future;
+  }
+
+  /// Reklamı gösterir; kullanıcı ödülü hak ettiyse true döner.
+  static Future<bool> goster() async {
+    if (!kullanilabilir) return false;
+    if (_hazir == null) await onYukle();
+    final reklam = _hazir;
+    if (reklam == null) throw 'Şu an izlenebilecek reklam yok. Biraz sonra tekrar dene.';
+    _hazir = null;
+
+    var kazandi = false;
+    final kapandi = Completer<void>();
+    reklam.fullScreenContentCallback = FullScreenContentCallback(
+      onAdDismissedFullScreenContent: (ad) {
+        ad.dispose();
+        if (!kapandi.isCompleted) kapandi.complete();
+      },
+      onAdFailedToShowFullScreenContent: (ad, error) {
+        debugPrint('Odullu reklam gosterilemedi: ${error.code} ${error.message}');
+        ad.dispose();
+        if (!kapandi.isCompleted) kapandi.complete();
+      },
+    );
+    await reklam.show(onUserEarnedReward: (_, __) => kazandi = true);
+    await kapandi.future;
+    unawaited(onYukle());
+    return kazandi;
+  }
 }
 
 class ReklamServis {

@@ -203,6 +203,7 @@ class _VibeHomePageState extends State<VibeHomePage> {
                       TextField(
                         controller: emailController,
                         keyboardType: TextInputType.emailAddress,
+                        textInputAction: TextInputAction.next,
                         autocorrect: false,
                         style: TextStyle(color: theme.colorScheme.onSurface),
                         decoration: vibe.alanDekoru(
@@ -214,6 +215,10 @@ class _VibeHomePageState extends State<VibeHomePage> {
                       TextField(
                         controller: sifreController,
                         obscureText: true,
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) {
+                          if (!isLoading && !_sosyalYukleniyor) girisYap();
+                        },
                         style: TextStyle(color: theme.colorScheme.onSurface),
                         decoration: vibe.alanDekoru(
                           hint: 'Şifre',

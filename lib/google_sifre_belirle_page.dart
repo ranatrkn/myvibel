@@ -56,7 +56,10 @@ class _GoogleSifreBelirlePageState extends State<GoogleSifreBelirlePage> {
             await GoogleGirisServis.yenidenDogrula();
           }
         } on FirebaseAuthException catch (e) {
-          if (e.code == 'canceled' || e.code == 'sign_in_canceled') {
+          if (e.code == 'canceled' ||
+              e.code == 'sign_in_canceled' ||
+              e.code == 'popup-closed-by-user' ||
+              e.code == 'cancelled-popup-request') {
             if (mounted) setState(() => _yukleniyor = false);
             return;
           }

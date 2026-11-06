@@ -1,5 +1,6 @@
 // Gönderi yorumları alt paneli: listeleme, yanıt, ekleme, şikayet ve engelleme
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:myvibel/app_theme.dart';
 import 'package:myvibel/widgets/vibe_yukleniyor.dart';
@@ -31,6 +32,18 @@ class _YanitHedefi {
     required this.kokId,
     required this.userId,
     required this.kullaniciAdi,
+  });
+}
+
+class _BekleyenYorum {
+  final String id;
+  final String metin;
+  final String yanitKullaniciAdi;
+
+  const _BekleyenYorum({
+    required this.id,
+    required this.metin,
+    required this.yanitKullaniciAdi,
   });
 }
 
@@ -71,17 +84,55 @@ class _YorumPaneliState extends State<YorumPaneli>
     with WidgetsBindingObserver {
   final TextEditingController yorumController = TextEditingController();
   final FocusNode _yorumFocus = FocusNode();
+  final ScrollController _listeKontrol = ScrollController();
   bool isLoading = false;
   final Set<String> _gizliYorumIdleri = {};
   final Set<String> _acikYanitlar = {};
+  final List<_BekleyenYorum> _bekleyenYorumlar = [];
+  Map<String, dynamic> _benimProfil = const {};
   _YanitHedefi? _yanitHedefi;
   bool _yorumMenuAcik = false;
   double _sonKlavyeInset = 0;
+  // build içinde oluşturulursa her setState yeniden abone olur ve liste kaydırması sıfırlanır.
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _yorumAkisi =
+      SosyalCore.gonderiRef(widget.postId)
+          .collection('comments')
+          .orderBy('createdAt', descending: true)
+          .limit(80)
+          .snapshots();
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _benimProfiliYukle();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && webMasaustuMu(context)) _alanaOdaklan();
+    });
+  }
+
+  // Web'de tıklamanın ardından tarayıcı odağı geri alır; kısa gecikme gerekli.
+  void _alanaOdaklan() {
+    _yorumFocus.requestFocus();
+    if (!kIsWeb) return;
+    Future.delayed(const Duration(milliseconds: 320), () {
+      if (mounted) _yorumFocus.requestFocus();
+    });
+  }
+
+  Future<void> _benimProfiliYukle() async {
+    final ref =
+        FirebaseFirestore.instance.collection('users').doc(widget.userId);
+    try {
+      var snap = await ref.get(const GetOptions(source: Source.cache));
+      if (!snap.exists) snap = await ref.get();
+      if (mounted) setState(() => _benimProfil = snap.data() ?? const {});
+    } catch (_) {
+      try {
+        final snap = await ref.get();
+        if (mounted) setState(() => _benimProfil = snap.data() ?? const {});
+      } catch (_) {}
+    }
   }
 
   @override
@@ -89,6 +140,7 @@ class _YorumPaneliState extends State<YorumPaneli>
     WidgetsBinding.instance.removeObserver(this);
     yorumController.dispose();
     _yorumFocus.dispose();
+    _listeKontrol.dispose();
     super.dispose();
   }
 
@@ -125,7 +177,7 @@ class _YorumPaneliState extends State<YorumPaneli>
       );
       if (kokId.isNotEmpty) _acikYanitlar.add(kokId);
     });
-    _yorumFocus.requestFocus();
+    _alanaOdaklan();
   }
 
   void _yanitlariAcKapa(String kokId) {
@@ -233,6 +285,22 @@ class _YorumPaneliState extends State<YorumPaneli>
     }
   }
 
+  // ListView.builder sonu tahminle hesaplar; gerçek sona oturana kadar tekrarla.
+  void _enAltaKaydir() {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      for (var i = 0; i < 4; i++) {
+        if (!mounted || !_listeKontrol.hasClients) return;
+        final konum = _listeKontrol.position;
+        if (konum.maxScrollExtent - konum.pixels < 1) return;
+        await _listeKontrol.animateTo(
+          konum.maxScrollExtent,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
   // Yeni yorumu Firestore'a kaydet
   Future<void> yorumEkle() async {
     final metin = yorumController.text.trim();
@@ -240,13 +308,20 @@ class _YorumPaneliState extends State<YorumPaneli>
     isLoading = true;
 
     final yanit = _yanitHedefi;
+    final bekleyen = _BekleyenYorum(
+      id: SosyalCore.gonderiRef(widget.postId).collection('comments').doc().id,
+      metin: metin,
+      yanitKullaniciAdi: yanit?.kullaniciAdi ?? '',
+    );
     yorumController.clear();
     setState(() {
       _yanitHedefi = null;
+      _bekleyenYorumlar.add(bekleyen);
       if (yanit != null && yanit.kokId.isNotEmpty) {
         _acikYanitlar.add(yanit.kokId);
       }
     });
+    if (yanit == null) _enAltaKaydir();
     widget.onYorumEklendi();
 
     try {
@@ -256,15 +331,20 @@ class _YorumPaneliState extends State<YorumPaneli>
         currentUserId: widget.userId,
         metin: metin,
         parentId: yanit?.commentId,
+        commentId: bekleyen.id,
       );
 
+      if (mounted) setState(() => _bekleyenYorumlar.remove(bekleyen));
       if (mounted && widget.userId != widget.postOwnerId) {
         puanAnimasyonuGoster(context, 3);
       }
     } catch (e) {
       if (!mounted) return;
       yorumController.text = metin;
-      setState(() => _yanitHedefi = yanit);
+      setState(() {
+        _yanitHedefi = yanit;
+        _bekleyenYorumlar.remove(bekleyen);
+      });
       widget.onYorumSilindi?.call();
       vibeSnackbarGoster(
         context,
@@ -287,13 +367,16 @@ class _YorumPaneliState extends State<YorumPaneli>
     String? secim;
     await showDialog<void>(
       context: context,
-      builder: (context) => SimpleDialog(
+      builder: (dialogContext) => SimpleDialog(
         title: const Text("Şikayet Sebebi"),
         children: [
-          _sikayetSecenek("Spam", (v) => secim = v),
-          _sikayetSecenek("Hakaret/Nefret", (v) => secim = v),
-          _sikayetSecenek("Uygunsuz İçerik", (v) => secim = v),
-          _sikayetSecenek("Diğer", (v) => secim = v),
+          for (final metin in const [
+            "Spam",
+            "Hakaret/Nefret",
+            "Uygunsuz İçerik",
+            "Diğer",
+          ])
+            _sikayetSecenek(dialogContext, metin, (v) => secim = v),
         ],
       ),
     );
@@ -301,11 +384,15 @@ class _YorumPaneliState extends State<YorumPaneli>
   }
 
   // Tek şikayet seçeneği satırı
-  Widget _sikayetSecenek(String metin, ValueChanged<String> sec) {
+  Widget _sikayetSecenek(
+    BuildContext dialogContext,
+    String metin,
+    ValueChanged<String> sec,
+  ) {
     return SimpleDialogOption(
       onPressed: () {
         sec(metin);
-        Navigator.pop(context);
+        Navigator.pop(dialogContext);
       },
       child: Text(metin),
     );
@@ -386,30 +473,18 @@ class _YorumPaneliState extends State<YorumPaneli>
       mesaj: "Bu yorumu '$sebep' sebebiyle şikayet etmek istiyor musun?",
       onayMetni: "Şikayet Et",
     );
-    if (!onay) return;
-    try {
-      await SosyalServis.yorumSikayetEt(
+    if (!onay || !mounted) return;
+    vibeIyimserIslem(
+      context,
+      islem: () => SosyalServis.yorumSikayetEt(
         postId: widget.postId,
         yorumId: yorumId,
         yorumSahibiUid: yorumSahibiUid,
         sebep: sebep,
-      );
-      if (!mounted) return;
-      vibeSnackbarGoster(
-        context,
-        "Yorum şikayet edildi.",
-        tip: VibeMesajTipi.basari,
-      );
-    } catch (e) {
-      if (!mounted) return;
-      vibeSnackbarGoster(
-        context,
-        internetAwareErrorMessage(
-          error: e,
-          fallback: "Şikayet gönderilemedi.",
-        ),
-      );
-    }
+      ),
+      basariMesaji: "Yorum şikayet edildi.",
+      hataMesaji: "Şikayet gönderilemedi.",
+    );
   }
 
   // Yorum sahibini engelle ve paneli kapat
@@ -677,6 +752,72 @@ class _YorumPaneliState extends State<YorumPaneli>
     );
   }
 
+  Widget _bekleyenYorumKarti(
+    _BekleyenYorum bekleyen, {
+    required ThemeData theme,
+    required VibeThemeExtension vibe,
+  }) {
+    final kullaniciAdi =
+        (_benimProfil['kullaniciAdi'] ?? 'Sen').toString();
+    final yanit = bekleyen.yanitKullaniciAdi.isNotEmpty;
+    return Opacity(
+      opacity: 0.6,
+      child: Padding(
+        padding: EdgeInsets.only(left: yanit ? 36 : 0),
+        child: ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: vibeAvatar(
+            radius: yanit ? 15 : 18,
+            userId: widget.userId,
+            photoUrl: (_benimProfil['photoUrl'] ?? '').toString(),
+            avatarKey: (_benimProfil['avatarKey'] ?? '').toString(),
+            fallbackText: kullaniciAdi,
+            emojiSize: 16,
+            fallbackIconSize: 18,
+          ),
+          title: Text(
+            kullaniciAdi,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: theme.colorScheme.onSurface,
+              fontWeight: FontWeight.bold,
+              fontSize: yanit ? 13.5 : 14.5,
+            ),
+          ),
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (yanit)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 2),
+                  child: Text(
+                    '↳ @${bekleyen.yanitKullaniciAdi}',
+                    style: TextStyle(
+                      color: vibe.mutedText,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              Text(
+                bekleyen.metin,
+                style: TextStyle(
+                  color: theme.colorScheme.onSurface,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                'Şimdi',
+                style: TextStyle(color: vibe.faintText, fontSize: 11),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final altBosluk = MediaQuery.of(context).viewInsets.bottom;
@@ -715,11 +856,7 @@ class _YorumPaneliState extends State<YorumPaneli>
             Divider(color: theme.dividerColor),
             Expanded(
               child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                stream: SosyalCore.gonderiRef(widget.postId)
-                    .collection('comments')
-                    .orderBy('createdAt', descending: true)
-                    .limit(80)
-                    .snapshots(),
+                stream: _yorumAkisi,
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting &&
                       !snapshot.hasData) {
@@ -729,8 +866,12 @@ class _YorumPaneliState extends State<YorumPaneli>
                   final comments =
                       (snapshot.data?.docs ?? []).reversed.toList();
                   final gruplar = _yorumlariGrupla(comments);
+                  final gelenIdler = {for (final doc in comments) doc.id};
+                  final bekleyenler = _bekleyenYorumlar
+                      .where((b) => !gelenIdler.contains(b.id))
+                      .toList();
 
-                  if (gruplar.isEmpty) {
+                  if (gruplar.isEmpty && bekleyenler.isEmpty) {
                     return Center(
                       child: Text(
                         'Henüz yorum yok.',
@@ -740,9 +881,17 @@ class _YorumPaneliState extends State<YorumPaneli>
                   }
 
                   return ListView.builder(
+                    controller: _listeKontrol,
                     padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: gruplar.length,
+                    itemCount: gruplar.length + bekleyenler.length,
                     itemBuilder: (context, index) {
+                      if (index >= gruplar.length) {
+                        return _bekleyenYorumKarti(
+                          bekleyenler[index - gruplar.length],
+                          theme: theme,
+                          vibe: vibe,
+                        );
+                      }
                       final grup = gruplar[index];
                       final acik = _acikYanitlar.contains(grup.kok.id);
                       return Column(

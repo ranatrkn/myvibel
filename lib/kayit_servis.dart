@@ -65,7 +65,11 @@ class KayitServis {
       '/databases/(default)/documents/users/${Uri.encodeComponent(uid)}'
       '?key=${Uri.encodeQueryComponent(opts.apiKey)}',
     );
-    final yanit = await http.get(uri).timeout(const Duration(seconds: 12));
+    final token = await _auth.currentUser?.getIdToken();
+    final yanit = await http.get(
+      uri,
+      headers: {if (token != null) 'Authorization': 'Bearer $token'},
+    ).timeout(const Duration(seconds: 12));
     if (yanit.statusCode == 200) return true;
     if (yanit.statusCode == 404) return false;
     throw StateError('profil REST ${yanit.statusCode}');

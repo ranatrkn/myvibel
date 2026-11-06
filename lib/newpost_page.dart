@@ -20,6 +20,7 @@ import 'package:myvibel/vibe_snackbar.dart';
 import 'package:myvibel/widgets/maskot_lottie_view.dart';
 import 'package:myvibel/widgets/vibe_avatar.dart';
 import 'package:myvibel/widgets/vibe_ikonlar.dart';
+import 'package:myvibel/widgets/web_shell.dart';
 
 // Gönderi paylaşım formu
 class NewPostPage extends StatefulWidget {
@@ -27,11 +28,15 @@ class NewPostPage extends StatefulWidget {
   final AlintiGonderiBaglam? alintiBaglam;
   final VoidCallback? onAlintiIptal;
 
+  /// Sekme görünür mü (IndexedStack'te canlı tutulduğu için odak buna bağlı).
+  final bool aktif;
+
   const NewPostPage({
     super.key,
     this.onPostCreated,
     this.alintiBaglam,
     this.onAlintiIptal,
+    this.aktif = true,
   });
 
   @override
@@ -41,6 +46,7 @@ class NewPostPage extends StatefulWidget {
 class _NewPostPageState extends State<NewPostPage> {
   final TextEditingController postController =
       TextEditingController(); // Gönderi metni
+  final FocusNode _metinOdak = FocusNode();
   bool isLoading = false; // Paylaşım sürüyor mu
   Timer? _hizTimer;
   int _kalanPaylasimMs = 0;
@@ -63,7 +69,26 @@ class _NewPostPageState extends State<NewPostPage> {
       unawaited(SosyalCore.rateLimitPrefsYukle().then((_) {
         if (mounted) _hizLimitiniGuncelle();
       }));
+      _masaustuOdakla();
     });
+  }
+
+  @override
+  void didUpdateWidget(covariant NewPostPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.aktif && !oldWidget.aktif) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _masaustuOdakla());
+    }
+  }
+
+  void _masaustuOdakla() {
+    if (!mounted || !widget.aktif || !webMasaustuMu(context)) return;
+    _metinOdak.requestFocus();
+  }
+
+  void _kisayolIlePaylas() {
+    if (isLoading || _kalanPaylasimMs > 0) return;
+    unawaited(gonderiPaylas());
   }
 
   void _hizLimitiniGuncelle() {
@@ -78,6 +103,7 @@ class _NewPostPageState extends State<NewPostPage> {
   void dispose() {
     _hizTimer?.cancel();
     postController.dispose();
+    _metinOdak.dispose();
     super.dispose();
   }
 
@@ -114,17 +140,19 @@ class _NewPostPageState extends State<NewPostPage> {
 
     try {
       await SosyalServis.gonderiPaylasimHizLimitiKontrol(user.uid);
-      await MascotServis.etkilesimEngelliyseAt(
-        user.uid,
-        aksiyonTipi: 'gonderi',
-      );
 
-      final userDoc = await FirebaseFirestore.instance
-          .collection("users")
-          .doc(user.uid)
-          .get();
-
+      final alinti = widget.alintiBaglam;
+      final onOkumalar = await Future.wait<Object?>([
+        FirebaseFirestore.instance.collection("users").doc(user.uid).get(),
+        SosyalServis.bahsetmeUidleriniCoz(metin),
+        alinti != null
+            ? SosyalCore.gonderiRef(alinti.postId).get()
+            : Future<Object?>.value(null),
+      ]);
+      final userDoc =
+          onOkumalar[0] as DocumentSnapshot<Map<String, dynamic>>;
       final userData = userDoc.data();
+      MascotServis.etkilesimEngeliVeriden(userData, aksiyonTipi: 'gonderi');
       final kullaniciAdi =
           userData?["kullaniciAdi"] ?? user.displayName ?? "Vibe Kullanıcısı";
       final avatarKey = (userData?["avatarKey"] ?? "").toString();
@@ -135,13 +163,12 @@ class _NewPostPageState extends State<NewPostPage> {
       );
 
       final hesapGizli = userData?["hesapGizli"] == true;
-      final mentionUidleri = await SosyalServis.bahsetmeUidleriniCoz(metin);
+      final mentionUidleri = onOkumalar[1] as Map<String, String>;
 
       Map<String, dynamic>? alintiAlanlari;
-      final alinti = widget.alintiBaglam;
       if (alinti != null) {
-        final alintiSnap = await SosyalCore.gonderiRef(alinti.postId)
-            .get();
+        final alintiSnap =
+            onOkumalar[2] as DocumentSnapshot<Map<String, dynamic>>;
         if (!alintiSnap.exists) {
           mesajGoster('Alıntılanan gönderi bulunamadı.');
           return;
@@ -193,18 +220,14 @@ class _NewPostPageState extends State<NewPostPage> {
       };
 
       try {
-        await firestore.runTransaction((tx) async {
-          final userSnap = await tx.get(userRef);
-          if (!userSnap.exists) {
-            throw 'Profil bulunamadı. Tekrar giriş yap.';
-          }
-          tx.set(postRef, postVerisi);
-          tx.update(userRef, {
-            "puan": FieldValue.increment(10),
-            "gonderiSayisi": FieldValue.increment(1),
-            "sonGonderiPuanPostId": postRef.id,
-          });
-        });
+        await (firestore.batch()
+              ..set(postRef, postVerisi)
+              ..update(userRef, {
+                "puan": FieldValue.increment(10),
+                "gonderiSayisi": FieldValue.increment(1),
+                "sonGonderiPuanPostId": postRef.id,
+              }))
+            .commit();
       } on FirebaseException catch (e) {
         mesajGoster(
           internetAwareErrorMessage(
@@ -215,58 +238,23 @@ class _NewPostPageState extends State<NewPostPage> {
         return;
       }
 
-      await SosyalServis.gonderiPaylasimHizLimitiKaydet(user.uid);
-
-      try {
-        await MascotServis.sosyalOdulKaydet(user.uid, MascotServis.vilGonderi);
-      } catch (e) {
-        debugPrint('gonderi maskot odul: $e');
-      }
-
-      if (mentionUidleri.isNotEmpty) {
-        try {
-          await SosyalServis.bahsetmeBildirimleriGonder(
-            gonderenUid: user.uid,
-            mentionUidleri: mentionUidleri,
-            kaynak: "post",
-            postId: postRef.id,
-          );
-        } catch (e) {
-          debugPrint('bahsetme bildirim: $e');
-        }
-      }
-
-      HaftalikGorevSonuc? gorevSonuc;
-      try {
-        gorevSonuc = await HaftalikGorevServis.aksiyonKaydet(
-          user.uid,
-          GorevAksiyon.gonderi,
-        );
-      } catch (e) {
-        debugPrint('haftalik gorev: $e');
-      }
-      try {
-        await MascotServis.sosyalAksiyon(user.uid, 'gonderi');
-      } catch (e) {
-        debugPrint('sosyalAksiyon gonderi: $e');
-      }
-
+      unawaited(SosyalServis.gonderiPaylasimHizLimitiKaydet(user.uid));
       postController.clear();
 
       if (!mounted) return;
 
+      // Sayfa onPostCreated ile kapanabilir; arka plan mesajları kök bağlamdan.
+      final kokBaglam = Navigator.of(context, rootNavigator: true).context;
       mesajGoster('Gönderi paylaşıldı.', tip: VibeMesajTipi.basari);
       puanAnimasyonuGoster(context, 10);
-      if (gorevSonuc != null && gorevSonuc.basarili) {
-        for (final mesaj in gorevSonuc.mesajlar) {
-          mesajGoster(mesaj, tip: VibeMesajTipi.basari);
-        }
-      } else if (gorevSonuc?.hata != null &&
-          gorevSonuc!.hata != HaftalikGorevServis.gorevlerAcilmaHatasi) {
-        mesajGoster(gorevSonuc.hata!, tip: VibeMesajTipi.uyari);
-      }
       FocusManager.instance.primaryFocus?.unfocus();
       widget.onPostCreated?.call();
+      unawaited(_paylasimSonrasiIsler(
+        uid: user.uid,
+        postId: postRef.id,
+        mentionUidleri: mentionUidleri,
+        kokBaglam: kokBaglam,
+      ));
     } catch (e) {
       mesajGoster(
         internetAwareErrorMessage(
@@ -281,6 +269,57 @@ class _NewPostPageState extends State<NewPostPage> {
         });
         _hizLimitiniGuncelle();
       }
+    }
+  }
+
+  Future<void> _paylasimSonrasiIsler({
+    required String uid,
+    required String postId,
+    required Map<String, String> mentionUidleri,
+    required BuildContext kokBaglam,
+  }) async {
+    try {
+      await MascotServis.sosyalOdulKaydet(uid, MascotServis.vilGonderi);
+    } catch (e) {
+      debugPrint('gonderi maskot odul: $e');
+    }
+
+    if (mentionUidleri.isNotEmpty) {
+      try {
+        await SosyalServis.bahsetmeBildirimleriGonder(
+          gonderenUid: uid,
+          mentionUidleri: mentionUidleri,
+          kaynak: "post",
+          postId: postId,
+        );
+      } catch (e) {
+        debugPrint('bahsetme bildirim: $e');
+      }
+    }
+
+    HaftalikGorevSonuc? gorevSonuc;
+    try {
+      gorevSonuc = await HaftalikGorevServis.aksiyonKaydet(
+        uid,
+        GorevAksiyon.gonderi,
+      );
+    } catch (e) {
+      debugPrint('haftalik gorev: $e');
+    }
+    try {
+      await MascotServis.sosyalAksiyon(uid, 'gonderi');
+    } catch (e) {
+      debugPrint('sosyalAksiyon gonderi: $e');
+    }
+
+    if (!kokBaglam.mounted) return;
+    if (gorevSonuc != null && gorevSonuc.basarili) {
+      for (final mesaj in gorevSonuc.mesajlar) {
+        vibeSnackbarGoster(kokBaglam, mesaj, tip: VibeMesajTipi.basari);
+      }
+    } else if (gorevSonuc?.hata != null &&
+        gorevSonuc!.hata != HaftalikGorevServis.gorevlerAcilmaHatasi) {
+      vibeSnackbarGoster(kokBaglam, gorevSonuc.hata!, tip: VibeMesajTipi.uyari);
     }
   }
 
@@ -359,6 +398,8 @@ class _NewPostPageState extends State<NewPostPage> {
                             textField: true,
                             child: BahsetmeMetinAlani(
                               controller: postController,
+                              focusNode: _metinOdak,
+                              ctrlEnterIleGonder: _kisayolIlePaylas,
                               haricUid: user?.uid,
                               expands: true,
                               style: TextStyle(

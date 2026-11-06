@@ -139,9 +139,7 @@ class AppleGirisServis {
       try {
         await user.reauthenticateWithPopup(_provider());
       } on FirebaseAuthException catch (e) {
-        if (e.code == 'popup-blocked' ||
-            e.code == 'popup-closed-by-user' ||
-            e.code == 'cancelled-popup-request') {
+        if (e.code == 'popup-blocked') {
           await user.reauthenticateWithRedirect(_provider());
           return;
         }
