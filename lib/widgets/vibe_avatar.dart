@@ -297,6 +297,8 @@ Widget vibeAvatar({
   String? userId,
   bool liderTaciGoster = false,
   int? liderSira,
+  double tacOrani = 1.16,
+  double tacOturmaOrani = 0.44,
   double emojiSize = 18,
   double fallbackIconSize = 20,
   Color fallbackBackgroundColor = Colors.blueGrey,
@@ -324,6 +326,8 @@ Widget vibeAvatar({
       child: _VibeAvatarTacli(
         radius: radius,
         sira: aktifSira,
+        tacOrani: tacOrani,
+        oturmaOrani: tacOturmaOrani,
         child: avatar,
       ),
     );
@@ -413,19 +417,23 @@ class _VibeAvatarTacli extends StatelessWidget {
   const _VibeAvatarTacli({
     required this.radius,
     required this.sira,
+    required this.tacOrani,
+    required this.oturmaOrani,
     required this.child,
   });
 
   final double radius;
   final int sira;
+  final double tacOrani;
+  final double oturmaOrani;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
     final avatarCap = radius * 2;
-    final tacGenislik = (avatarCap * 1.16).clamp(28.0, 140.0);
+    final tacGenislik = (avatarCap * tacOrani).clamp(28.0, 140.0);
     final tacYukseklik = tacGenislik / LiderTaci.enBoy;
-    final oturma = radius * 0.44;
+    final oturma = radius * oturmaOrani;
     final genislik = avatarCap > tacGenislik ? avatarCap : tacGenislik;
     final yukseklik = avatarCap + tacYukseklik - oturma;
 

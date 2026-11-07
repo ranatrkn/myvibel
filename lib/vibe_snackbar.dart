@@ -29,6 +29,20 @@ void vibeIyimserIslem(
   }));
 }
 
+// ScaffoldMessenger mesajı en dıştaki Scaffold'da gösterir.
+RenderBox? _kokScaffoldKutusu(BuildContext context) {
+  ScaffoldState? kok;
+  context.visitAncestorElements((e) {
+    if (e is StatefulElement && e.state is ScaffoldState) {
+      kok = e.state as ScaffoldState;
+    }
+    return true;
+  });
+  final kutu = kok?.context.findRenderObject();
+  if (kutu is RenderBox && kutu.attached && kutu.hasSize) return kutu;
+  return null;
+}
+
 // Tipe göre stillendirilmiş snackbar gösterir
 void vibeSnackbarGoster(
   BuildContext context,
@@ -78,18 +92,28 @@ void vibeSnackbarGoster(
 
   // Masaüstünde kök Scaffold'un altında durur; iç sayfaların alt menülerini örtmesin
   // ve yan paneller yüzünden kaymasın diye mesajı çağıran sayfanın ortasına hizalanır.
+  // Boşluklar mesajı gösteren Scaffold'a göre hesaplanmalı: giriş ekranında o
+  // Scaffold yalnızca sağ form sütunu, ekran genişliği kullanılırsa mesaj sıfır
+  // genişliğe düşüp görünmez olur.
   EdgeInsets margin = const EdgeInsets.fromLTRB(16, 0, 16, 16);
   if (webMasaustuMu(context)) {
     const genislik = 440.0;
-    final ekran = MediaQuery.sizeOf(context).width;
-    var merkez = ekran / 2;
+    final scaffoldKutu = _kokScaffoldKutusu(context);
     final kutu = context.findRenderObject();
-    if (kutu is RenderBox && kutu.attached && kutu.hasSize) {
-      merkez = kutu.localToGlobal(kutu.size.center(Offset.zero)).dx;
+    if (scaffoldKutu != null) {
+      final alan = scaffoldKutu.size.width;
+      final alanSol = scaffoldKutu.localToGlobal(Offset.zero).dx;
+      var merkez = alan / 2;
+      if (kutu is RenderBox && kutu.attached && kutu.hasSize) {
+        merkez = kutu.localToGlobal(kutu.size.center(Offset.zero)).dx - alanSol;
+      }
+      if (alan < genislik + 32) {
+        margin = const EdgeInsets.fromLTRB(16, 0, 16, 24);
+      } else {
+        final sol = (merkez - genislik / 2).clamp(16.0, alan - genislik - 16);
+        margin = EdgeInsets.fromLTRB(sol, 0, alan - sol - genislik, 96);
+      }
     }
-    final sol = (merkez - genislik / 2)
-        .clamp(16.0, (ekran - genislik - 16).clamp(16.0, double.infinity));
-    margin = EdgeInsets.fromLTRB(sol, 0, (ekran - sol - genislik).clamp(16.0, double.infinity), 96);
   }
 
   ScaffoldMessenger.of(context).showSnackBar(

@@ -77,20 +77,18 @@ class _VibeHomePageState extends State<VibeHomePage> {
       // AuthControlPage auth dinleyicisi Feed'e geçer.
       // Web'de canPop tarayıcı geçmişinden true olup boş gri ekrana düşürüyor.
     } on FirebaseAuthException catch (e) {
-      String mesaj = "Giriş yapılamadı.";
+      String mesaj = "Giriş yapılamadı. Biraz sonra tekrar dene.";
 
-      if (e.code == 'user-not-found') {
-        mesaj = e.message?.trim().isNotEmpty == true
-            ? e.message!.trim()
-            : "Bu e-posta veya kullanıcı adı ile kayıtlı hesap bulunamadı.";
-      } else if (e.code == 'wrong-password') {
-        mesaj = "Şifre hatalı.";
+      // Hesabın var olup olmadığı belli olmasın: bulunamadı ve yanlış şifre aynı mesaj.
+      if (e.code == 'user-not-found' ||
+          e.code == 'wrong-password' ||
+          e.code == 'invalid-credential' ||
+          e.code == 'INVALID_LOGIN_CREDENTIALS') {
+        mesaj = "Kullanıcı adı veya şifre hatalı.";
       } else if (e.code == 'invalid-email') {
-        mesaj = e.message?.trim().isNotEmpty == true
-            ? e.message!.trim()
-            : "Geçerli bir e-posta veya kullanıcı adı gir.";
-      } else if (e.code == 'invalid-credential') {
-        mesaj = "E-posta/kullanıcı adı veya şifre hatalı.";
+        mesaj = "Geçerli bir e-posta veya kullanıcı adı gir.";
+      } else if (e.code == 'too-many-requests') {
+        mesaj = "Çok fazla deneme yapıldı. Biraz sonra tekrar dene.";
       } else if (e.code == 'network-request-failed') {
         mesaj = baglantiUyariMesaji(e);
       }

@@ -72,7 +72,7 @@ class _TanitimPaneli extends StatelessWidget {
     (
       Icons.pets_rounded,
       'Vibel büyütme',
-      'Paylaştıkça Vibel’in büyür; 6. seviyeden sonra vil kazanıp onu beslersin.',
+      'Etkileşimlerinle kendi Vibel karakterini büyüt.',
     ),
     (
       Icons.chat_bubble_outline_rounded,

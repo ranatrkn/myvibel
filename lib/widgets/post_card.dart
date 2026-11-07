@@ -18,6 +18,7 @@ import 'package:myvibel/widgets/isim_yan_rozet.dart';
 import 'package:myvibel/widgets/post_begeni_yardimci.dart';
 import 'package:myvibel/widgets/vibe_avatar.dart';
 import 'package:myvibel/widgets/vibe_ikonlar.dart';
+import 'package:myvibel/widgets/web_shell.dart';
 import 'package:myvibel/maestro_semantics.dart';
 import 'package:myvibel/widgets/begenenler_paneli.dart';
 import 'package:myvibel/widgets/yorum_paneli.dart';
@@ -364,6 +365,7 @@ class _PostCardState extends State<PostCard> {
     if (gizleKart) return const SizedBox.shrink();
     final theme = Theme.of(context);
     final vibe = context.vibe;
+    final masaustu = webMasaustuMu(context);
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
@@ -378,6 +380,8 @@ class _PostCardState extends State<PostCard> {
               radius: 20,
               userId: widget.postOwnerId,
               liderTaciGoster: true,
+              tacOrani: masaustu ? 0.96 : 1.16,
+              tacOturmaOrani: masaustu ? 0.30 : 0.44,
               photoUrl: widget.photoUrl,
               avatarKey: widget.avatarKey,
               fallbackText: widget.kullaniciAdi,
