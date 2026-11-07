@@ -142,12 +142,16 @@ class MaskotBildirimServis {
 
     if (enerji > _enerjiUykuEsik) {
       await _uykuDongusunuSifirla();
+      // Enerji yalnızca açken düşer; tok Vibel önce acıkmalı.
+      final aclikeKalan = tokluk > _toklukEsik
+          ? ((tokluk - _toklukEsik) * _toklukTamDakika / 100).ceil()
+          : 0;
       final uykuDakika =
           _dakikaEsige(enerji, _enerjiUykuEsik, _enerjiTamDakika);
       if (uykuDakika != null) {
         await _zamanla(
           id: _idUykuYaklasma,
-          dakika: uykuDakika,
+          dakika: aclikeKalan + uykuDakika,
           baslik: ad,
           govde: MaskotBakimSozleri.uykuYaklasma,
         );

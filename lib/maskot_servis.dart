@@ -621,6 +621,29 @@ class MascotServis {
     return _clampStat(kayitli - dusus);
   }
 
+  /// Açlıkla düşen enerjiyi senkronu beklemeden gösterir (tokluk gibi).
+  static int _hesaplananEnerji(Map<String, dynamic> robot, int simdiMs) {
+    final kayitli = _clampStat(_int(robot['enerji'], 70));
+    final seviye = _int(robot['seviye'], 1);
+    if (!enerjiAktif(seviye) || _int(robot['uykuBitisMs'], 0) > 0) {
+      return kayitli;
+    }
+    final kopya = Map<String, dynamic>.from(robot);
+    final tokluk = _toklukDususUygula(
+      robot: kopya,
+      simdiMs: simdiMs,
+      uygulamaAcildi: false,
+    );
+    return _aclikEnerjiDususUygula(
+      robot: kopya,
+      simdiMs: simdiMs,
+      enerji: kayitli,
+      tokluk: tokluk.tokluk,
+      seviye: seviye,
+      aclikBaslangicMs: tokluk.aclikBaslangicMs,
+    );
+  }
+
   static String _isimOku(dynamic value) {
     final isim = (value ?? '').toString().trim();
     if (isim.isEmpty || isim == 'Mini Vibe' || isim == 'Rety') {
@@ -688,7 +711,7 @@ class MascotServis {
       gelisimPuani: _int(map['gelisimPuani'], 0),
       etkilesimPuani: _int(map['etkilesimPuani'], 0),
       tokluk: _hesaplananTokluk(map, simdi),
-      enerji: _clampStat(_int(map['enerji'], 70)),
+      enerji: _hesaplananEnerji(map, simdi),
       mutluluk: _clampStat(_int(map['mutluluk'], 65)),
       sonBakim: sonBakim,
       kazanilanSeviyeOdulleri: oduller,
@@ -1035,11 +1058,19 @@ class MascotServis {
       return enerji;
     }
 
-    var tick = _int(robot['sonEnerjiDususMs'], simdiMs);
+    // Alan yoksa saat burada kaydedilmeli; aksi halde her senkron düşüşü
+    // "şimdi"den yeniden başlatır ve aç Vibel'in enerjisi hiç düşmez.
+    final kayitliTick = _int(robot['sonEnerjiDususMs'], 0);
+    var tick = kayitliTick > 0 && kayitliTick <= simdiMs
+        ? kayitliTick
+        : (aclikBaslangicMs ?? simdiMs);
     if (aclikBaslangicMs != null && aclikBaslangicMs > tick) {
       tick = aclikBaslangicMs;
     }
-    if (simdiMs <= tick) return enerji;
+    if (simdiMs <= tick) {
+      robot['sonEnerjiDususMs'] = tick;
+      return enerji;
+    }
 
     final gecenMs = simdiMs - tick;
     final dusus = _mutlulukDususMiktari(

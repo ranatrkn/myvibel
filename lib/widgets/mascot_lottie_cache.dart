@@ -10,7 +10,6 @@ class MascotLottieCache {
     'assets/animations/blue11_20.json',
     'assets/animations/blue11_20_uyku.json',
     'assets/animations/blue11_20_yorgun.json',
-    'assets/animations/blue11_20_uzgun.json',
     'assets/animations/blue21.json',
     'assets/animations/blue21_uyku.json',
     'assets/animations/blue21_uzgun.json',
