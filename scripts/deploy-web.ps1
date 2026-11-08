@@ -26,7 +26,8 @@ if (-not (Test-Path $webRoot)) {
 
 # Flutter ciktisi kokte main.dart.js; hosting layout'ta app/main.dart.js olur.
 $flutterRootJs = Join-Path $webRoot 'main.dart.js'
-$alreadyHosted = Test-Path (Join-Path $appDir 'main.dart.js')
+$alreadyHosted = (Test-Path (Join-Path $appDir 'main.dart.js')) -or
+  (Test-Path (Join-Path $appDir 'v\*\main.dart.js'))
 
 if (-not (Test-Path $flutterRootJs) -and $alreadyHosted) {
   Write-Host 'build/web zaten hosting duzeninde; yasal sayfalar guncellenecek.'
@@ -76,8 +77,18 @@ if (Test-Path $assetsDir) {
     throw "app/index.html icinde assetBase: '/app/' bulunamadi."
   }
   $html = $html.Replace("assetBase: '/app/'", "assetBase: '/app/v/$surum/'")
+
+  # main.dart.js de surum klasorunde: /app/v/** immutable, tekrar ziyarette indirilmez.
+  $girisSatiri = "var entry = 'main.dart.js?v=' + encodeURIComponent(serviceWorkerVersion || String(Date.now()));"
+  if (-not $html.Contains($girisSatiri)) {
+    throw "app/index.html icinde main.dart.js giris satiri bulunamadi."
+  }
+  Move-Item (Join-Path $appDir 'main.dart.js') (Join-Path $surumDir 'main.dart.js') -Force
+  $html = $html.Replace($girisSatiri, "var entry = '/app/v/$surum/main.dart.js';")
+
   [IO.File]::WriteAllText($indexYolu, $html, (New-Object Text.UTF8Encoding $false))
   Write-Host "Asset surumu: /app/v/$surum/assets"
+  Write-Host "Giris dosyasi: /app/v/$surum/main.dart.js"
 }
 
 # Kok landing + yasal sayfalar + SEO

@@ -160,15 +160,6 @@
         ]
       },
       {
-        "source": "/app/v/**",
-        "headers": [
-          {
-            "key": "Cache-Control",
-            "value": "public, max-age=31536000, immutable"
-          }
-        ]
-      },
-      {
         "source": "/app/canvaskit/**",
         "headers": [
           {
@@ -192,6 +183,15 @@
           {
             "key": "Cache-Control",
             "value": "public, max-age=3600, must-revalidate"
+          }
+        ]
+      },
+      {
+        "source": "/app/v/**",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=31536000, immutable"
           }
         ]
       }

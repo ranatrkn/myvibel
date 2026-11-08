@@ -120,20 +120,31 @@
     window.addEventListener('flutter-first-frame', yukleniyorGizle, { once: true });
     window.addEventListener('load', function(ev) {
       // main.dart.js dosya adı sabit; query ile tarayıcı önbelleğini kır.
+      // deploy-web.ps1 bu satırı sürüm klasöründeki kalıcı önbellekli kopyayla değiştirir.
       var entry = 'main.dart.js?v=' + encodeURIComponent(serviceWorkerVersion || String(Date.now()));
+      // CanvasKit varsayılan olarak Google CDN'inden gelir (Hosting kotasından düşmez);
+      // CDN'e ulaşılamazsa sayfa bir kez /app/canvaskit/ kopyasıyla yeniden açılır.
+      var yerelMotor = /[?&]motor=yerel(&|$)/.test(location.search);
+      var motorAyari = {
+        renderer: 'canvaskit',
+        // entrypoint query string asset yollarını bozmasın
+        assetBase: '/app/',
+      };
+      if (yerelMotor) motorAyari.canvasKitBaseUrl = '/app/canvaskit/';
       _flutter.loader.loadEntrypoint({
         entrypointUrl: entry,
         onEntrypointLoaded: function(engineInitializer) {
-          engineInitializer.initializeEngine({
-            renderer: 'canvaskit',
-            // entrypoint query string asset yollarını bozmasın
-            assetBase: '/app/',
-            canvasKitBaseUrl: '/app/canvaskit/',
-          }).then(function(appRunner) {
+          engineInitializer.initializeEngine(motorAyari).then(function(appRunner) {
             appRunner.runApp();
             setTimeout(yukleniyorGizle, 10000);
           }).catch(function(err) {
             console.error('Flutter init failed', err);
+            if (!yerelMotor) {
+              var adres = new URL(location.href);
+              adres.searchParams.set('motor', 'yerel');
+              location.replace(adres.toString());
+              return;
+            }
             yukleniyorGizle();
             document.body.innerHTML =
               '<div style="color:#fff;font-family:system-ui;padding:24px;text-align:center">' +

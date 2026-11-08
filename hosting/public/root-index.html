@@ -45,7 +45,7 @@
         "alternateName": ["My Vibel"],
         "url": "https://myvibel.com/",
         "applicationCategory": "SocialNetworkingApplication",
-        "operatingSystem": "Android, Web",
+        "operatingSystem": "Web",
         "audience": { "@type": "PeopleAudience", "suggestedMinAge": 15 },
         "description": "MyVibel sosyal paylaşım ve Vibel büyütme deneyimi sunan bir uygulamadır. Kayıt 15 yaş ve üzeri; mesajlaşma 18+.",
         "inLanguage": "tr",
@@ -148,6 +148,68 @@
       line-height: 1.45;
     }
     .phone footer { margin-top: 48px; }
+    .phone .durum-notu + footer { margin-top: 20px; }
+    .phone .durum-notu {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin: 40px 0 0;
+      padding: 8px 14px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.05);
+      font-size: 0.9rem;
+      line-height: 1.35;
+    }
+    .phone .durum-notu::before {
+      content: "";
+      flex: none;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #e53935;
+    }
+    /* Sağ üst iletişim tuşu (telefon + masaüstü) */
+    .ust-iletisim {
+      position: absolute;
+      top: 39px;
+      right: 20px;
+      z-index: 10;
+    }
+    .ust-iletisim summary {
+      list-style: none;
+      cursor: pointer;
+      padding: 7px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,.28);
+      background: rgba(255,255,255,.06);
+      font-size: 0.9rem;
+      font-weight: 600;
+      user-select: none;
+    }
+    .ust-iletisim summary::-webkit-details-marker { display: none; }
+    .ust-iletisim summary:hover,
+    .ust-iletisim[open] summary { background: rgba(255,255,255,.14); }
+    .ust-iletisim-kutu {
+      position: absolute;
+      right: 0;
+      top: calc(100% + 8px);
+      min-width: 220px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: #1c0b2b;
+      border: 1px solid var(--line);
+      box-shadow: 0 12px 32px rgba(0,0,0,.45);
+      font-size: 0.9rem;
+      line-height: 1.45;
+      color: var(--muted);
+    }
+    .ust-iletisim-kutu a {
+      display: block;
+      margin-top: 4px;
+      color: var(--text);
+      font-weight: 600;
+    }
 
     /* —— Masaüstü: ayrı kompozisyon —— */
     .desk { display: none; }
@@ -162,7 +224,7 @@
         grid-template-columns: 1.05fr 0.95fr;
         gap: 48px;
         align-items: center;
-        padding: 48px 56px 40px;
+        padding: 96px 56px 40px;
         max-width: 1180px;
         margin: 0 auto;
       }
@@ -262,10 +324,54 @@
         padding-top: 28px;
       }
       .desk-footer nav { display: flex; gap: 20px; flex-wrap: wrap; }
+
+      .desk-durum {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 0 56px 24px;
+      }
+      .desk-durum .durum-notu {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0;
+        padding: 8px 14px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: rgba(255,255,255,.05);
+        font-size: 0.95rem;
+        color: var(--text);
+      }
+      .desk-durum .durum-notu::before {
+        content: "";
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #e53935;
+      }
+
+      .ust-iletisim {
+        top: 28px;
+        right: max(24px, calc((100vw - 1180px) / 2 + 56px));
+      }
     }
   </style>
 </head>
 <body>
+  <details class="ust-iletisim">
+    <summary>İletişim</summary>
+    <div class="ust-iletisim-kutu">
+      Soru, öneri ve destek için:
+      <a href="mailto:destek@myvibel.com">destek@myvibel.com</a>
+    </div>
+  </details>
+  <script>
+    document.addEventListener('click', function (e) {
+      var d = document.querySelector('.ust-iletisim');
+      if (d && d.open && !d.contains(e.target)) d.open = false;
+    });
+  </script>
+
   <!-- Telefon kompozisyonu -->
   <main class="phone">
     <div class="brand">
@@ -273,7 +379,7 @@
       <span>MyVibel</span>
     </div>
     <h1>Paylaş, Bağ kur, Vibel ile büyü.</h1>
-    <p><a class="cta" href="/app/">Uygulamayı aç</a></p>
+    <p><a class="cta" href="/app/">MyVibel'i aç</a></p>
     <ul class="features">
       <li>
         <strong>Sosyal akış</strong>
@@ -281,7 +387,7 @@
       </li>
       <li>
         <strong>Vibel büyütme</strong>
-        Paylaştıkça Vibel’in büyür; 6. seviyeden sonra vil kazanıp onu beslersin.
+        Etkileşimlerinle kendi Vibel karakterini büyüt.
       </li>
       <li>
         <strong>Mesajlar</strong>
@@ -292,6 +398,7 @@
         Haftalık görevlerle ilerlemeyi hızlandır.
       </li>
     </ul>
+    <p class="durum-notu">Yakında Google Play'de</p>
     <footer>
       <a href="/privacy.html">Gizlilik</a> ·
       <a href="/kvkk.html">KVKK</a> ·
@@ -312,7 +419,7 @@
         <h1>Paylaş, Bağ kur, Vibel ile büyü.</h1>
         <p>MyVibel'de kendi Vibel karakterini yetiştir. Gönderi paylaş, arkadaşlarınla bağ kur ve karakterin seninle büyüsün.</p>
         <div class="desk-ctas">
-          <a class="cta" href="/app/">Uygulamayı aç</a>
+          <a class="cta" href="/app/">MyVibel'i aç</a>
           <a class="cta cta-ghost" href="/privacy.html">Gizlilik</a>
         </div>
       </div>
@@ -329,7 +436,7 @@
       </article>
       <article>
         <h2>Vibel büyütme</h2>
-        <p>Paylaştıkça Vibel’in büyür; 6. seviyeden sonra vil kazanıp onu beslersin.</p>
+        <p>Etkileşimlerinle kendi Vibel karakterini büyüt.</p>
       </article>
       <article>
         <h2>Mesajlar</h2>
@@ -340,6 +447,10 @@
         <p>Haftalık görevlerle ilerlemeyi hızlandır.</p>
       </article>
     </section>
+
+    <div class="desk-durum">
+      <p class="durum-notu">Yakında Google Play'de</p>
+    </div>
 
     <footer class="desk-footer">
       <span>© MyVibel · myvibel.com</span>
