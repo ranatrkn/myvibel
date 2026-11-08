@@ -69,12 +69,90 @@ class _YasalMetinSayfasi extends StatelessWidget {
   const _YasalMetinSayfasi({
     required this.baslik,
     required this.metin,
+    required this.ozet,
     this.altLink,
   });
 
   final String baslik;
   final String metin;
+  final List<String> ozet;
   final ({String etiket, String url})? altLink;
+
+  static final _baslikDeseni = RegExp(r'^\d+(\.\d+)?\. .{1,80}$');
+
+  static bool _baslikMi(String satir) =>
+      _baslikDeseni.hasMatch(satir) && !satir.endsWith('.');
+
+  Widget _ozetKarti(ThemeData theme, VibeThemeExtension vibe) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: vibe.inputFill,
+        borderRadius: BorderRadius.circular(12),
+        border: Border(
+          left: BorderSide(color: theme.colorScheme.primary, width: 3),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Kısaca',
+            style: TextStyle(
+              color: theme.colorScheme.primary,
+              fontWeight: FontWeight.w700,
+              fontSize: 15,
+            ),
+          ),
+          const SizedBox(height: 6),
+          for (final madde in ozet)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(
+                '• $madde',
+                style: TextStyle(
+                  color: theme.colorScheme.onSurface,
+                  height: 1.45,
+                  fontSize: 13.5,
+                ),
+              ),
+            ),
+          const SizedBox(height: 4),
+          Text(
+            YasalIcerik.ozetNotu,
+            style: TextStyle(color: vibe.faintText, fontSize: 11.5),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _tamMetin(ThemeData theme, VibeThemeExtension vibe) {
+    final govde = TextStyle(color: vibe.mutedText, height: 1.55, fontSize: 14);
+    final baslikStili = TextStyle(
+      color: theme.colorScheme.onSurface,
+      fontWeight: FontWeight.w700,
+      height: 1.4,
+      fontSize: 15,
+    );
+    final satirlar = metin.trim().split('\n');
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final satir in satirlar)
+          if (satir.trim().isEmpty)
+            const SizedBox(height: 8)
+          else if (_baslikMi(satir.trim()))
+            Padding(
+              padding: const EdgeInsets.only(top: 10, bottom: 2),
+              child: Text(satir.trim(), style: baslikStili),
+            )
+          else
+            Text(satir, style: govde),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -102,14 +180,9 @@ class _YasalMetinSayfasi extends StatelessWidget {
               style: TextStyle(color: vibe.faintText, fontSize: 12),
             ),
             const SizedBox(height: 16),
-            Text(
-              metin.trim(),
-              style: TextStyle(
-                color: vibe.mutedText,
-                height: 1.55,
-                fontSize: 14,
-              ),
-            ),
+            _ozetKarti(theme, vibe),
+            const SizedBox(height: 16),
+            _tamMetin(theme, vibe),
             if (altLink != null) ...[
               const SizedBox(height: 20),
               ListTile(
@@ -141,6 +214,7 @@ class PrivacyPolicyPage extends StatelessWidget {
     return const _YasalMetinSayfasi(
       baslik: 'Gizlilik Politikası',
       metin: YasalIcerik.gizlilikMetni,
+      ozet: YasalIcerik.gizlilikOzet,
       altLink: (
         etiket: 'Web sürümü',
         url: VibeLegal.privacyPolicyUrl,
@@ -157,6 +231,7 @@ class KvkkPage extends StatelessWidget {
     return const _YasalMetinSayfasi(
       baslik: YasalIcerik.kvkkBaslik,
       metin: YasalIcerik.kvkkMetni,
+      ozet: YasalIcerik.kvkkOzet,
       altLink: (
         etiket: 'Web sürümü',
         url: VibeLegal.kvkkPolicyUrl,
@@ -173,6 +248,7 @@ class TermsOfUsePage extends StatelessWidget {
     return const _YasalMetinSayfasi(
       baslik: YasalIcerik.kullanimKosullariBaslik,
       metin: YasalIcerik.kullanimKosullariMetni,
+      ozet: YasalIcerik.kosullarOzet,
       altLink: (
         etiket: 'Web sürümü',
         url: VibeLegal.termsUrl,
@@ -189,6 +265,7 @@ class CocukGuvenligiPage extends StatelessWidget {
     return const _YasalMetinSayfasi(
       baslik: YasalIcerik.cocukGuvenligiBaslik,
       metin: YasalIcerik.cocukGuvenligiMetni,
+      ozet: YasalIcerik.cocukOzet,
       altLink: (
         etiket: 'Web sürümü',
         url: VibeLegal.cocukGuvenligiUrl,

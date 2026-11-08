@@ -39,6 +39,42 @@ a { color: var(--accent); }
   white-space: pre-wrap;
   font-size: 0.95rem;
 }
+/* Yasal metinler: «Kısaca» özeti + başlıklı tam metin */
+.ozet {
+  background: #fff;
+  border-left: 4px solid var(--accent);
+  border-radius: 12px;
+  padding: 14px 18px 12px;
+  margin: 0 0 2rem;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.05);
+}
+.ozet h2 {
+  margin: 0 0 6px;
+  font-size: 1.05rem;
+  color: var(--accent);
+}
+.ozet ul { margin: 0; padding-left: 1.15rem; }
+.ozet li { margin: 4px 0; }
+.ozet-not {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.belge h2 {
+  font-size: 1.12rem;
+  line-height: 1.35;
+  margin: 1.8rem 0 0.5rem;
+  color: var(--text);
+}
+.belge h3 {
+  font-size: 1rem;
+  margin: 1.2rem 0 0.35rem;
+  color: var(--text);
+}
+.belge p { margin: 0 0 0.75rem; }
+.belge ul { margin: 0 0 0.75rem; padding-left: 1.2rem; }
+.belge li { margin: 3px 0; }
+
 nav,
 nav.footer-nav {
   margin-top: 2rem;
@@ -100,6 +136,10 @@ nav.footer-nav {
   }
   h1 { font-size: 2rem; }
   .content { font-size: 1.05rem; line-height: 1.7; }
+  .belge { font-size: 1.05rem; line-height: 1.7; }
+  .belge h2 { font-size: 1.3rem; margin-top: 2.2rem; }
+  .ozet { padding: 20px 26px 16px; }
+  .ozet h2 { font-size: 1.15rem; }
   .card {
     padding: 32px 36px;
     border-radius: 20px;
